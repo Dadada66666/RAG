@@ -16,9 +16,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "hypothesis==6.165.10",
+  "jsonschema==4.26.0",
   "mypy==1.11.2",
   "pytest==9.1.1",
+  "pytest-cov==7.1.0",
   "ruff==0.15.20",
+  "types-jsonschema==4.26.0.20260518",
   "types-PyYAML==6.0.12.20260815",
 ]
 
@@ -48,7 +52,7 @@ strict = true
 files = ["src", "tests"]
 
 [tool.pytest.ini_options]
-addopts = "-q -m 'not network and not gpu'"
+addopts = "-q -m 'not network and not gpu' --cov=docparser.ir --cov-report=term-missing --cov-fail-under=85"
 testpaths = ["tests"]
 markers = [
   "gpu: requires a local GPU and model runtime",
@@ -57,8 +61,8 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["docparser"]
+source = ["docparser.ir"]
 
 [tool.coverage.report]
-fail_under = 80
+fail_under = 85
 show_missing = true

@@ -1,0 +1,8 @@
+[
+  {"name":"unknown-field","path":["unexpected"],"value":true},
+  {"name":"wrong-page-type","path":["pages",0,"page_number"],"value":"1"},
+  {"name":"invalid-digest","path":["source","sha256"],"value":"sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+  {"name":"invalid-timestamp","path":["created_at"],"value":"2026-08-28T08:30:00+00:00"},
+  {"name":"invalid-id","path":["document_id"],"value":"doc_not-a-uuid"},
+  {"name":"invalid-extension-namespace","path":["pages",0,"blocks",0,"extensions"],"value":{"raw":"forbidden"}}
+]

@@ -6,9 +6,9 @@ starts.
 
 ## Current scope
 
-Phase 0 provides only the Python package shell, strict configuration validation, quality gates,
-and a no-side-effect diagnostic CLI. Parser, Document IR, storage, orchestration, and GPU runtime
-code are intentionally deferred to their implementation phases.
+Phase 1 provides the strict Canonical Document IR spine: opaque IDs, canonical geometry,
+page/block/provenance models, deterministic serialization and a generated JSON Schema. Parser,
+storage, orchestration, quality, fallback, chunking, and GPU runtime code remain deferred.
 
 ## Requirements
 
@@ -29,6 +29,7 @@ python -m venv .venv
 ```powershell
 .\.venv\Scripts\docparser.exe --version
 .\.venv\Scripts\docparser.exe doctor --config configs/default.yaml
+.\.venv\Scripts\docparser.exe schema check
 .\.venv\Scripts\ruff.exe check .
 .\.venv\Scripts\mypy.exe
 .\.venv\Scripts\python.exe -m pytest

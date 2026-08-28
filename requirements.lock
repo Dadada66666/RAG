@@ -1,9 +1,14 @@
-# Phase 0 lock for Python 3.12. Install with: python -m pip install -r requirements.lock
+# Project lock for Python 3.12. Install with: python -m pip install -r requirements.lock
 # Direct and transitive dependencies are pinned; parser/GPU dependencies are intentionally absent.
 annotated-doc==0.0.4
 annotated-types==0.6.0
+attrs==26.1.0
 colorama==0.4.6
+coverage==7.15.4
+hypothesis==6.165.10
 iniconfig==1.1.1
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
 markdown-it-py==2.2.0
 mdurl==0.1.0
 mypy==1.11.2
@@ -14,12 +19,17 @@ pydantic==2.8.2
 pydantic_core==2.20.1
 Pygments==2.15.1
 pytest==9.1.1
+pytest-cov==7.1.0
 PyYAML==6.0.1
+referencing==0.37.0
 rich==15.0.0
+rpds-py==2026.6.3
 ruff==0.15.20
 setuptools==75.1.0
 shellingham==1.5.4
+sortedcontainers==2.4.0
 typer==0.26.8
+types-jsonschema==4.26.0.20260518
 types-PyYAML==6.0.12.20260815
 typing_extensions==4.15.0
 wheel==0.44.0

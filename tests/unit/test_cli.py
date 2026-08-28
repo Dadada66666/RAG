@@ -38,3 +38,22 @@ def test_doctor_rejects_invalid_config(tmp_path: Path) -> None:
     assert result.exit_code == 2
     assert "configuration invalid" in result.stderr
 
+
+def test_schema_check_accepts_committed_schema() -> None:
+    result = runner.invoke(app, ["schema", "check"])
+
+    assert result.exit_code == 0
+    assert "schema current" in result.stdout
+
+
+def test_schema_generate_and_drift_check(tmp_path: Path) -> None:
+    schema_path = tmp_path / "document-ir.schema.json"
+    generated = runner.invoke(app, ["schema", "generate", "--output", str(schema_path)])
+    current = runner.invoke(app, ["schema", "check", "--schema", str(schema_path)])
+    schema_path.write_text("{}\n", encoding="utf-8")
+    drifted = runner.invoke(app, ["schema", "check", "--schema", str(schema_path)])
+
+    assert generated.exit_code == 0
+    assert current.exit_code == 0
+    assert drifted.exit_code == 1
+    assert "schema drift detected" in drifted.stderr
