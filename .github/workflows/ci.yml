@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install locked dependencies
+        run: |
+          python -m pip install -r requirements.lock
+          python -m pip install --no-build-isolation --no-deps -e .
+      - name: Verify architecture deliverables
+        run: |
+          test -f docs/ARCHITECTURE.md
+          test -f docs/DOCUMENT_IR_SPEC.md
+          test -f docs/IMPLEMENTATION_PLAN.md
+      - name: Lint
+        run: ruff check .
+      - name: Type check
+        run: mypy
+      - name: Unit tests
+        run: python -m pytest

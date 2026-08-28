@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools==75.1.0", "wheel==0.44.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise-docparser"
+description = "Enterprise document parsing and RAG ingestion platform"
+readme = "README.md"
+requires-python = ">=3.12"
+dynamic = ["version"]
+dependencies = [
+  "pydantic==2.8.2",
+  "PyYAML==6.0.1",
+  "typer==0.26.8",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy==1.11.2",
+  "pytest==9.1.1",
+  "ruff==0.15.20",
+  "types-PyYAML==6.0.12.20260815",
+]
+
+[project.scripts]
+docparser = "docparser.cli.main:app"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "docparser.version.__version__" }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-q -m 'not network and not gpu'"
+testpaths = ["tests"]
+markers = [
+  "gpu: requires a local GPU and model runtime",
+  "network: requires external network access",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["docparser"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

@@ -1,0 +1,28 @@
+pipeline:
+  version: "1.0.0"
+  primary_parser: "docling"
+  fallback_parsers:
+    - "paddleocr_vl"
+  max_fallback_rounds: 1
+quality:
+  pass_threshold: 0.80
+  fallback_trigger_score: 0.65
+  partial_publish_threshold: 0.50
+  ruleset_version: "1.0.0"
+processing:
+  max_pages: 1000
+  page_parallelism: 4
+  gpu_batch_pages: 4
+  checkpoint_pages: 8
+  max_fallback_pages: 50
+  max_fallback_area_ratio: 0.30
+storage:
+  backend: "local"
+  path: "./data"
+jobs:
+  backend: "sqlite"
+  database_url: "sqlite:///./data/control.db"
+security:
+  max_file_size_bytes: 536870912
+  parser_network: "disabled"
+
