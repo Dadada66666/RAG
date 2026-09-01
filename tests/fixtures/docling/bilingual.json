@@ -1,0 +1,17 @@
+{
+  "schema_name": "DoclingDocument",
+  "version": "1.8.0",
+  "name": "bilingual",
+  "pages": {
+    "1": {"page_no": 1, "size": {"width": 612.0, "height": 792.0}, "rotation": 0}
+  },
+  "body": {"children": [{"cref": "#/texts/0"}, {"cref": "#/texts/1"}]},
+  "furniture": {"children": []},
+  "groups": [],
+  "texts": [
+    {"self_ref": "#/texts/0", "label": "title", "content_layer": "body", "text": "年度报告 / Annual Report", "prov": [{"page_no": 1, "bbox": {"l": 60.0, "t": 742.0, "r": 552.0, "b": 702.0, "coord_origin": "BOTTOMLEFT"}}]},
+    {"self_ref": "#/texts/1", "label": "paragraph", "content_layer": "body", "text": "本年度收入增长。 Revenue increased.", "prov": [{"page_no": 1, "bbox": {"l": 60.0, "t": 682.0, "r": 552.0, "b": 632.0, "coord_origin": "BOTTOMLEFT"}}]}
+  ],
+  "pictures": [],
+  "tables": []
+}

@@ -9,12 +9,16 @@ readme = "README.md"
 requires-python = ">=3.12"
 dynamic = ["version"]
 dependencies = [
+  "pypdf==6.16.2",
   "pydantic==2.8.2",
   "PyYAML==6.0.1",
   "typer==0.26.8",
 ]
 
 [project.optional-dependencies]
+docling = [
+  "docling==2.123.0",
+]
 dev = [
   "hypothesis==6.165.10",
   "jsonschema==4.26.0",
@@ -51,12 +55,18 @@ python_version = "3.12"
 strict = true
 files = ["src", "tests"]
 
+[[tool.mypy.overrides]]
+module = ["docling.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
-addopts = "-q -m 'not network and not gpu' --cov=docparser.ir --cov-report=term-missing --cov-fail-under=85"
+addopts = "-q -m 'not network and not gpu and not parser' --cov=docparser.ir --cov-report=term-missing --cov-fail-under=85"
 testpaths = ["tests"]
 markers = [
   "gpu: requires a local GPU and model runtime",
+  "integration: exercises an installed external parser runtime",
   "network: requires external network access",
+  "parser: requires the pinned optional parser dependency and model artifacts",
 ]
 
 [tool.coverage.run]

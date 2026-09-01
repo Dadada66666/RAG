@@ -103,6 +103,15 @@ class BBox(RootModel[tuple[Coordinate, Coordinate, Coordinate, Coordinate]]):
             Point((self.x0, self.y1)),
         )
 
+    def meaningfully_overlaps(self, other: BBox, *, tolerance: float = 0.25) -> bool:
+        """Return whether boxes intersect after a small coordinate-rounding tolerance."""
+
+        if not math.isfinite(tolerance) or tolerance < 0.0:
+            raise ValueError("bbox overlap tolerance must be finite and non-negative")
+        overlap_width = min(self.x1, other.x1) - max(self.x0, other.x0)
+        overlap_height = min(self.y1, other.y1) - max(self.y0, other.y0)
+        return overlap_width >= -tolerance and overlap_height >= -tolerance
+
 
 class AffineTransform(
     RootModel[

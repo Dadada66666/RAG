@@ -13,8 +13,16 @@ def _identity_v1(payload: Mapping[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(dict(payload))
 
 
+def _v1_0_to_v1_1(payload: Mapping[str, Any]) -> dict[str, Any]:
+    migrated = copy.deepcopy(dict(payload))
+    migrated["schema_version"] = "1.1.0"
+    return migrated
+
+
 _MIGRATIONS: dict[tuple[str, str], Migration] = {
     ("1.0.0", "1.0.0"): _identity_v1,
+    ("1.0.0", "1.1.0"): _v1_0_to_v1_1,
+    ("1.1.0", "1.1.0"): _identity_v1,
 }
 
 

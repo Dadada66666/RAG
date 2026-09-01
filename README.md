@@ -5,9 +5,10 @@
 A production-oriented foundation for converting complex documents into a versioned,
 traceable, parser-independent representation suitable for downstream RAG ingestion.
 
-> Project status: repository bootstrap and Canonical Document IR Phases 0–2 are implemented.
-> PDF parsing, OCR, storage, job orchestration, quality routing, fallback execution, and the
-> chunking algorithm are deliberately not implemented yet.
+> Project status: Phases 0–2 and the Phase 2.5 real-document parsing vertical slice are
+> implemented. A local PDF can now pass through deterministic preflight, the optional pinned
+> Docling primary parser, neutral normalization, Canonical IR validation and diagnostics.
+> This is a development-quality path, not yet a production ingestion service or a 95%-quality claim.
 
 ## What this project is
 
@@ -36,7 +37,8 @@ pages instead of reparsing every document with multiple models.
 
 ## Current implementation
 
-The repository currently provides a pure, offline Canonical IR domain layer:
+The repository provides the Canonical IR domain layer plus one deliberately narrow real-parser
+vertical slice:
 
 - Strict Pydantic v2 models with `extra="forbid"` and strict wire validation.
 - Draft 2020-12 JSON Schema generated deterministically from the Pydantic models.
@@ -51,32 +53,44 @@ The repository currently provides a pure, offline Canonical IR domain layer:
 - A minimal deterministic and idempotent IR migration registry.
 - Monolithic and sharded IR packaging manifest models.
 - Offline unit, schema, property-based, golden-vector, and CLI regression tests.
+- A strict parser-neutral `DocumentParser`/`ParseResult` contract; Canonical and application layers
+  do not import Docling types.
+- Deterministic, CPU-only PDF preflight using the text layer and cheap structural/image signals.
+- An optional, exactly pinned Docling `2.123.0` adapter with explicit CPU/CUDA/auto behavior.
+- Mapping of Docling text/layout, reading order, tables/cells/spans, figures/captions and basic
+  equations into existing Canonical IR entities without flattening tables.
+- Metric-ready parse diagnostics and a `parse-local` development command.
 
-The currently executable flow is:
+The real-document development flow is:
 
 ```mermaid
 flowchart LR
-    A["Canonical IR JSON"] --> B["Strict Pydantic validation"]
-    B --> C["Document graph invariants"]
-    C --> D["Deterministic canonical JSON"]
-    D --> E["Draft 2020-12 Schema validation"]
-    D --> F["Semantic digest"]
+    A["Local PDF"] --> B["Deterministic CPU preflight"]
+    B --> C["Docling primary parser: CPU or optional CUDA"]
+    C --> D["Neutral ParseResult"]
+    D --> E["Canonical IR normalizer"]
+    E --> F["IR graph invariants"]
+    F --> G["Canonical JSON + diagnostics"]
 ```
 
 ## Not implemented yet
 
 The following remain architecture contracts and implementation-plan items, not working features:
 
-- Real PDF parsing, rendering, OCR, or model inference.
-- Docling, PaddleOCR-VL, MinerU, Marker, or Surya adapters.
 - Local/S3 artifact storage and SQLite/PostgreSQL job persistence.
 - Parser workers, GPU scheduling, checkpoint/resume, queues, and distributed execution.
 - Quality scoring engine, fallback planning, fallback execution, and merge pipeline.
+- PaddleOCR-VL, MinerU, Marker, or Surya adapters, and selective fallback execution.
 - Semantic chunk construction, token packing, embedding, retrieval, and reranking.
 - FastAPI service, upload endpoints, Prometheus, OpenTelemetry, and Grafana integration.
 
-Configuration values naming future parsers or storage backends are validated declarations only.
-The current `doctor` command does not initialize those systems.
+The Docling adapter has recorded-contract coverage and an opt-in real CPU smoke test. Default CI
+does not install Docling, download models, use a GPU, or access the network. Security admission and
+parser sandboxing are also not implemented, so do not process untrusted uploads with this slice.
+
+Configuration values naming fallback parsers or storage backends remain validated declarations.
+The `doctor` command validates configuration only; it does not load Docling, probe CUDA, or create
+storage resources.
 
 ## Core design principles
 
@@ -120,7 +134,9 @@ DocumentIR
 
 Important wire guarantees include:
 
-- Schema version `1.0.0`.
+- Current writer Schema version `1.1.0`; deterministic readers migrate supported `1.0.0` payloads.
+- Before quality validation, `quality_summary` is explicitly `NOT_EVALUATED` with no fabricated
+  score or report ID and is not publishable.
 - UTF-8 and Unicode NFC without destructive retrieval normalization.
 - RFC 3339 UTC timestamps serialized with `Z`.
 - Digests formatted as `sha256:<64 lowercase hex>`.
@@ -140,8 +156,9 @@ schema.
 
 - Python 3.12+
 - PowerShell examples below assume Windows; equivalent Python commands work on Linux/macOS.
-- No GPU, model download, database, or network access is required for installation or default
-  tests at the current phase.
+- The core install and default tests require no GPU, model download, database, or network access.
+- Real Docling parsing is an optional extra. CPU is a supported runtime; CUDA only accelerates
+  model-assisted stages.
 
 ## Reproducible installation
 
@@ -164,7 +181,21 @@ python3.12 -m venv .venv
 ```
 
 All direct and transitive dependencies used by the current phase are pinned in
-[`requirements.lock`](requirements.lock). No parser, GPU, or model dependency is installed.
+[`requirements.lock`](requirements.lock). The core includes only the small deterministic PDF
+preflight dependency. Docling and its model stack are not installed by the core command.
+
+### Optional Docling parser
+
+Install the exact adapter dependency only on machines that will perform real parsing:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --no-build-isolation -e ".[docling]"
+```
+
+The `docling-standard` profile fixes Docling `2.123.0`, RapidOCR `ch` on the Torch backend,
+accurate TableFormer with cell matching, local formula/code enrichment, and page batch size one.
+The first real run can acquire model assets according to Docling's cache behavior; review and
+approve every model license before production promotion.
 
 ## Quick verification
 
@@ -172,6 +203,7 @@ All direct and transitive dependencies used by the current phase are pinned in
 .\.venv\Scripts\docparser.exe --version
 .\.venv\Scripts\docparser.exe doctor --config configs/default.yaml
 .\.venv\Scripts\docparser.exe schema check
+.\.venv\Scripts\docparser.exe parse-local --help
 ```
 
 Expected command responsibilities:
@@ -180,6 +212,19 @@ Expected command responsibilities:
 - `doctor` validates the bootstrap YAML contract without creating paths, opening a database,
   loading a parser, or using the network.
 - `schema check` fails if the committed JSON Schema differs from the Pydantic-generated contract.
+- `parse-local` exposes the optional local-PDF development path.
+
+After installing the optional parser, run:
+
+```powershell
+.\.venv\Scripts\docparser.exe parse-local .\sample.pdf `
+  --parser docling --device auto --output .\output
+```
+
+The output contains `document.ir.json`, the bounded neutral `parse-result.json`,
+`diagnostics.json`, and a `raw/` directory for the sanitized Docling snapshot. `--device cpu` is
+always a valid configured path. `--device cuda` fails clearly when CUDA is unavailable;
+`--device auto` may fall back to CPU and records the actual device.
 
 ## Using the IR API
 
@@ -246,8 +291,9 @@ storage:
   path: "./data"
 ```
 
-Parser names are candidate defaults pending later adapter implementation, Golden Dataset
-benchmarking, license approval, and security promotion. They are not instantiated today.
+Only the Docling primary is implemented in the explicit `parse-local` path. The configured
+fallback name and storage values remain future declarations pending Golden Dataset benchmarking,
+license approval, security promotion, and their own implementation phases.
 
 ## Repository layout
 
@@ -258,11 +304,18 @@ benchmarking, license approval, and security promotion. They are not instantiate
 │   └── adr/                     # Durable architecture decisions
 ├── schemas/document-ir/v1/      # Generated, committed wire schema
 ├── src/docparser/
-│   ├── cli/                     # Current doctor/schema/version commands
-│   └── ir/                      # Canonical IR domain and serialization
+│   ├── adapters/parsers/docling/# Optional Docling-only SDK boundary
+│   ├── application/             # Benchmark-friendly parsing use case and diagnostics
+│   ├── cli/                     # Version/doctor/schema/parse-local commands
+│   ├── domain/, ports/          # Parser-neutral contract and protocol
+│   ├── ir/                      # Canonical IR domain and serialization
+│   ├── normalization/           # Neutral ParseResult to Canonical IR
+│   └── preflight/               # Deterministic CPU-only PDF signals
 ├── tests/
+│   ├── fixtures/docling/        # Small sanitized recorded parser contracts
+│   ├── integration/             # Opt-in real Docling smoke
 │   ├── schema/                  # Runtime/JSON Schema parity and fixtures
-│   └── unit/                    # Domain, property, and CLI tests
+│   └── unit/                    # IR/parser/preflight/normalizer/CLI tests
 ├── pyproject.toml
 └── requirements.lock
 ```
@@ -278,8 +331,10 @@ Run the same gates used by CI:
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-The IR domain coverage gate is at least 85%. Tests are offline by default; tests marked `network`
-or `gpu` are excluded from the default suite.
+The IR domain coverage gate is at least 85%. Tests are offline by default; tests marked `network`,
+`gpu`, or `parser` are excluded from the default suite. Run the opt-in Docling smoke only in an
+environment with the pinned extra and model cache by setting `DOCPARSER_RUN_DOCLING_SMOKE=1` and
+selecting the `parser` marker explicitly.
 
 When changing the IR contract:
 
@@ -299,8 +354,10 @@ runnable and all tests passing.
 | Status | Phases | Scope |
 |---|---|---|
 | Complete | 0–2 | Bootstrap, executable shell, complete Canonical IR graph, Schema, migrations |
-| Planned next | 3–5 | Immutable local artifacts, SQLite job state, parser port and fake vertical CLI |
-| Planned | 6–8 | Secure PDF admission, preflight, first parser adapter, multipage normalization |
+| Complete | 2.5 | Real PDF preflight, optional Docling primary, neutral normalization, diagnostics, local CLI |
+| Recommended next | Evaluation slice | Golden Dataset + Parsing Quality Evaluation |
+| Planned | 3–5 | Immutable local artifacts, SQLite job state, durable parser orchestration |
+| Planned | 6–8 | Secure PDF admission and production multipage normalization hardening |
 | Planned | 9–11 | Quality engine, selective fallback, transactional merge and revalidation |
 | Planned | 12–14 | RAG chunking, API/workers, observability and operational hardening |
 | Conditional | 15–16 | Golden benchmark/default promotion and measurement-triggered scale adapters |

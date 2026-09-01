@@ -101,8 +101,19 @@ class IssueCounts(StrictIRModel):
 
 
 class QualitySummary(StrictIRModel):
-    quality_report_id: QualityReportId
-    score: Confidence
+    quality_report_id: QualityReportId | None
+    score: Confidence | None
     status: QualityStatus
     issue_counts: IssueCounts
     publishable: bool
+
+    @model_validator(mode="after")
+    def _validate_lifecycle(self) -> Self:
+        if self.status is QualityStatus.NOT_EVALUATED:
+            if self.quality_report_id is not None or self.score is not None:
+                raise ValueError("NOT_EVALUATED quality must not declare a report or score")
+            if self.publishable:
+                raise ValueError("NOT_EVALUATED quality cannot be publishable")
+        elif self.quality_report_id is None or self.score is None:
+            raise ValueError("evaluated quality requires a report ID and score")
+        return self

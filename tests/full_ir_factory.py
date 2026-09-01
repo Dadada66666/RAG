@@ -442,7 +442,7 @@ def make_full_document() -> DocumentIR:
     )
 
     return DocumentIR(
-        schema_version="1.0.0",
+        schema_version="1.1.0",
         document_id=DOCUMENT_ID,
         revision_id=REVISION_ID,
         revision_number=0,

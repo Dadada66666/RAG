@@ -90,6 +90,7 @@ class ChunkType(StrEnum):
 
 
 class QualityStatus(StrEnum):
+    NOT_EVALUATED = "NOT_EVALUATED"
     PASS = "PASS"
     DEGRADED = "DEGRADED"
     FAIL = "FAIL"

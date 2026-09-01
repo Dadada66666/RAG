@@ -48,3 +48,6 @@ Negative: version matrix and migrations require discipline; storage retains mult
 
 Support current major plus agreed prior minors, provide deterministic migration registry, retain prior active manifest for rollback and garbage-collect old revisions only under retention policy. Any coordinate/ID/meaning change requires a major schema ADR.
 
+## Compatibility note — 2026-09-01
+
+The current V1 writer is `1.1.0`. This minor release adds `QualityStatus.NOT_EVALUATED` and allows `QualitySummary.score` and `quality_report_id` to be null only before validator execution. It also enforces that table-cell fragments spatially overlap their referenced segment with a `0.25 pt` tolerance. The reader migrates `1.0.0` payloads to `1.1.0` deterministically; existing evaluated summaries are preserved and no missing quality evidence is invented. The committed schema remains under the stable `schemas/document-ir/v1/` family.

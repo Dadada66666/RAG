@@ -1,0 +1,2 @@
+"""Parser-neutral domain contracts."""
+

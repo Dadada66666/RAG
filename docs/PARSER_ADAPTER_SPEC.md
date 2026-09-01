@@ -297,6 +297,10 @@ Reasoning:
 
 Primary configuration must explicitly enable/choose OCR for scanned pages and table accurate mode according to preflight/routing policy. Formula enrichment is optional and capability-declared; it must not silently activate an external LLM.
 
+#### Phase 2.5 implemented development profile (2026-09-01)
+
+`docling-standard` pins Docling `2.123.0` and adapter `0.1.0`. It enables RapidOCR with the Chinese `ch` profile on the Torch backend, accurate TableFormer structure with cell matching, and local code/formula enrichment. Remote services, external plug-ins and picture-description models are disabled. `device=auto` resolves to CUDA only when available and otherwise to CPU; explicit unavailable CUDA is a runtime error, not a document-quality failure. Page/model batch size is one in this correctness-first slice. This profile is development evidence only until model licenses and Golden Dataset thresholds are approved.
+
 ### MVP selective fallback candidate: PaddleOCR-VL 1.6
 
 Reasoning:

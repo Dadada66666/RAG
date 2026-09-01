@@ -1,0 +1,16 @@
+{
+  "schema_name": "DoclingDocument",
+  "version": "1.8.0",
+  "name": "rotated",
+  "pages": {
+    "1": {"page_no": 1, "size": {"width": 792.0, "height": 612.0}, "rotation": 90}
+  },
+  "body": {"children": [{"cref": "#/texts/0"}]},
+  "furniture": {"children": []},
+  "groups": [],
+  "texts": [
+    {"self_ref": "#/texts/0", "label": "paragraph", "content_layer": "body", "text": "Rotated page", "prov": [{"page_no": 1, "bbox": {"l": 50.0, "t": 562.0, "r": 742.0, "b": 522.0, "coord_origin": "BOTTOMLEFT"}}]}
+  ],
+  "pictures": [],
+  "tables": []
+}

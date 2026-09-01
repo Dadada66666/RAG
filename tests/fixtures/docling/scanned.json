@@ -1,0 +1,16 @@
+{
+  "schema_name": "DoclingDocument",
+  "version": "1.8.0",
+  "name": "scanned",
+  "pages": {
+    "1": {"page_no": 1, "size": {"width": 612.0, "height": 792.0}, "rotation": 0}
+  },
+  "body": {"children": [{"cref": "#/texts/0"}]},
+  "furniture": {"children": []},
+  "groups": [],
+  "texts": [
+    {"self_ref": "#/texts/0", "label": "paragraph", "content_layer": "body", "text": "Scanned page OCR text", "prov": [{"page_no": 1, "bbox": {"l": 70.0, "t": 700.0, "r": 540.0, "b": 650.0, "coord_origin": "BOTTOMLEFT"}}]}
+  ],
+  "pictures": [],
+  "tables": []
+}

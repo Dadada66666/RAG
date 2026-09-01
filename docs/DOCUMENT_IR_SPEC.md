@@ -4,9 +4,9 @@
 |---|---|
 | Status | Proposed — highest-priority Phase 1 contract |
 | Schema family | `com.acme.docparser.document-ir` |
-| Initial schema version | `1.0.0` |
+| Initial schema version | `1.0.0`; current writer version `1.1.0` |
 | Serialization | Canonical UTF-8 JSON; generated JSON Schema Draft 2020-12 |
-| Last updated | 2026-08-28 |
+| Last updated | 2026-09-01 |
 
 ## 1. Purpose and invariants
 
@@ -102,6 +102,15 @@ Required strings: `pipeline_version`, `normalizer_version`, `validator_ruleset_v
 - `determinism` (`DETERMINISTIC`, `BEST_EFFORT`, `NONDETERMINISTIC`) and bounded runtime metadata.
 
 No secret, hostname, raw command line or user text belongs in this structure.
+
+### 3.4 `QualitySummary` lifecycle
+
+`QualitySummary` describes the validator lifecycle, not whether parser execution returned without an exception. Its status is one of `NOT_EVALUATED`, `PASS`, `DEGRADED`, or `FAIL`.
+
+- Before the Quality Validator runs, the only valid representation is `status=NOT_EVALUATED`, `publishable=false`, `score=null`, and `quality_report_id=null`.
+- Evaluated statuses require a resolvable `quality_report_id` and a score in `[0,1]`; publication policy decides `publishable`.
+- Normalizers and parser adapters must never emit `PASS` or `score=1.0` merely to make an IR validate.
+- `issue_counts` may be zero in `NOT_EVALUATED`; this means no quality rules have executed, not that the document has no defects.
 
 ## 4. Pages and blocks
 
@@ -241,6 +250,8 @@ Required: `segment_id`, `page_number`, `bbox`, `block_id`, `row_start`, `row_end
 
 Optional `fragments[]` records visual pieces of one logical cell as `{segment_id, page_number, bbox, provenance_ids}`. When present, every fragment belongs to a table segment and the cell's `page_number`/`bbox` are only its anchor convenience fields. This represents cross-page/visually split cells without inventing one bbox across pages.
 
+Each fragment bbox must lie within or meaningfully overlap its referenced segment bbox in the same canonical page coordinate space. The V1.1 runtime permits a deterministic `0.25 pt` boundary tolerance for numeric rounding; disjoint fragments are invalid.
+
 Cell occupied grids cannot overlap unless an explicit `ALTERNATIVE_TO` conflict entity is retained in a non-published candidate revision. Repeated headers across pages are represented once in logical rows and may preserve repeated visual cells via segment provenance.
 
 ## 8. Figures, equations and references
@@ -357,13 +368,15 @@ Compatibility rules:
 5. Original revisions remain immutable. Migrated IR is a new artifact/revision linked to the source revision.
 6. CI runs backward-read, forward-preserve-extension, round-trip and schema-diff tests.
 
+Current compatibility note (2026-09-01): V1.1 adds `QualityStatus.NOT_EVALUATED`, permits `quality_report_id` and `score` to be null only in that state, and adds the table-fragment spatial invariant. Writers emit `1.1.0`. Readers deterministically migrate V1.0 payloads to V1.1 without inventing quality evidence; evaluated V1.0 summaries retain their values. The schema remains in the V1 family path.
+
 ## 15. Complete JSON example
 
 This example is intentionally small but contains every top-level entity family and a fallback replacement lineage.
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "document_id": "doc_6f5030ec-48ab-5b86-8729-7a4f59ace022",
   "revision_id": "rev_019d4020-0f42-7cc8-a37d-3f13e915d955",
   "revision_number": 1,

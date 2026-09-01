@@ -60,7 +60,7 @@ Severity:
   INFO, WARNING, ERROR, CRITICAL
 
 QualityStatus:
-  PASS, DEGRADED, FAIL
+  NOT_EVALUATED, PASS, DEGRADED, FAIL
 
 FallbackUrgency:
   OPTIONAL, RECOMMENDED, REQUIRED
@@ -70,6 +70,8 @@ IssueDisposition:
 ```
 
 `CRITICAL` is reserved for integrity/publication hard gates, not “very bad-looking” content. An issue may be an `ERROR` and highly repairable without being critical.
+
+`NOT_EVALUATED` is the required lifecycle state after normalization and before this validator runs. It is not an evaluated outcome: `score=null`, `quality_report_id=null`, and `publishable=false`. Only the Quality Validator may transition the summary to `PASS`, `DEGRADED`, or `FAIL`, at which point both score and report ID are required. Parser success never performs this transition.
 
 ### 3.2 `QualityIssue`
 

@@ -126,6 +126,46 @@ Phase 1.
 
 Over-modeling. Implement only fields/enums in the approved 1.0 Spec; use bounded extensions.
 
+## Phase 2.5 — Real Document Parsing Vertical Slice
+
+### Goal
+
+Reduce parser-integration risk before storage and job orchestration by proving a real PDF can flow through deterministic preflight, the pinned Docling primary adapter, a parser-neutral result, Canonical IR normalization, invariant validation, diagnostics and canonical JSON export.
+
+### Files
+
+`src/docparser/{domain/parser_contract,ports/parsers,preflight,adapters/parsers/docling,normalization,application/parsing}.py`, the `parse-local` CLI, sanitized recorded fixtures, generated tiny PDFs, tests, and the existing IR/schema compatibility files.
+
+### Interfaces
+
+`DocumentParser`, `ParseRequest`, `ParseResult`, `inspect_pdf`, `normalize_docling_result`, `parse_document(path, config)`, and `docparser parse-local`.
+
+### Implementation tasks
+
+- Add a strict parser-neutral contract and keep all Docling SDK/private schema access inside the adapter boundary.
+- Pin the optional Docling runtime and one explicit `docling-standard` profile with CPU, CUDA and auto device selection.
+- Collect deterministic CPU-only PDF routing signals without OCR or model inference.
+- Normalize page geometry, reading order, blocks, tables/cells/spans, figures, captions, equations, confidence and parser provenance into the existing IR.
+- Represent pre-validation quality as `NOT_EVALUATED`; never fabricate a passing score.
+- Emit bounded parse diagnostics and deterministic local development artifacts.
+- Fix the table-fragment-to-segment spatial invariant exposed by real table normalization.
+
+### Tests
+
+Parser contract and runtime tests; preflight fixtures; recorded Docling born-digital, two-column, scanned, table, merged-cell, rotated and Chinese/English cases; normalizer/provenance/failure tests; offline CLI/application tests; an opt-in real Docling CPU smoke test.
+
+### Acceptance criteria
+
+Recorded parser evidence reaches a valid Canonical IR with complete block provenance; table structure is not flattened; CPU is a valid runtime; explicit unavailable CUDA fails clearly; diagnostics and local outputs are written; default lint, type, schema and tests require no network, GPU or model download.
+
+### Dependencies
+
+Phases 0–2. This risk-reduction increment intentionally precedes Phase 3 infrastructure and does not replace or delete Phases 3–16.
+
+### Risks
+
+Docling output drift, OCR/model license approval, weak cross-page table evidence, uncertain reading order and expensive first model acquisition. Mitigate with an exact adapter pin, recorded-contract fixtures, explicit unknowns/diagnostics and Golden Dataset evaluation before promotion.
+
 ## Phase 3 — Local immutable artifact store
 
 ### Goal

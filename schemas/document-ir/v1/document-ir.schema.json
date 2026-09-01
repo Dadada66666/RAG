@@ -1385,6 +1385,7 @@
     },
     "QualityStatus": {
       "enum": [
+        "NOT_EVALUATED",
         "PASS",
         "DEGRADED",
         "FAIL"
@@ -1403,15 +1404,29 @@
           "type": "boolean"
         },
         "quality_report_id": {
-          "pattern": "^qrep_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-          "title": "Quality Report Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "pattern": "^qrep_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quality Report Id"
         },
         "score": {
-          "maximum": 1.0,
-          "minimum": 0.0,
-          "title": "Score",
-          "type": "number"
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Score"
         },
         "status": {
           "$ref": "#/$defs/QualityStatus"
@@ -2485,9 +2500,9 @@
       "type": "integer"
     },
     "schema_version": {
-      "const": "1.0.0",
+      "const": "1.1.0",
       "enum": [
-        "1.0.0"
+        "1.1.0"
       ],
       "title": "Schema Version",
       "type": "string"

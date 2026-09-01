@@ -15,6 +15,7 @@ mypy==1.11.2
 mypy-extensions==1.0.0
 packaging==24.1
 pluggy==1.6.0
+pypdf==6.16.2
 pydantic==2.8.2
 pydantic_core==2.20.1
 Pygments==2.15.1

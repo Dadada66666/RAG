@@ -29,6 +29,14 @@ def test_cross_page_table_preserves_merged_cell_fragments() -> None:
     assert merged.bbox is not None
 
 
+def test_table_fragment_must_overlap_its_referenced_segment() -> None:
+    payload = _table_payload()
+    payload["cells"][2]["fragments"][0]["bbox"] = [560.0, 780.0, 580.0, 800.0]
+
+    with pytest.raises(ValidationError, match="must overlap"):
+        Table.model_validate_json(json.dumps(payload))
+
+
 def test_simple_table_with_header_row_validates() -> None:
     payload = _table_payload()
     payload["logical_row_count"] = 1

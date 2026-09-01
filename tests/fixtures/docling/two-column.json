@@ -1,0 +1,19 @@
+{
+  "schema_name": "DoclingDocument",
+  "version": "1.8.0",
+  "name": "two-column",
+  "pages": {
+    "1": {"page_no": 1, "size": {"width": 612.0, "height": 792.0}, "rotation": 0}
+  },
+  "body": {"children": [{"cref": "#/texts/0"}, {"cref": "#/texts/1"}, {"cref": "#/texts/2"}, {"cref": "#/texts/3"}]},
+  "furniture": {"children": []},
+  "groups": [],
+  "texts": [
+    {"self_ref": "#/texts/0", "label": "section_header", "content_layer": "body", "text": "Left heading", "prov": [{"page_no": 1, "bbox": {"l": 40.0, "t": 750.0, "r": 285.0, "b": 720.0, "coord_origin": "BOTTOMLEFT"}}]},
+    {"self_ref": "#/texts/1", "label": "paragraph", "content_layer": "body", "text": "Left column body.", "prov": [{"page_no": 1, "bbox": {"l": 40.0, "t": 710.0, "r": 285.0, "b": 620.0, "coord_origin": "BOTTOMLEFT"}}]},
+    {"self_ref": "#/texts/2", "label": "section_header", "content_layer": "body", "text": "Right heading", "prov": [{"page_no": 1, "bbox": {"l": 327.0, "t": 750.0, "r": 572.0, "b": 720.0, "coord_origin": "BOTTOMLEFT"}}]},
+    {"self_ref": "#/texts/3", "label": "paragraph", "content_layer": "body", "text": "Right column body.", "prov": [{"page_no": 1, "bbox": {"l": 327.0, "t": 710.0, "r": 572.0, "b": 620.0, "coord_origin": "BOTTOMLEFT"}}]}
+  ],
+  "pictures": [],
+  "tables": []
+}

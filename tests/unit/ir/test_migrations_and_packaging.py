@@ -24,8 +24,8 @@ def test_noop_migration_is_pure_idempotent_and_digest_preserving() -> None:
     document = make_full_document()
     payload = json.loads(dump_canonical_json(document))
 
-    first = migrate_ir("1.0.0", "1.0.0", payload)
-    second = migrate_ir("1.0.0", "1.0.0", first)
+    first = migrate_ir("1.1.0", "1.1.0", payload)
+    second = migrate_ir("1.1.0", "1.1.0", first)
 
     assert first == second == payload
     assert first is not payload
@@ -36,9 +36,19 @@ def test_migration_rejects_unknown_route_and_mismatched_payload() -> None:
     payload = json.loads(dump_canonical_json(make_document()))
 
     with pytest.raises(ValueError, match="unsupported"):
-        migrate_ir("1.0.0", "1.1.0", payload)
+        migrate_ir("1.1.0", "2.0.0", payload)
     with pytest.raises(ValueError, match="does not match"):
         migrate_ir("1.0.0", "1.0.0", {**payload, "schema_version": "0.9.0"})
+
+
+def test_v1_0_quality_contract_migrates_to_v1_1() -> None:
+    payload = json.loads(dump_canonical_json(make_document()))
+    payload["schema_version"] = "1.0.0"
+
+    migrated = migrate_ir("1.0.0", "1.1.0", payload)
+
+    assert migrated["schema_version"] == "1.1.0"
+    assert load_canonical_json(json.dumps(payload)).schema_version == "1.1.0"
 
 
 def test_semantic_fingerprint_is_derived_and_checked() -> None:

@@ -126,6 +126,10 @@ class Table(StrictIRModel):
                         raise ValueError("table cell fragment segment_id does not resolve")
                     if fragment.page_number != segment.page_number:
                         raise ValueError("table cell fragment page must match its segment")
+                    if not segment.bbox.meaningfully_overlaps(fragment.bbox):
+                        raise ValueError(
+                            "table cell fragment bbox must overlap its referenced segment"
+                        )
                 if cell.page_number not in {fragment.page_number for fragment in cell.fragments}:
                     raise ValueError("table cell anchor page must be represented by a fragment")
 

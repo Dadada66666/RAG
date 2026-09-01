@@ -1,0 +1,2 @@
+"""Hexagonal architecture ports."""
+

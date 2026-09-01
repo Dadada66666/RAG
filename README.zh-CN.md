@@ -5,9 +5,9 @@
 这是一个面向生产环境的基础项目，目标是把复杂文档转换为版本化、可追踪、与解析器解耦，
 并适合后续 RAG 摄取的统一文档表示。
 
-> 当前状态：已完成仓库初始化以及 Canonical Document IR 的 Phase 0–2。
-> PDF 解析、OCR、存储、任务编排、质量路由、Fallback 执行和 Chunking 算法尚未实现，
-> 这是有意保持的阶段边界。
+> 当前状态：已完成 Phase 0–2，以及 Phase 2.5“真实文档解析垂直切片”。本地 PDF 现在可以经过
+> 确定性 Preflight、可选且固定版本的 Docling Primary Parser、中立结果标准化、Canonical IR
+> 不变量验证和诊断输出。这是开发质量的执行路径，并不代表生产摄取平台或已经达到 95% 质量。
 
 ## 项目定位
 
@@ -35,7 +35,7 @@ flowchart TD
 
 ## 当前已实现内容
 
-仓库目前提供纯领域、完全离线的 Canonical IR 基础层：
+仓库现在提供 Canonical IR 基础层，以及一个边界明确的真实 Parser 垂直切片：
 
 - 使用 Pydantic v2 的严格模型，启用 `extra="forbid"` 和严格 wire validation。
 - 从 Pydantic 模型确定性生成并提交 JSON Schema Draft 2020-12。
@@ -49,32 +49,43 @@ flowchart TD
 - 最小、确定性、幂等的 IR Migration Registry。
 - Monolithic 与 Sharded IR Packaging Manifest 模型。
 - 离线 Unit、Schema、Property-based、Golden Vector 和 CLI 回归测试。
+- 严格的 Parser-neutral（解析器中立）`DocumentParser` / `ParseResult` 契约；Canonical IR 和
+  Application 层不会导入 Docling 类型。
+- 只使用 CPU 的确定性 PDF Preflight，通过文本层及低成本结构/图片信号判断文档特征，不做 OCR。
+- 可选、精确固定为 Docling `2.123.0` 的 Adapter，明确支持 CPU、CUDA 和自动设备选择。
+- 将 Docling 的文本、版面、阅读顺序、表格/单元格/Span、Figure/Caption 和基础 Equation 映射到
+  已有 Canonical IR；表格不会被压扁成 Markdown 或 Paragraph。
+- 面向质量评估的解析诊断，以及本地 `parse-local` 开发命令。
 
-当前实际可执行的流程是：
+当前真实文档可执行流程是：
 
 ```mermaid
 flowchart LR
-    A["Canonical IR JSON"] --> B["严格 Pydantic 验证"]
-    B --> C["Document Graph 不变量"]
-    C --> D["确定性 Canonical JSON"]
-    D --> E["Draft 2020-12 Schema 验证"]
-    D --> F["Semantic Digest"]
+    A["本地 PDF"] --> B["确定性 CPU Preflight"]
+    B --> C["Docling Primary：CPU 或可选 CUDA"]
+    C --> D["Parser-neutral ParseResult"]
+    D --> E["Canonical IR Normalizer"]
+    E --> F["IR Graph 不变量"]
+    F --> G["Canonical JSON + Diagnostics"]
 ```
 
 ## 尚未实现
 
 以下内容目前仍是架构契约和实施计划，不是可运行功能：
 
-- 真实 PDF 解析、页面渲染、OCR 或模型推理。
-- Docling、PaddleOCR-VL、MinerU、Marker 或 Surya Adapter。
 - 本地/S3 Artifact Storage，以及 SQLite/PostgreSQL Job Persistence。
 - Parser Worker、GPU 调度、Checkpoint/Resume、Queue 和分布式执行。
 - Quality Scoring Engine、Fallback Planning、Fallback Execution 和 Merge Pipeline。
+- PaddleOCR-VL、MinerU、Marker、Surya Adapter，以及 Selective Fallback 执行。
 - Semantic Chunk 构建、Token Packing、Embedding、Retrieval 和 Reranking。
 - FastAPI 服务、上传接口、Prometheus、OpenTelemetry 和 Grafana 集成。
 
-配置文件中出现的未来 Parser 或 Storage Backend 目前只是经过校验的声明。`doctor` 命令不会初始化
-这些系统。
+Docling Adapter 已有 recorded contract（录制并净化的契约 Fixture）测试和可选真实 CPU Smoke Test。
+默认 CI 不安装 Docling、不下载模型、不访问网络、也不要求 GPU。安全准入与 Parser Sandbox 尚未实现，
+因此当前切片不能直接用于处理不可信上传文件。
+
+配置中的 Fallback Parser 与 Storage Backend 仍只是经过校验的未来声明。`doctor` 只校验配置，
+不会加载 Docling、探测 CUDA 或创建 Storage 资源。
 
 ## 核心设计原则
 
@@ -116,7 +127,9 @@ DocumentIR
 
 重要 wire contract 包括：
 
-- Schema 版本为 `1.0.0`。
+- 当前 Writer Schema 版本为 `1.1.0`；Reader 会确定性迁移受支持的 `1.0.0` Payload。
+- Quality Validator 运行前，`quality_summary` 必须为 `NOT_EVALUATED`，Score 和 Report ID 均为
+  `null`，且不可发布；Normalizer 不会伪造 `PASS` 或 `1.0` 分数。
 - 文本使用 UTF-8 和 Unicode NFC，不在 Canonical 层做破坏性的检索归一化。
 - 时间戳使用 RFC 3339 UTC，并以 `Z` 结尾。
 - Digest 格式为 `sha256:<64 位小写十六进制>`。
@@ -133,7 +146,8 @@ DocumentIR
 
 - Python 3.12+
 - 下方默认命令使用 Windows PowerShell；Linux/macOS 可以运行对应的 Python 命令。
-- 当前阶段的安装和默认测试不需要 GPU、模型下载、数据库或网络访问。
+- Core 安装与默认测试不需要 GPU、模型下载、数据库或网络访问。
+- 真实 Docling 解析是可选依赖。CPU 是受支持的合法运行模式；CUDA 仅用于加速模型辅助阶段。
 
 ## 可复现安装
 
@@ -155,8 +169,20 @@ python3.12 -m venv .venv
 .venv/bin/python -m pip install --no-build-isolation --no-deps -e .
 ```
 
-当前阶段使用的直接和传递依赖都固定在 [`requirements.lock`](requirements.lock) 中，不会安装
-Parser、GPU 或模型依赖。
+Core 使用的直接和传递依赖都固定在 [`requirements.lock`](requirements.lock) 中，其中只加入了
+低成本 PDF Preflight 所需的小型依赖。Core 安装命令不会安装 Docling 或其模型栈。
+
+### 可选 Docling Parser
+
+只有需要执行真实 PDF 解析的机器才安装精确固定的可选依赖：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --no-build-isolation -e ".[docling]"
+```
+
+`docling-standard` Profile 固定 Docling `2.123.0`、Torch 后端的 RapidOCR 中文 `ch` Profile、
+Accurate TableFormer 与 Cell Matching、本地 Formula/Code Enrichment，以及单页 Batch。第一次真实运行
+可能会按照 Docling Cache 机制获取模型文件；生产晋级前必须逐项完成模型 License 审核。
 
 ## 快速验证
 
@@ -164,6 +190,7 @@ Parser、GPU 或模型依赖。
 .\.venv\Scripts\docparser.exe --version
 .\.venv\Scripts\docparser.exe doctor --config configs/default.yaml
 .\.venv\Scripts\docparser.exe schema check
+.\.venv\Scripts\docparser.exe parse-local --help
 ```
 
 命令职责：
@@ -171,6 +198,18 @@ Parser、GPU 或模型依赖。
 - `--version` 输出 Package Version。
 - `doctor` 只验证 Bootstrap YAML Contract，不创建目录、不打开数据库、不加载 Parser，也不访问网络。
 - `schema check` 在已提交 JSON Schema 与 Pydantic 生成结果不一致时失败。
+- `parse-local` 提供可选的本地 PDF 开发解析路径。
+
+安装可选 Parser 后，可以执行：
+
+```powershell
+.\.venv\Scripts\docparser.exe parse-local .\sample.pdf `
+  --parser docling --device auto --output .\output
+```
+
+输出目录包含 `document.ir.json`、有界的 Parser-neutral `parse-result.json`、
+`diagnostics.json`，以及用于保存净化后 Docling Snapshot 的 `raw/`。`--device cpu` 始终是合法配置；
+显式指定 `--device cuda` 但 CUDA 不可用时会明确失败；`--device auto` 可以回退 CPU，并记录实际设备。
 
 ## 使用 IR API
 
@@ -237,8 +276,8 @@ storage:
   path: "./data"
 ```
 
-Parser 名称只是候选默认值，仍需完成后续 Adapter 实现、Golden Dataset Benchmark、License 审批和
-Security Promotion；当前不会实例化它们。
+当前只有 Docling Primary 会在显式 `parse-local` 路径中实例化。配置中的 Fallback Parser 和
+Storage 仍是未来声明，需要经过 Golden Dataset Benchmark、License 审批、安全晋级和对应实施阶段。
 
 ## 仓库结构
 
@@ -249,11 +288,18 @@ Security Promotion；当前不会实例化它们。
 │   └── adr/                     # 长期有效的架构决策
 ├── schemas/document-ir/v1/      # 生成并提交的 Wire Schema
 ├── src/docparser/
-│   ├── cli/                     # 当前 doctor/schema/version 命令
-│   └── ir/                      # Canonical IR Domain 与 Serialization
+│   ├── adapters/parsers/docling/# 可选 Docling SDK 的唯一边界
+│   ├── application/             # 可供 Benchmark 直接调用的 Use Case 与诊断
+│   ├── cli/                     # version/doctor/schema/parse-local 命令
+│   ├── domain/, ports/          # Parser-neutral Contract 与 Protocol
+│   ├── ir/                      # Canonical IR Domain 与 Serialization
+│   ├── normalization/           # Neutral ParseResult 到 Canonical IR
+│   └── preflight/               # 仅 CPU 的确定性 PDF 信号
 ├── tests/
+│   ├── fixtures/docling/        # 小型、净化、版本化的 Parser Contract Fixture
+│   ├── integration/             # 可选真实 Docling Smoke
 │   ├── schema/                  # Runtime/JSON Schema Parity 与 Fixture
-│   └── unit/                    # Domain、Property 和 CLI 测试
+│   └── unit/                    # IR/Parser/Preflight/Normalizer/CLI 测试
 ├── pyproject.toml
 └── requirements.lock
 ```
@@ -269,8 +315,9 @@ Security Promotion；当前不会实例化它们。
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-IR Domain Coverage Gate 不低于 85%。默认测试完全离线；标记为 `network` 或 `gpu` 的测试不会进入
-默认测试集。
+IR Domain Coverage Gate 不低于 85%。默认测试完全离线；标记为 `network`、`gpu` 或 `parser` 的
+测试不会进入默认测试集。只有在已经安装精确固定的 Extra、模型 Cache 可用时，才设置
+`DOCPARSER_RUN_DOCLING_SMOKE=1` 并显式选择 `parser` Marker 运行真实 Docling Smoke。
 
 修改 IR Contract 时：
 
@@ -289,8 +336,10 @@ IR Domain Coverage Gate 不低于 85%。默认测试完全离线；标记为 `ne
 | 状态 | Phase | 范围 |
 |---|---|---|
 | 已完成 | 0–2 | Bootstrap、可执行 Shell、完整 Canonical IR Graph、Schema、Migration |
-| 下一步规划 | 3–5 | 不可变本地 Artifact、SQLite Job State、Parser Port 与 Fake Vertical CLI |
-| 已规划 | 6–8 | 安全 PDF Admission、Preflight、第一个 Parser Adapter、多页 Normalization |
+| 已完成 | 2.5 | 真实 PDF Preflight、可选 Docling Primary、中立标准化、诊断和本地 CLI |
+| 推荐下一步 | 质量评估切片 | Golden Dataset + Parsing Quality Evaluation（黄金数据集与解析质量评估） |
+| 已规划 | 3–5 | 不可变本地 Artifact、SQLite Job State 和持久化 Parser 编排 |
+| 已规划 | 6–8 | 安全 PDF Admission 与生产级多页 Normalization 加固 |
 | 已规划 | 9–11 | Quality Engine、Selective Fallback、事务式 Merge 与重新验证 |
 | 已规划 | 12–14 | RAG Chunking、API/Worker、Observability 与运行加固 |
 | 条件实施 | 15–16 | Golden Benchmark/默认方案晋级，以及由量化指标触发的扩展 Adapter |

@@ -7,7 +7,13 @@ import typer
 import yaml
 from pydantic import ValidationError
 
+from docparser.application.parsing import (
+    ParsingConfig,
+    parse_document_with_diagnostics,
+    write_parse_outputs,
+)
 from docparser.config import load_config
+from docparser.domain.parser_contract import RuntimeDevice
 from docparser.ir.schema import (
     DEFAULT_SCHEMA_PATH,
     schema_is_current,
@@ -66,6 +72,48 @@ def doctor(
     typer.echo(
         "configuration valid "
         f"(pipeline={settings.pipeline.version}, storage={settings.storage.backend})"
+    )
+
+
+@app.command("parse-local")
+def parse_local(
+    input_pdf: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="Local PDF to parse.",
+        ),
+    ],
+    parser: Annotated[str, typer.Option("--parser", help="Primary parser adapter.")] = "docling",
+    device: Annotated[
+        RuntimeDevice,
+        typer.Option("--device", help="auto, cpu, or cuda."),
+    ] = RuntimeDevice.AUTO,
+    output: Annotated[
+        Path,
+        typer.Option("--output", file_okay=False, resolve_path=True),
+    ] = Path("./output"),
+) -> None:
+    """Parse a local PDF through the Phase 2.5 development vertical slice."""
+
+    try:
+        outcome = parse_document_with_diagnostics(
+            input_pdf,
+            ParsingConfig(parser=parser, device=device),
+            raw_output_dir=output / "raw",
+        )
+        write_parse_outputs(outcome, output)
+    except (OSError, RuntimeError, ValueError) as exc:
+        typer.echo(f"parse failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"parsed {outcome.diagnostics.pages_parsed}/{outcome.diagnostics.pages_requested} "
+        f"pages with {outcome.parse_result.descriptor.parser_name} "
+        f"on {outcome.diagnostics.device.value}; output={output}"
     )
 
 

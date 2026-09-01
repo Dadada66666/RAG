@@ -1,0 +1,31 @@
+{
+  "schema_name": "DoclingDocument",
+  "version": "1.8.0",
+  "name": "merged-table",
+  "pages": {
+    "1": {"page_no": 1, "size": {"width": 612.0, "height": 792.0}, "rotation": 0}
+  },
+  "body": {"children": [{"cref": "#/tables/0"}]},
+  "furniture": {"children": []},
+  "groups": [],
+  "texts": [],
+  "pictures": [],
+  "tables": [
+    {
+      "self_ref": "#/tables/0",
+      "label": "table",
+      "content_layer": "body",
+      "prov": [{"page_no": 1, "bbox": {"l": 80.0, "t": 700.0, "r": 532.0, "b": 500.0, "coord_origin": "BOTTOMLEFT"}}],
+      "captions": [],
+      "data": {
+        "num_rows": 2,
+        "num_cols": 2,
+        "table_cells": [
+          {"start_row_offset_idx": 0, "end_row_offset_idx": 1, "start_col_offset_idx": 0, "end_col_offset_idx": 2, "row_span": 1, "col_span": 2, "text": "Merged heading", "column_header": true, "row_header": false, "bbox": {"l": 80.0, "t": 700.0, "r": 532.0, "b": 600.0, "coord_origin": "BOTTOMLEFT"}},
+          {"start_row_offset_idx": 1, "end_row_offset_idx": 2, "start_col_offset_idx": 0, "end_col_offset_idx": 1, "row_span": 1, "col_span": 1, "text": "A", "column_header": false, "row_header": false, "bbox": {"l": 80.0, "t": 600.0, "r": 306.0, "b": 500.0, "coord_origin": "BOTTOMLEFT"}},
+          {"start_row_offset_idx": 1, "end_row_offset_idx": 2, "start_col_offset_idx": 1, "end_col_offset_idx": 2, "row_span": 1, "col_span": 1, "text": "B", "column_header": false, "row_header": false, "bbox": {"l": 306.0, "t": 600.0, "r": 532.0, "b": 500.0, "coord_origin": "BOTTOMLEFT"}}
+        ]
+      }
+    }
+  ]
+}

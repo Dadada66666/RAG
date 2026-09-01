@@ -243,3 +243,15 @@ class RevisionIdGenerator:
 
     def new(self) -> RevisionId:
         return RevisionId.from_uuid(build_uuid7(self.clock_ms(), self.entropy(74)))
+
+
+def generate_parser_run_id() -> ParserRunId:
+    """Generate a time-ordered parser-run identity at the centralized ID boundary."""
+
+    return ParserRunId.from_uuid(build_uuid7(_system_unix_time_ms(), secrets.randbits(74)))
+
+
+def generate_artifact_id() -> ArtifactId:
+    """Generate a time-ordered artifact identity at the centralized ID boundary."""
+
+    return ArtifactId.from_uuid(build_uuid7(_system_unix_time_ms(), secrets.randbits(74)))
