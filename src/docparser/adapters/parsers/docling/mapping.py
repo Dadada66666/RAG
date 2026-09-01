@@ -7,6 +7,7 @@ from typing import Any, Literal, cast
 
 from docparser.domain.parser_contract import (
     CoordinateOrigin,
+    CoordinateUnit,
     ExtractedElement,
     ExtractedElementType,
     ExtractedTable,
@@ -192,7 +193,7 @@ def _element(
         language=None,
         confidence=float(confidence) if isinstance(confidence, (int, float)) else None,
         extraction_method=method,
-        parent_source_object_id=None,
+        parent_source_object_id=_ref(item.get("parent")),
         caption_for_source_object_id=caption_targets.get(source_id),
         metadata={"org.docling.label": label},
     )
@@ -322,6 +323,7 @@ def map_docling_document(
                 width=float(size["width"]),
                 height=float(size["height"]),
                 rotation=rotation,
+                coordinate_unit=CoordinateUnit.POINT,
                 elements=tuple(page_elements),
                 tables=tuple(table for table in tables if table.page_number == page_number),
                 warnings=(),

@@ -10,6 +10,8 @@ from docparser.adapters.parsers.docling.runtime import DoclingRuntimeError, reso
 from docparser.domain.parser_contract import (
     ParseRequest,
     ParserHealthStatus,
+    ParseScope,
+    ParseScopeKind,
     RuntimeDevice,
 )
 
@@ -89,6 +91,23 @@ def test_non_pdf_input_is_rejected_as_unsupported(tmp_path: Path) -> None:
         DoclingParserAdapter().parse(ParseRequest(source_path=path))
 
     assert raised.value.error.code == "UNSUPPORTED_DOCUMENT"
+
+
+def test_docling_truthfully_rejects_page_scope_until_runtime_supports_it(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "input.pdf"
+    path.write_bytes(b"%PDF-test")
+    adapter = DoclingParserAdapter()
+
+    assert adapter.descriptor().supported_scopes == (ParseScopeKind.DOCUMENT,)
+    with pytest.raises(DoclingRuntimeError, match="complete documents only"):
+        adapter.parse(
+            ParseRequest(
+                source_path=path,
+                scope=ParseScope(kind=ParseScopeKind.PAGE, page_numbers=(1,)),
+            )
+        )
 
 
 def test_parser_exception_is_mapped_at_adapter_boundary(

@@ -1,4 +1,4 @@
-"""Shared recorded-Docling normalization fixtures."""
+"""Shared synthetic Docling contract fixtures."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from docparser.domain.parser_contract import (
     ParserRun,
     RuntimeDevice,
 )
+from docparser.ir.geometry import BBox
 from docparser.ir.ids import (
     ArtifactId,
     ParserRunId,
@@ -23,13 +24,19 @@ from docparser.ir.ids import (
 from docparser.ir.models import DocumentIR
 from docparser.ir.types import Sha256Digest, UtcTimestamp
 from docparser.normalization import NormalizationContext, normalize_docling_result
-from docparser.preflight import DocumentProfile, DocumentType, PageProfile
+from docparser.preflight import (
+    DocumentProfile,
+    DocumentType,
+    NativeTextEvidence,
+    PageProfile,
+    TextExtractionStatus,
+)
 
 TEST_NAMESPACE = UUID("bc1afef4-67df-5ace-a635-30cf89a29fc3")
 SOURCE_DIGEST = Sha256Digest(f"sha256:{'c' * 64}")
 
 
-def load_recorded_result(name: str) -> ParseResult:
+def load_contract_result(name: str) -> ParseResult:
     payload = json.loads(
         Path(f"tests/fixtures/docling/{name}.json").read_text(encoding="utf-8")
     )
@@ -68,24 +75,37 @@ def load_recorded_result(name: str) -> ParseResult:
     )
 
 
-def normalize_recorded(name: str, *, scanned: bool = False) -> DocumentIR:
-    result = load_recorded_result(name)
+def profile_for_result(result: ParseResult, *, scanned: bool = False) -> DocumentProfile:
     page_profiles = tuple(
         PageProfile(
             page_number=page.page_number,
             width=page.width,
             height=page.height,
             rotation=page.rotation,
+            media_box=BBox((0.0, 0.0, page.width, page.height)),
+            crop_box=BBox((0.0, 0.0, page.width, page.height)),
+            text_extraction_status=(
+                TextExtractionStatus.EMPTY if scanned else TextExtractionStatus.EXTRACTED
+            ),
             has_text_layer=not scanned,
             text_char_count=0 if scanned else 20,
             estimated_text_coverage=0.0 if scanned else 0.1,
             image_count=1 if scanned else 0,
             estimated_image_coverage=1.0 if scanned else 0.0,
             likely_scanned=scanned,
+            likely_image_only=scanned,
+            native_text_evidence=NativeTextEvidence(
+                page_number=page.page_number,
+                text="" if scanned else "fixture 184,392.17",
+                normalized_numeric_tokens=(),
+                extraction_status=(
+                    TextExtractionStatus.EMPTY if scanned else TextExtractionStatus.EXTRACTED
+                ),
+            ),
         )
         for page in result.pages
     )
-    profile = DocumentProfile(
+    return DocumentProfile(
         document_type=DocumentType.SCANNED if scanned else DocumentType.BORN_DIGITAL,
         page_count=len(page_profiles),
         pages=page_profiles,
@@ -96,6 +116,11 @@ def normalize_recorded(name: str, *, scanned: bool = False) -> DocumentIR:
         readable=True,
         warnings=(),
     )
+
+
+def normalize_contract_fixture(name: str, *, scanned: bool = False) -> DocumentIR:
+    result = load_contract_result(name)
+    profile = profile_for_result(result, scanned=scanned)
     document_id = generate_document_id(TEST_NAMESPACE, "test", SOURCE_DIGEST)
     return normalize_docling_result(
         result,

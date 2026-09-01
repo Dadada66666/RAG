@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field
@@ -34,9 +35,12 @@ from docparser.ir.ids import (
 from docparser.ir.models import DocumentIR
 from docparser.ir.serialization import dump_canonical_json
 from docparser.ir.types import BoundedJsonObject, Sha256Digest, UtcTimestamp
-from docparser.normalization import NormalizationContext, normalize_docling_result
+from docparser.normalization import (
+    NormalizationContext,
+    normalize_neutral_result,
+)
 from docparser.ports.parsers import DocumentParser
-from docparser.preflight import DocumentProfile, inspect_pdf
+from docparser.preflight import DocumentProfile, extract_numeric_tokens, inspect_pdf
 
 DEFAULT_NAMESPACE = UUID("b7e12dde-6b21-5c70-91df-f0af646dde4a")
 
@@ -46,10 +50,17 @@ def _utc_now() -> UtcTimestamp:
 
 
 class ParsingConfig(StrictIRModel):
-    parser: str = "docling"
+    parser: str = "docling-standard"
     device: RuntimeDevice = RuntimeDevice.AUTO
     tenant_scope: str = "local"
     namespace: UUID = DEFAULT_NAMESPACE
+
+
+class NumericDisagreement(StrictIRModel):
+    code: Literal["NUMERIC_TEXT_DISAGREEMENT"] = "NUMERIC_TEXT_DISAGREEMENT"
+    page_number: int = Field(strict=True, ge=1)
+    missing_native_values: tuple[str, ...]
+    extra_parser_values: tuple[str, ...]
 
 
 class ParseDiagnostics(StrictIRModel):
@@ -68,6 +79,22 @@ class ParseDiagnostics(StrictIRModel):
     device: RuntimeDevice
     provenance_complete_blocks: int = Field(strict=True, ge=0)
     generated_blocks: int = Field(strict=True, ge=0)
+    native_text_pages: int = Field(strict=True, ge=0)
+    image_only_pages: int = Field(strict=True, ge=0)
+    blocks_by_extraction_method: BoundedJsonObject
+    table_cells_with_exact_bbox: int = Field(strict=True, ge=0)
+    table_cells_without_bbox: int = Field(strict=True, ge=0)
+    unresolved_hierarchy_count: int = Field(strict=True, ge=0)
+    cross_page_table_candidates: int = Field(strict=True, ge=0)
+    native_numeric_tokens: int = Field(strict=True, ge=0)
+    parser_numeric_tokens: int = Field(strict=True, ge=0)
+    numeric_exact_overlaps: int = Field(strict=True, ge=0)
+    missing_native_numbers: int = Field(strict=True, ge=0)
+    extra_parser_numbers: int = Field(strict=True, ge=0)
+    conflicting_numeric_strings: int = Field(strict=True, ge=0)
+    numeric_disagreement_count: int = Field(strict=True, ge=0)
+    numeric_disagreements: tuple[NumericDisagreement, ...]
+    coordinate_validation_warnings: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +128,7 @@ def _config_digest(config: ParsingConfig, result: ParseResult) -> Sha256Digest:
 def _diagnostics(
     document: DocumentIR,
     result: ParseResult,
+    profile: DocumentProfile,
     *,
     elapsed_seconds: float,
 ) -> ParseDiagnostics:
@@ -136,6 +164,93 @@ def _diagnostics(
         page_number + 1 in independent_table_pages
         for page_number in independent_table_pages
     ) else ()
+    cell_provenance = {
+        record.provenance_id: record
+        for record in document.provenance
+    }
+    extraction_counts = Counter(
+        cell_provenance[block.provenance_ids[0]].extraction_method.value
+        for block in blocks
+    )
+    cells = [cell for table in document.tables for cell in table.cells]
+    exact_cells = sum(
+        any(cell_provenance[identifier].bbox is not None for identifier in cell.provenance_ids)
+        for cell in cells
+    )
+    native_by_page = {
+        page.page_number: Counter(
+            token.normalized for token in page.native_text_evidence.normalized_numeric_tokens
+        )
+        for page in profile.pages
+    }
+    parser_by_page: dict[int, Counter[str]] = {}
+    for page in document.pages:
+        text_parts = [
+            block.text or ""
+            for block in page.blocks
+            if block.block_type.value != "TABLE"
+        ]
+        text_parts.extend(
+            cell.text
+            for table in document.tables
+            for cell in table.cells
+            if cell.page_number == page.page_number
+        )
+        parser_by_page[page.page_number] = Counter(
+            token.normalized for token in extract_numeric_tokens("\n".join(text_parts))
+        )
+    exact_overlap = 0
+    missing = 0
+    extra = 0
+    conflicts = 0
+    disagreement_records: list[NumericDisagreement] = []
+    for page_number, native in native_by_page.items():
+        parser_values = parser_by_page.get(page_number, Counter())
+        overlap = native & parser_values
+        missing_values = native - parser_values
+        extra_values = parser_values - native
+        exact_overlap += sum(overlap.values())
+        missing += sum(missing_values.values())
+        extra += sum(extra_values.values())
+        native_prefixes = {value.rsplit(".", 1)[0] for value in missing_values}
+        parser_prefixes = {value.rsplit(".", 1)[0] for value in extra_values}
+        conflicts += len(native_prefixes & parser_prefixes)
+        if missing_values or extra_values:
+            disagreement_records.append(
+                NumericDisagreement(
+                    page_number=page_number,
+                    missing_native_values=tuple(sorted(missing_values.elements())),
+                    extra_parser_values=tuple(sorted(extra_values.elements())),
+                )
+            )
+    coordinate_warnings = tuple(
+        f"page {page.page_number}: parser/page aspect ratio differs from canonical CropBox"
+        for page in result.pages
+        if abs(
+            (page.width / page.height)
+            - (
+                profile.pages[page.page_number - 1].width
+                / profile.pages[page.page_number - 1].height
+            )
+        ) > 0.02
+    )
+    unresolved_hierarchy = sum(
+        element.parent_source_object_id is not None
+        and element.parent_source_object_id
+        not in {
+            candidate.source_object_id
+            for candidate_page in result.pages
+            for candidate in candidate_page.elements
+        }
+        for page in result.pages
+        for element in page.elements
+    )
+    explicit_continuations = sum(
+        table.continuation_from_source_object_id is not None
+        or table.continuation_to_source_object_id is not None
+        for page in result.pages
+        for table in page.tables
+    )
     return ParseDiagnostics(
         pages_requested=len(requested),
         pages_parsed=len(parsed),
@@ -153,7 +268,49 @@ def _diagnostics(
         device=result.run.actual_device,
         provenance_complete_blocks=provenance_complete,
         generated_blocks=len(blocks),
+        native_text_pages=sum(page.has_text_layer for page in profile.pages),
+        image_only_pages=sum(page.likely_image_only for page in profile.pages),
+        blocks_by_extraction_method=dict(sorted(extraction_counts.items())),
+        table_cells_with_exact_bbox=exact_cells,
+        table_cells_without_bbox=len(cells) - exact_cells,
+        unresolved_hierarchy_count=unresolved_hierarchy,
+        cross_page_table_candidates=explicit_continuations,
+        native_numeric_tokens=sum(sum(values.values()) for values in native_by_page.values()),
+        parser_numeric_tokens=sum(sum(values.values()) for values in parser_by_page.values()),
+        numeric_exact_overlaps=exact_overlap,
+        missing_native_numbers=missing,
+        extra_parser_numbers=extra,
+        conflicting_numeric_strings=conflicts,
+        numeric_disagreement_count=len(disagreement_records),
+        numeric_disagreements=tuple(disagreement_records),
+        coordinate_validation_warnings=coordinate_warnings,
     )
+
+
+def _build_parser(config: ParsingConfig) -> DocumentParser:
+    def docling() -> DocumentParser:
+        from docparser.adapters.parsers.docling import DoclingOptions, DoclingParserAdapter
+
+        return DoclingParserAdapter(DoclingOptions(device=config.device))
+
+    def paddle() -> DocumentParser:
+        from docparser.adapters.parsers.paddleocr_vl import (
+            PaddleOCRVLOptions,
+            PaddleOCRVLParserAdapter,
+        )
+
+        return PaddleOCRVLParserAdapter(PaddleOCRVLOptions(device=config.device))
+
+    builders: dict[str, Callable[[], DocumentParser]] = {
+        "docling": docling,
+        "docling-standard": docling,
+        "paddleocr-vl": paddle,
+        "paddleocr-vl-1.6": paddle,
+    }
+    try:
+        return builders[config.parser]()
+    except KeyError as exc:
+        raise ValueError(f"unknown parser profile: {config.parser}") from exc
 
 
 def parse_document_with_diagnostics(
@@ -169,12 +326,8 @@ def parse_document_with_diagnostics(
 ) -> ParseOutcome:
     """Run preflight, parser, neutral normalization, and IR invariant validation."""
 
-    if config.parser != "docling":
-        raise ValueError("Phase 2.5 supports only the docling primary parser")
     if parser is None:
-        from docparser.adapters.parsers.docling import DoclingOptions, DoclingParserAdapter
-
-        parser = DoclingParserAdapter(DoclingOptions(device=config.device))
+        parser = _build_parser(config)
     started = perf_counter()
     profile = profile_provider(path)
     digest = _source_digest(path)
@@ -184,10 +337,7 @@ def parse_document_with_diagnostics(
     result = parser.parse(
         ParseRequest(
             source_path=path,
-            scope=ParseScope(
-                kind=ParseScopeKind.PAGE,
-                page_numbers=tuple(range(1, profile.page_count + 1)),
-            ),
+            scope=ParseScope(kind=ParseScopeKind.DOCUMENT),
             device=config.device,
             raw_output_dir=raw_output_dir,
         )
@@ -208,9 +358,9 @@ def parse_document_with_diagnostics(
         config_digest=_config_digest(config, result),
         profile=profile,
     )
-    document = normalize_docling_result(result, context)
+    document = normalize_neutral_result(result, context)
     diagnostics = _diagnostics(
-        document, result, elapsed_seconds=perf_counter() - started
+        document, result, profile, elapsed_seconds=perf_counter() - started
     )
     return ParseOutcome(
         document=document,
@@ -240,6 +390,7 @@ def write_parse_outputs(outcome: ParseOutcome, output: Path) -> None:
     for name, model in (
         ("parse-result.json", outcome.parse_result),
         ("diagnostics.json", outcome.diagnostics),
+        ("preflight.json", outcome.profile),
     ):
         payload = json.dumps(
             model.model_dump(mode="json"),

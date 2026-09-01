@@ -1,4 +1,4 @@
-"""Normalize the parser-neutral Docling result into Canonical Document IR."""
+"""Normalize parser-neutral evidence into Canonical Document IR."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ from docparser.ir.models import (
 from docparser.ir.tables import Table, TableCell, TableSegment
 from docparser.normalization.base import NormalizationContext, NormalizationError
 
-NORMALIZER_VERSION = "docling-normalizer@0.1.0"
+NORMALIZER_VERSION = "neutral-normalizer@0.2.0"
 
 _BLOCK_TYPES = {kind.value: BlockType(kind.value) for kind in ExtractedElementType}
 
@@ -59,16 +59,32 @@ def _document_namespace(document_id: str) -> UUID:
 
 
 def _bbox_and_transform(
-    source: SourceBBox, *, page_height: float
+    source: SourceBBox,
+    *,
+    source_width: float,
+    source_height: float,
+    canonical_width: float,
+    canonical_height: float,
 ) -> tuple[BBox, AffineTransform]:
+    x_scale = canonical_width / source_width
+    y_scale = canonical_height / source_height
     if source.origin is CoordinateOrigin.TOP_LEFT:
-        return (
-            BBox((source.x0, source.y0, source.x1, source.y1)),
-            AffineTransform((1.0, 0.0, 0.0, 1.0, 0.0, 0.0)),
+        transform = AffineTransform((x_scale, 0.0, 0.0, y_scale, 0.0, 0.0))
+    else:
+        transform = AffineTransform(
+            (x_scale, 0.0, 0.0, -y_scale, 0.0, canonical_height)
         )
+    points = tuple(transform.apply(point) for point in BBox(
+        (source.x0, source.y0, source.x1, source.y1)
+    ).corners())
     return (
-        BBox((source.x0, page_height - source.y1, source.x1, page_height - source.y0)),
-        AffineTransform((1.0, 0.0, 0.0, -1.0, 0.0, page_height)),
+        BBox((
+            min(point.x for point in points),
+            min(point.y for point in points),
+            max(point.x for point in points),
+            max(point.y for point in points),
+        )),
+        transform,
     )
 
 
@@ -76,8 +92,8 @@ def _provenance_id(namespace: UUID, *parts: str) -> ProvenanceId:
     return generate_uuid5_id(ProvenanceId, namespace, *parts)
 
 
-def _block_id(namespace: UUID, source_object_id: str) -> BlockId:
-    return generate_uuid5_id(BlockId, namespace, "docling-block", source_object_id)
+def _block_id(namespace: UUID, parser_name: str, source_object_id: str) -> BlockId:
+    return generate_uuid5_id(BlockId, namespace, parser_name, "block", source_object_id)
 
 
 def _make_page_provenance(
@@ -86,16 +102,32 @@ def _make_page_provenance(
     page: PageParseResult,
     namespace: UUID,
 ) -> ProvenanceRecord:
-    page_bbox = BBox((0.0, 0.0, page.width, page.height))
+    profile = context.profile.pages[page.page_number - 1]
+    page_bbox = BBox((0.0, 0.0, profile.width, profile.height))
+    _, transform = _bbox_and_transform(
+        SourceBBox(
+            x0=0.0,
+            y0=0.0,
+            x1=page.width,
+            y1=page.height,
+            origin=CoordinateOrigin.TOP_LEFT,
+        ),
+        source_width=page.width,
+        source_height=page.height,
+        canonical_width=profile.width,
+        canonical_height=profile.height,
+    )
     return ProvenanceRecord(
         provenance_id=_provenance_id(namespace, "page", str(page.page_number)),
         document_id=context.document_id,
         source_artifact_id=context.source_artifact_id,
         page_number=page.page_number,
         bbox=page_bbox,
-        source_coordinate_space="DOCLING_PAGE_SPACE",
-        source_bbox=page_bbox,
-        to_canonical_transform=AffineTransform((1.0, 0.0, 0.0, 1.0, 0.0, 0.0)),
+        source_coordinate_space=(
+            f"{result.descriptor.parser_name.upper()}_{page.coordinate_unit.value}_PAGE"
+        ),
+        source_bbox=BBox((0.0, 0.0, page.width, page.height)),
+        to_canonical_transform=transform,
         parser_run_id=result.run.parser_run_id,
         source_parser=result.descriptor.parser_name,
         parser_version=result.descriptor.parser_version,
@@ -115,20 +147,35 @@ def _make_entity_provenance(
     namespace: UUID,
     page: PageParseResult,
     source_object_id: str,
-    source_bbox: SourceBBox,
+    source_bbox: SourceBBox | None,
     confidence: float | None,
     method: str,
     parent_id: ProvenanceId,
 ) -> ProvenanceRecord:
-    bbox, transform = _bbox_and_transform(source_bbox, page_height=page.height)
+    profile = context.profile.pages[page.page_number - 1]
+    bbox: BBox | None = None
+    transform: AffineTransform | None = None
+    raw_bbox: BBox | None = None
+    if source_bbox is not None:
+        bbox, transform = _bbox_and_transform(
+            source_bbox,
+            source_width=page.width,
+            source_height=page.height,
+            canonical_width=profile.width,
+            canonical_height=profile.height,
+        )
+        raw_bbox = BBox((source_bbox.x0, source_bbox.y0, source_bbox.x1, source_bbox.y1))
     return ProvenanceRecord(
         provenance_id=_provenance_id(namespace, "entity", source_object_id),
         document_id=context.document_id,
         source_artifact_id=context.source_artifact_id,
         page_number=page.page_number,
         bbox=bbox,
-        source_coordinate_space=f"DOCLING_{source_bbox.origin.value}",
-        source_bbox=BBox((source_bbox.x0, source_bbox.y0, source_bbox.x1, source_bbox.y1)),
+        source_coordinate_space=(
+            f"{result.descriptor.parser_name.upper()}_{page.coordinate_unit.value}_"
+            f"{source_bbox.origin.value}" if source_bbox is not None else None
+        ),
+        source_bbox=raw_bbox,
         to_canonical_transform=transform,
         parser_run_id=result.run.parser_run_id,
         source_parser=result.descriptor.parser_name,
@@ -138,23 +185,23 @@ def _make_entity_provenance(
         confidence=confidence,
         char_range=None,
         parent_provenance_ids=(parent_id,),
-        operation="NORMALIZE_ENTITY",
+        operation="NORMALIZE_ENTITY" if source_bbox is not None else "NORMALIZE_PARENT_REGION",
     )
 
 
 def _content_ids(
-    namespace: UUID, pages: tuple[PageParseResult, ...]
+    namespace: UUID, pages: tuple[PageParseResult, ...], parser_name: str
 ) -> tuple[dict[str, TableId], dict[str, FigureId], dict[str, EquationId]]:
     table_ids = {
         table.source_object_id: generate_uuid5_id(
-            TableId, namespace, "docling-table", table.source_object_id
+            TableId, namespace, parser_name, "table", table.source_object_id
         )
         for page in pages
         for table in page.tables
     }
     figure_ids = {
         element.source_object_id: generate_uuid5_id(
-            FigureId, namespace, "docling-figure", element.source_object_id
+            FigureId, namespace, parser_name, "figure", element.source_object_id
         )
         for page in pages
         for element in page.elements
@@ -162,7 +209,7 @@ def _content_ids(
     }
     equation_ids = {
         element.source_object_id: generate_uuid5_id(
-            EquationId, namespace, "docling-equation", element.source_object_id
+            EquationId, namespace, parser_name, "equation", element.source_object_id
         )
         for page in pages
         for element in page.elements
@@ -179,6 +226,7 @@ def _normalize_blocks(
     table_ids: dict[str, TableId],
     figure_ids: dict[str, FigureId],
     equation_ids: dict[str, EquationId],
+    block_ids: dict[str, BlockId],
 ) -> tuple[Block, ...]:
     ordered = sorted(
         (
@@ -220,7 +268,7 @@ def _normalize_blocks(
             raise NormalizationError("element provenance requires canonical bbox")
         blocks.append(
             Block(
-                block_id=_block_id(namespace, element.source_object_id),
+                block_id=block_ids[element.source_object_id],
                 block_type=block_type,
                 page_number=page.page_number,
                 bbox=provenance.bbox,
@@ -235,7 +283,7 @@ def _normalize_blocks(
                 confidence_source=(
                     ConfidenceSource.PARSER if element.confidence is not None else None
                 ),
-                parent_block_id=None,
+                parent_block_id=block_ids.get(element.parent_source_object_id or ""),
                 relationship_ids=(),
                 provenance_ids=(provenance.provenance_id,),
                 content_ref=content_ref,
@@ -254,6 +302,7 @@ def _normalize_tables(
     provenance_by_source: dict[str, ProvenanceRecord],
     block_ids: dict[str, BlockId],
     caption_block_ids: dict[str, BlockId],
+    parser_name: str,
 ) -> tuple[Table, ...]:
     result: list[Table] = []
     for page in pages:
@@ -263,19 +312,18 @@ def _normalize_tables(
             if table_provenance.bbox is None:
                 raise NormalizationError("table provenance requires canonical bbox")
             segment_id = generate_uuid5_id(
-                TableSegmentId, namespace, "docling-segment", extracted.source_object_id
+                TableSegmentId, namespace, parser_name, "segment", extracted.source_object_id
             )
             cells: list[TableCell] = []
             for cell in extracted.cells:
                 cell_id = generate_uuid5_id(
-                    TableCellId, namespace, "docling-cell", cell.source_object_id
+                    TableCellId, namespace, parser_name, "cell", cell.source_object_id
                 )
-                cell_provenance = provenance_by_source.get(
-                    cell.source_object_id, table_provenance
-                )
+                cell_provenance = provenance_by_source[cell.source_object_id]
                 cell_bbox = None
                 if cell.bbox is not None:
-                    cell_bbox, _ = _bbox_and_transform(cell.bbox, page_height=page.height)
+                    profile = provenance_by_source[cell.source_object_id]
+                    cell_bbox = profile.bbox
                 cells.append(
                     TableCell(
                         cell_id=cell_id,
@@ -330,7 +378,7 @@ def _normalize_tables(
     return tuple(result)
 
 
-def normalize_docling_result(
+def normalize_neutral_result(
     result: ParseResult, context: NormalizationContext
 ) -> DocumentIR:
     """Build a valid, unpublished Canonical IR from parser-neutral evidence."""
@@ -342,9 +390,10 @@ def normalize_docling_result(
             f"normalization requires complete ordered pages {expected}; received {actual}"
         )
     namespace = _document_namespace(str(context.document_id))
-    table_ids, figure_ids, equation_ids = _content_ids(namespace, result.pages)
+    parser_name = result.descriptor.parser_name
+    table_ids, figure_ids, equation_ids = _content_ids(namespace, result.pages, parser_name)
     block_ids = {
-        element.source_object_id: _block_id(namespace, element.source_object_id)
+        element.source_object_id: _block_id(namespace, parser_name, element.source_object_id)
         for page in result.pages
         for element in page.elements
     }
@@ -378,8 +427,6 @@ def normalize_docling_result(
             provenance.append(record)
         for table in page.tables:
             for cell in table.cells:
-                if cell.bbox is None:
-                    continue
                 record = _make_entity_provenance(
                     context,
                     result,
@@ -398,14 +445,14 @@ def normalize_docling_result(
         Page(
             page_id=generate_page_id(context.document_id, page.page_number),
             page_number=page.page_number,
-            width=page.width,
-            height=page.height,
+            width=context.profile.pages[page.page_number - 1].width,
+            height=context.profile.pages[page.page_number - 1].height,
             rotation_applied=Rotation(
                 page.rotation
                 or context.profile.pages[page.page_number - 1].rotation
             ),
-            media_box_original=BBox((0.0, 0.0, page.width, page.height)),
-            crop_box_original=BBox((0.0, 0.0, page.width, page.height)),
+            media_box_original=context.profile.pages[page.page_number - 1].media_box,
+            crop_box_original=context.profile.pages[page.page_number - 1].crop_box,
             blocks=_normalize_blocks(
                 page,
                 namespace=namespace,
@@ -413,6 +460,7 @@ def normalize_docling_result(
                 table_ids=table_ids,
                 figure_ids=figure_ids,
                 equation_ids=equation_ids,
+                block_ids=block_ids,
             ),
             page_metadata={
                 "document_type": context.profile.document_type.value,
@@ -430,6 +478,7 @@ def normalize_docling_result(
         provenance_by_source=provenance_by_source,
         block_ids=block_ids,
         caption_block_ids=caption_block_ids,
+        parser_name=parser_name,
     )
     figures = tuple(
         Figure(
@@ -528,7 +577,7 @@ def normalize_docling_result(
             custom={},
         ),
         processing=ProcessingManifest(
-            pipeline_version="phase-2.5@0.1.0",
+            pipeline_version="phase-2.6@0.1.0",
             normalizer_version=NORMALIZER_VERSION,
             validator_ruleset_version="NOT_RUN",
             merge_version="NOT_RUN",
@@ -557,3 +606,11 @@ def normalize_docling_result(
         ),
         extensions={},
     )
+
+
+def normalize_docling_result(
+    result: ParseResult, context: NormalizationContext
+) -> DocumentIR:
+    """Compatibility entrypoint for Docling neutral results."""
+
+    return normalize_neutral_result(result, context)

@@ -124,6 +124,32 @@ def _bilingual_page(writer: PdfWriter) -> PageObject:
     return page
 
 
+def _table_page(writer: PdfWriter, *, merged: bool) -> PageObject:
+    page = _text_page(
+        writer,
+        (
+            (80, 700, "Metric"),
+            (310, 700, "2025"),
+            (430, 700, "2026"),
+            (80, 650, "Revenue"),
+            (310, 650, "184,392.17"),
+            (430, 650, "200,000.00"),
+        ),
+    )
+    stream = DecodedStreamObject()
+    commands = ["0.8 w"]
+    for x in (70, 300, 420, 540):
+        commands.append(f"{x} 620 m {x} 730 l S")
+    for y in (620, 675, 730):
+        commands.append(f"70 {y} m 540 {y} l S")
+    if merged:
+        commands.append("300 675 m 540 675 l S")
+    stream.set_data("\n".join(commands).encode("ascii"))
+    existing = page["/Contents"]
+    page[NameObject("/Contents")] = ArrayObject([existing, writer._add_object(stream)])
+    return page
+
+
 def write_tiny_pdf(
     path: Path,
     *,
@@ -137,6 +163,12 @@ def write_tiny_pdf(
         _image_page(writer)
     elif layout == "rotated":
         _text_page(writer, ((72, 720, "Rotated"),)).rotate(90)
+    elif layout == "rotated-270":
+        _text_page(writer, ((72, 720, "Rotated 270"),)).rotate(270)
+    elif layout == "cropped":
+        page = _text_page(writer, ((72, 680, "Cropped page"),))
+        page.cropbox.lower_left = (36, 72)
+        page.cropbox.upper_right = (576, 720)
     elif layout == "two-column":
         _text_page(
             writer,
@@ -145,10 +177,9 @@ def write_tiny_pdf(
     elif layout == "bilingual":
         _bilingual_page(writer)
     elif layout in {"table", "merged-table"}:
-        _text_page(
-            writer,
-            ((80, 700, "Metric"), (310, 700, "Value"), (80, 650, "Revenue")),
-        )
+        _table_page(writer, merged=layout == "merged-table")
+    elif layout == "numeric":
+        _text_page(writer, ((72, 720, "Revenue 184,392.17 USD"),))
     else:
         _text_page(writer, ((72, 720, "Born digital PDF"),))
     with path.open("wb") as target:

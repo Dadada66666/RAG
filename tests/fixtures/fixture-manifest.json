@@ -1,0 +1,26 @@
+{
+  "docling": {
+    "parser": "docling",
+    "parser_version": "2.123.0",
+    "model_pipeline_version": "docling-standard",
+    "fixture_origin": "synthetic_contract",
+    "generated_status": "HAND_AUTHORED_CONTRACT_FIXTURES",
+    "files": [
+      "born-digital.json",
+      "two-column.json",
+      "scanned.json",
+      "simple-table.json",
+      "merged-table.json",
+      "rotated.json",
+      "bilingual.json"
+    ]
+  },
+  "paddleocr_vl": {
+    "parser": "paddleocr-vl",
+    "parser_version": "3.7.0",
+    "model_pipeline_version": "PaddleOCR-VL-1.6",
+    "fixture_origin": "synthetic_contract",
+    "generated_status": "HAND_AUTHORED_FROM_PUBLIC_WIRE_CONTRACT",
+    "files": ["synthetic-structured.json"]
+  }
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Self
@@ -11,7 +12,13 @@ from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
 from docparser.ir.base import PageNumber, StrictIRModel
+from docparser.ir.geometry import AffineTransform, BBox
 from docparser.ir.types import NfcString
+from docparser.preflight.evidence import (
+    NativeTextEvidence,
+    TextExtractionStatus,
+    extract_numeric_tokens,
+)
 
 
 class DocumentType(StrEnum):
@@ -26,12 +33,17 @@ class PageProfile(StrictIRModel):
     width: float = Field(strict=True, gt=0.0)
     height: float = Field(strict=True, gt=0.0)
     rotation: int = Field(strict=True)
+    media_box: BBox
+    crop_box: BBox
+    text_extraction_status: TextExtractionStatus
     has_text_layer: bool
     text_char_count: int = Field(strict=True, ge=0)
     estimated_text_coverage: float = Field(strict=True, ge=0.0, le=1.0)
     image_count: int = Field(strict=True, ge=0)
     estimated_image_coverage: float = Field(strict=True, ge=0.0, le=1.0)
     likely_scanned: bool
+    likely_image_only: bool
+    native_text_evidence: NativeTextEvidence
 
     @model_validator(mode="after")
     def _validate_rotation(self) -> Self:
@@ -50,7 +62,7 @@ class DocumentProfile(StrictIRModel):
     encrypted: bool
     readable: bool
     warnings: tuple[NfcString, ...]
-    heuristic_version: str = "pdf-preflight@1.0.0"
+    heuristic_version: str = "pdf-preflight@1.1.0"
 
     @model_validator(mode="after")
     def _validate_cardinality(self) -> Self:
@@ -93,6 +105,39 @@ def _coverage_estimates(char_count: int, image_count: int, page_area: float) -> 
     return round(text_coverage, 4), round(image_coverage, 4)
 
 
+def pdf_user_to_canonical_transform(crop_box: BBox, rotation: int) -> AffineTransform:
+    """Map PDF user-space points into top-left coordinates of the rotated CropBox."""
+
+    if rotation == 0:
+        values = (1.0, 0.0, 0.0, -1.0, -crop_box.x0, crop_box.y1)
+    elif rotation == 90:
+        values = (0.0, 1.0, 1.0, 0.0, -crop_box.y0, -crop_box.x0)
+    elif rotation == 180:
+        values = (-1.0, 0.0, 0.0, 1.0, crop_box.x1, -crop_box.y0)
+    elif rotation == 270:
+        values = (0.0, -1.0, -1.0, 0.0, crop_box.y1, crop_box.x1)
+    else:
+        raise ValueError("PDF rotation must be 0, 90, 180, or 270")
+    return AffineTransform(values)
+
+
+def pdf_user_bbox_to_canonical(bbox: BBox, crop_box: BBox, rotation: int) -> BBox:
+    transform = pdf_user_to_canonical_transform(crop_box, rotation)
+    points = tuple(transform.apply(point) for point in bbox.corners())
+    return BBox(
+        (
+            min(point.x for point in points),
+            min(point.y for point in points),
+            max(point.x for point in points),
+            max(point.y for point in points),
+        )
+    )
+
+
+def _box(value: Any) -> BBox:
+    return BBox((float(value.left), float(value.bottom), float(value.right), float(value.top)))
+
+
 def inspect_pdf(path: Path) -> DocumentProfile:
     """Inspect PDF structure and cheap routing signals without invoking an ML model."""
 
@@ -111,13 +156,22 @@ def inspect_pdf(path: Path) -> DocumentProfile:
     profiles: list[PageProfile] = []
     warnings: list[str] = []
     for page_number, page in enumerate(reader.pages, start=1):
-        width = float(page.mediabox.width)
-        height = float(page.mediabox.height)
+        media_box = _box(page.mediabox)
+        crop_box = _box(page.cropbox)
         rotation = int(page.get("/Rotate", 0) or 0) % 360
+        if rotation not in {0, 90, 180, 270}:
+            raise PreflightError(f"page {page_number}: unsupported rotation {rotation}")
+        width, height = crop_box.width, crop_box.height
+        if rotation in {90, 270}:
+            width, height = height, width
         try:
-            text = page.extract_text() or ""
+            text = unicodedata.normalize("NFC", page.extract_text() or "")
+            extraction_status = (
+                TextExtractionStatus.EXTRACTED if text.strip() else TextExtractionStatus.EMPTY
+            )
         except Exception as exc:  # pypdf exposes backend-specific extraction failures.
             text = ""
+            extraction_status = TextExtractionStatus.FAILED
             warnings.append(f"page {page_number}: text layer inspection failed: {exc}")
         char_count = len(text.strip())
         image_count = _count_images(page)
@@ -130,12 +184,22 @@ def inspect_pdf(path: Path) -> DocumentProfile:
                 width=width,
                 height=height,
                 rotation=rotation,
+                media_box=media_box,
+                crop_box=crop_box,
+                text_extraction_status=extraction_status,
                 has_text_layer=char_count > 0,
                 text_char_count=char_count,
                 estimated_text_coverage=text_coverage,
                 image_count=image_count,
                 estimated_image_coverage=image_coverage,
                 likely_scanned=char_count == 0 and image_count > 0,
+                likely_image_only=char_count == 0 and image_count > 0,
+                native_text_evidence=NativeTextEvidence(
+                    page_number=page_number,
+                    text=text,
+                    normalized_numeric_tokens=extract_numeric_tokens(text),
+                    extraction_status=extraction_status,
+                ),
             )
         )
 
@@ -161,4 +225,3 @@ def inspect_pdf(path: Path) -> DocumentProfile:
         readable=True,
         warnings=tuple(warnings),
     )
-

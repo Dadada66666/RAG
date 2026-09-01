@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.parser_fixture import load_recorded_result, normalize_recorded
+from tests.parser_fixture import (
+    load_contract_result,
+    normalize_contract_fixture,
+    profile_for_result,
+)
 from tests.pdf_factory import write_tiny_pdf
 
 from docparser.application.parsing import (
@@ -22,7 +26,7 @@ from docparser.domain.parser_contract import (
 from docparser.ir.ids import ArtifactId, RevisionId
 
 
-class RecordedParser:
+class ContractFixtureParser:
     def __init__(self, result: ParseResult) -> None:
         self._result = result
 
@@ -33,9 +37,7 @@ class RecordedParser:
         raise AssertionError("health is not needed by the application parse path")
 
     def parse(self, request: ParseRequest) -> ParseResult:
-        return self._result.model_copy(
-            update={"pages_requested": request.scope.page_numbers}
-        )
+        return self._result
 
 
 def _revision_id() -> RevisionId:
@@ -51,7 +53,7 @@ def test_vertical_slice_returns_metric_ready_valid_ir(tmp_path: Path) -> None:
     outcome = parse_document_with_diagnostics(
         path,
         ParsingConfig(device=RuntimeDevice.CPU),
-        parser=RecordedParser(load_recorded_result("born-digital")),
+        parser=ContractFixtureParser(load_contract_result("born-digital")),
         revision_id_factory=_revision_id,
         artifact_id_factory=_artifact_id,
     )
@@ -69,7 +71,7 @@ def test_benchmark_hook_and_output_files_do_not_require_cli_scraping(
     tmp_path: Path,
 ) -> None:
     path = write_tiny_pdf(tmp_path / "input.pdf")
-    parser = RecordedParser(load_recorded_result("born-digital"))
+    parser = ContractFixtureParser(load_contract_result("born-digital"))
     document = parse_document(
         path,
         ParsingConfig(device=RuntimeDevice.CPU),
@@ -93,8 +95,8 @@ def test_benchmark_hook_and_output_files_do_not_require_cli_scraping(
 
 
 def test_diagnostics_disclose_unmerged_adjacent_table_candidates() -> None:
-    result = load_recorded_result("simple-table")
-    normalized = normalize_recorded("simple-table")
+    result = load_contract_result("simple-table")
+    normalized = normalize_contract_fixture("simple-table")
     first = normalized.tables[0]
     second = first.model_copy(
         update={
@@ -106,6 +108,7 @@ def test_diagnostics_disclose_unmerged_adjacent_table_candidates() -> None:
     diagnostic = _diagnostics(
         normalized.model_copy(update={"tables": (first, second)}),
         result,
+        profile_for_result(result),
         elapsed_seconds=0.0,
     )
 

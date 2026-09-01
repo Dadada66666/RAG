@@ -7,23 +7,9 @@ import importlib.util
 from importlib.metadata import PackageNotFoundError, version
 
 from docparser.adapters.parsers.docling.options import DOCLING_VERSION
-from docparser.domain.parser_contract import ParserError, RuntimeDevice
+from docparser.domain.parser_contract import ParserExecutionError, RuntimeDevice
 
-
-class DoclingRuntimeError(RuntimeError):
-    """Docling or the explicitly requested accelerator is unavailable."""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        code: str = "PARSER_FAILURE",
-        retryable: bool = False,
-    ) -> None:
-        super().__init__(message)
-        self.error = ParserError.model_validate(
-            {"code": code, "message": message, "retryable": retryable}
-        )
+DoclingRuntimeError = ParserExecutionError
 
 
 def installed_docling_version() -> str | None:

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from tests.parser_fixture import load_recorded_result
+from tests.parser_fixture import load_contract_result
 from tests.pdf_factory import write_tiny_pdf
 from typer.testing import CliRunner
 
@@ -67,13 +67,13 @@ def test_schema_generate_and_drift_check(tmp_path: Path) -> None:
 def test_parse_local_writes_development_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tests.unit.application.test_parsing import RecordedParser
+    from tests.unit.application.test_parsing import ContractFixtureParser
 
     input_pdf = write_tiny_pdf(tmp_path / "input.pdf")
     outcome = parse_document_with_diagnostics(
         input_pdf,
         ParsingConfig(device=RuntimeDevice.CPU),
-        parser=RecordedParser(load_recorded_result("born-digital")),
+        parser=ContractFixtureParser(load_contract_result("born-digital")),
     )
     monkeypatch.setattr(
         "docparser.cli.main.parse_document_with_diagnostics",

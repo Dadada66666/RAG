@@ -1,0 +1,34 @@
+{
+  "fixture_metadata": {
+    "parser": "paddleocr-vl",
+    "parser_version": "3.7.0",
+    "model_pipeline_version": "PaddleOCR-VL-1.6",
+    "fixture_origin": "synthetic_contract",
+    "source_fixture_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generated_status": "HAND_AUTHORED_FROM_PUBLIC_WIRE_CONTRACT"
+  },
+  "pages": [
+    {
+      "page_index": 0,
+      "source_width": 1224,
+      "source_height": 1584,
+      "rotation": 0,
+      "parsing_res_list": [
+        {
+          "block_id": 0,
+          "block_order": 0,
+          "block_label": "doc_title",
+          "block_bbox": [144, 80, 1080, 150],
+          "block_content": "年度报告 Annual Report"
+        },
+        {
+          "block_id": 1,
+          "block_order": 1,
+          "block_label": "table",
+          "block_bbox": [120, 240, 1100, 760],
+          "block_content": "<table><tr><th rowspan=\"2\">项目</th><th colspan=\"2\">金额</th></tr><tr><th>2025</th><th>2026</th></tr><tr><td>收入</td><td>184,392.71</td><td>200,000.00</td></tr></table>"
+        }
+      ]
+    }
+  ]
+}

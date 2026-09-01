@@ -19,6 +19,10 @@ dependencies = [
 docling = [
   "docling==2.123.0",
 ]
+paddleocr-vl = [
+  "paddleocr[doc-parser]==3.7.0",
+  "paddlex[ocr,genai-client]==3.7.1",
+]
 dev = [
   "hypothesis==6.165.10",
   "jsonschema==4.26.0",
@@ -56,7 +60,7 @@ strict = true
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["docling.*"]
+module = ["docling.*", "paddleocr.*", "paddle.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

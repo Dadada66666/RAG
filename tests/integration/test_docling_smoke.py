@@ -24,3 +24,18 @@ def test_real_docling_cpu_smoke(tmp_path: Path) -> None:
     assert document.page_count == 1
     assert all(block.provenance_ids for page in document.pages for block in page.blocks)
 
+
+@pytest.mark.integration
+@pytest.mark.parser
+def test_real_docling_table_has_actual_cell_structure(tmp_path: Path) -> None:
+    if os.environ.get("DOCPARSER_RUN_DOCLING_SMOKE") != "1":
+        pytest.skip("set DOCPARSER_RUN_DOCLING_SMOKE=1 with .[docling] installed")
+
+    document = parse_document(
+        write_tiny_pdf(tmp_path / "docling-table.pdf", layout="table"),
+        ParsingConfig(parser="docling-standard", device=RuntimeDevice.CPU),
+    )
+
+    assert document.tables
+    assert document.tables[0].logical_row_count >= 2
+    assert len(document.tables[0].cells) >= 4

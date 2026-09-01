@@ -30,6 +30,7 @@ from docparser.domain.parser_contract import (
     ParserHealth,
     ParserHealthStatus,
     ParserRun,
+    ParseScopeKind,
     ParseStatus,
     RuntimeDevice,
 )
@@ -70,6 +71,7 @@ class DoclingParserAdapter:
                 ParserCapability.LAYOUT,
                 ParserCapability.READING_ORDER,
             ),
+            supported_scopes=(ParseScopeKind.DOCUMENT,),
             model_identifiers=(
                 "docling-layout-default@2.123.0",
                 "docling-tableformer@accurate",
@@ -109,6 +111,11 @@ class DoclingParserAdapter:
         )
 
     def parse(self, request: ParseRequest) -> ParseResult:
+        if request.scope.kind is not ParseScopeKind.DOCUMENT:
+            raise DoclingRuntimeError(
+                "docling-standard currently executes complete documents only",
+                code="UNSUPPORTED_DOCUMENT",
+            )
         if request.source_path.suffix.lower() != ".pdf":
             raise DoclingRuntimeError(
                 "Docling vertical slice accepts PDF input only",
@@ -138,11 +145,7 @@ class DoclingParserAdapter:
         except Exception as exc:
             raise DoclingRuntimeError("Docling parser failed") from exc
         ended_at = self._clock()
-        pages_requested = (
-            request.scope.page_numbers
-            if request.scope.page_numbers
-            else self._page_numbers(payload)
-        )
+        pages_requested = self._page_numbers(payload)
         run = ParserRun(
             parser_run_id=run_id,
             started_at=started_at,

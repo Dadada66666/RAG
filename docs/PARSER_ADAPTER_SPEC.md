@@ -301,6 +301,18 @@ Primary configuration must explicitly enable/choose OCR for scanned pages and ta
 
 `docling-standard` pins Docling `2.123.0` and adapter `0.1.0`. It enables RapidOCR with the Chinese `ch` profile on the Torch backend, accurate TableFormer structure with cell matching, and local code/formula enrichment. Remote services, external plug-ins and picture-description models are disabled. `device=auto` resolves to CUDA only when available and otherwise to CPU; explicit unavailable CUDA is a runtime error, not a document-quality failure. Page/model batch size is one in this correctness-first slice. This profile is development evidence only until model licenses and Golden Dataset thresholds are approved.
 
+#### Phase 2.6 executable-scope and candidate amendment (2026-09-01)
+
+`ParserDescriptor.supported_scopes` describes executable behavior, not an aspirational capability. `docling-standard` and `paddleocr-vl-1.6` currently advertise `DOCUMENT` only because both pinned adapters execute the complete PDF. A router must not schedule either adapter for `PAGE` fallback until true page-limited execution is implemented and contract-tested.
+
+`paddleocr-vl-1.6` pins `paddleocr==3.7.0`, `paddlex==3.7.1`, PaddlePaddle `3.3.0`, adapter `0.1.0`, PP-DocLayoutV3, and PaddleOCR-VL-1.6-0.9B. It integrates the complete layout/crop/order/recognition/assembly pipeline rather than the bare VLM. PaddlePaddle is installed separately from the official device-specific wheel index; CUDA imports and SDK objects remain inside the adapter boundary.
+
+Research date: 2026-09-01. Primary sources: [PaddleX 3.7 PaddleOCR-VL pipeline documentation](https://paddlepaddle.github.io/PaddleX/3.7/en/pipeline_usage/tutorials/ocr_pipelines/PaddleOCR-VL.html), [PaddleOCR-VL-1.6 official model note](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/algorithm/PaddleOCR-VL/PaddleOCR-VL-1.6.en.md), and the [PaddleOCR 3.7.0 package release](https://pypi.org/project/paddleocr/3.7.0/). External benchmark claims are recorded only as research context; they do not promote a repository default.
+
+The parser port uses one explicit error policy: a complete call failure before a usable neutral envelope raises `ParserExecutionError` containing one structured `ParserError`; page-local failures remain in a `PARTIAL` `ParseResult.errors`. Adapters do not return an ambiguous empty `FAILED` result and do not expose adapter-specific exception types as a second mechanism.
+
+Paddle `parsing_res_list` is mapped as structured blocks. Table HTML is parsed deterministically into logical cells while preserving `rowspan` and `colspan`; absent cell geometry remains `null`. Markdown is a debug/derived artifact and is not the neutral contract.
+
 ### MVP selective fallback candidate: PaddleOCR-VL 1.6
 
 Reasoning:

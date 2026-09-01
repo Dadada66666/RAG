@@ -1,0 +1,5 @@
+# Optional GPU benchmark runtime; install in its own Python 3.12 environment.
+# The Paddle wheel index must match the local CUDA runtime (official example: cu126).
+paddlepaddle-gpu==3.3.0
+paddleocr[doc-parser]==3.7.0
+paddlex[ocr,genai-client]==3.7.1

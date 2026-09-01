@@ -1,0 +1,5 @@
+dataset_id: phase-2.6-development-golden
+version: 0.1.0
+target_page_count_min: 20
+target_page_count_max: 50
+documents: []

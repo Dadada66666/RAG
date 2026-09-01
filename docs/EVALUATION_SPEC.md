@@ -6,6 +6,12 @@
 | Benchmark contract | `benchmark/1.0.0` |
 | Purpose | Quality, reliability and efficiency comparison with protected regression gates |
 
+## Phase 2.6 development implementation note (2026-09-01)
+
+The repository now includes a small local-only `GoldenDatasetManifest` and annotation contract for page text, layout blocks, pairwise reading order, logical tables/cells/spans and critical numerics. The committed manifest contains no copyrighted PDF and targets 20–50 evaluation-approved difficult pages. An empty manifest proves only that the runner is ready; it provides no accuracy evidence.
+
+`docparser benchmark-parsing` runs `docling-standard` and `paddleocr-vl-1.6` on the same enabled sources and emits deterministic JSON plus a concise Markdown comparison. It reports page completeness, normalized edit similarity, pairwise order accuracy, table detection and logical row/column/cell/span accuracy, critical numeric exactness, provenance precision/completeness, elapsed time, pages/sec and actual device independently. It intentionally produces no universal parser score. Promotion remains blocked until the local corpus is supplied and slice results are reviewed.
+
 ## 1. Questions the system must answer
 
 1. Which parser/pipeline is better for each protected document slice, not just on average?
@@ -292,4 +298,3 @@ Vendor/public benchmark claims may nominate candidates but cannot promote them. 
 - Leakage/near-duplicate checks run on every dataset change.
 - CI runs a tiny smoke subset; nightly/release runs protected GPU/full suites.
 - Flaky infrastructure re-runs are distinguished from quality failures and cannot be used to cherry-pick favorable results.
-

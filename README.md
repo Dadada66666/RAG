@@ -5,10 +5,10 @@
 A production-oriented foundation for converting complex documents into a versioned,
 traceable, parser-independent representation suitable for downstream RAG ingestion.
 
-> Project status: Phases 0–2 and the Phase 2.5 real-document parsing vertical slice are
-> implemented. A local PDF can now pass through deterministic preflight, the optional pinned
-> Docling primary parser, neutral normalization, Canonical IR validation and diagnostics.
-> This is a development-quality path, not yet a production ingestion service or a 95%-quality claim.
+> Project status: Phases 0–2.6 are implemented. `docling-standard` remains the baseline and the
+> complete PaddleOCR-VL-1.6 pipeline is an optional GPU-first comparison candidate. Native PDF
+> evidence and a local Golden Dataset benchmark make accuracy measurable. This is still
+> development/evaluation quality, not a production service or a 95% accuracy claim.
 
 ## What this project is
 
@@ -55,19 +55,27 @@ vertical slice:
 - Offline unit, schema, property-based, golden-vector, and CLI regression tests.
 - A strict parser-neutral `DocumentParser`/`ParseResult` contract; Canonical and application layers
   do not import Docling types.
-- Deterministic, CPU-only PDF preflight using the text layer and cheap structural/image signals.
+- Deterministic CPU-only PDF preflight preserving native page text, numeric tokens, actual
+  MediaBox/CropBox, rotation, extraction status and cheap structural/image signals.
 - An optional, exactly pinned Docling `2.123.0` adapter with explicit CPU/CUDA/auto behavior.
+- An optional full PaddleOCR-VL-1.6 pipeline (`paddleocr==3.7.0`, `paddlex==3.7.1`,
+  PaddlePaddle `3.3.0`) using PP-DocLayoutV3 plus the 1.6 VLM.
 - Mapping of Docling text/layout, reading order, tables/cells/spans, figures/captions and basic
   equations into existing Canonical IR entities without flattening tables.
-- Metric-ready parse diagnostics and a `parse-local` development command.
+- Fact-only parsing diagnostics plus `parse-local` and `benchmark-parsing` commands. Benchmark
+  output keeps text, tables, reading order, numerics, provenance and latency independent; it
+  deliberately has no global parser score.
 
 The real-document development flow is:
 
 ```mermaid
 flowchart LR
     A["Local PDF"] --> B["Deterministic CPU preflight"]
-    B --> C["Docling primary parser: CPU or optional CUDA"]
-    C --> D["Neutral ParseResult"]
+    B --> C{"Selected evaluation profile"}
+    C --> C1["docling-standard: CPU or optional CUDA"]
+    C --> C2["paddleocr-vl-1.6: GPU preferred"]
+    C1 --> D["Neutral ParseResult"]
+    C2 --> D
     D --> E["Canonical IR normalizer"]
     E --> F["IR graph invariants"]
     F --> G["Canonical JSON + diagnostics"]
@@ -80,11 +88,12 @@ The following remain architecture contracts and implementation-plan items, not w
 - Local/S3 artifact storage and SQLite/PostgreSQL job persistence.
 - Parser workers, GPU scheduling, checkpoint/resume, queues, and distributed execution.
 - Quality scoring engine, fallback planning, fallback execution, and merge pipeline.
-- PaddleOCR-VL, MinerU, Marker, or Surya adapters, and selective fallback execution.
+- MinerU, Marker, or Surya adapters, and selective fallback execution. Paddle is integrated only
+  as an evaluation candidate, not as an automatic primary or fallback.
 - Semantic chunk construction, token packing, embedding, retrieval, and reranking.
 - FastAPI service, upload endpoints, Prometheus, OpenTelemetry, and Grafana integration.
 
-The Docling adapter has recorded-contract coverage and an opt-in real CPU smoke test. Default CI
+The Docling adapter has explicitly labeled synthetic-contract coverage and an opt-in real CPU smoke test. Default CI
 does not install Docling, download models, use a GPU, or access the network. Security admission and
 parser sandboxing are also not implemented, so do not process untrusted uploads with this slice.
 
@@ -157,8 +166,8 @@ schema.
 - Python 3.12+
 - PowerShell examples below assume Windows; equivalent Python commands work on Linux/macOS.
 - The core install and default tests require no GPU, model download, database, or network access.
-- Real Docling parsing is an optional extra. CPU is a supported runtime; CUDA only accelerates
-  model-assisted stages.
+- Real Docling and Paddle parsing are optional extras. Docling supports CPU; CUDA accelerates
+  model-assisted stages. Paddle is benchmarked on CUDA and remains outside the core install.
 
 ## Reproducible installation
 
@@ -197,6 +206,20 @@ accurate TableFormer with cell matching, local formula/code enrichment, and page
 The first real run can acquire model assets according to Docling's cache behavior; review and
 approve every model license before production promotion.
 
+### Optional PaddleOCR-VL-1.6 candidate
+
+Use an isolated environment. Install the exact optional client/pipeline dependencies, then install
+the official PaddlePaddle `3.3.0` CPU or GPU wheel matching the host CUDA runtime:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --no-build-isolation -e ".[paddleocr-vl]"
+# Install paddlepaddle-gpu==3.3.0 from the official Paddle wheel index for your CUDA version.
+```
+
+The profile is the complete `PaddleOCR-VL-1.6` document pipeline: PP-DocLayoutV3, region
+cropping/ordering and `PaddleOCR-VL-1.6-0.9B`. It is not the bare VLM. Explicit `--device cuda`
+fails when the pinned GPU runtime is unavailable; the core domain contains no CUDA imports.
+
 ## Quick verification
 
 ```powershell
@@ -204,6 +227,7 @@ approve every model license before production promotion.
 .\.venv\Scripts\docparser.exe doctor --config configs/default.yaml
 .\.venv\Scripts\docparser.exe schema check
 .\.venv\Scripts\docparser.exe parse-local --help
+.\.venv\Scripts\docparser.exe benchmark-parsing --help
 ```
 
 Expected command responsibilities:
@@ -218,11 +242,11 @@ After installing the optional parser, run:
 
 ```powershell
 .\.venv\Scripts\docparser.exe parse-local .\sample.pdf `
-  --parser docling --device auto --output .\output
+  --parser docling-standard --device auto --output .\output
 ```
 
 The output contains `document.ir.json`, the bounded neutral `parse-result.json`,
-`diagnostics.json`, and a `raw/` directory for the sanitized Docling snapshot. `--device cpu` is
+`diagnostics.json`, `preflight.json`, and a `raw/` directory for the sanitized parser snapshot. `--device cpu` is
 always a valid configured path. `--device cuda` fails clearly when CUDA is unavailable;
 `--device auto` may fall back to CPU and records the actual device.
 
@@ -291,9 +315,9 @@ storage:
   path: "./data"
 ```
 
-Only the Docling primary is implemented in the explicit `parse-local` path. The configured
-fallback name and storage values remain future declarations pending Golden Dataset benchmarking,
-license approval, security promotion, and their own implementation phases.
+Both evaluation profiles are available through `parse-local`; neither is promoted as the permanent
+primary. The configured fallback and storage values remain future declarations pending measured
+Golden Dataset results, license approval, security promotion and their own implementation phases.
 
 ## Repository layout
 
@@ -304,7 +328,8 @@ license approval, security promotion, and their own implementation phases.
 │   └── adr/                     # Durable architecture decisions
 ├── schemas/document-ir/v1/      # Generated, committed wire schema
 ├── src/docparser/
-│   ├── adapters/parsers/docling/# Optional Docling-only SDK boundary
+│   ├── adapters/parsers/        # Optional Docling and Paddle SDK boundaries
+│   ├── evaluation/              # Golden manifest, metrics and local comparison runner
 │   ├── application/             # Benchmark-friendly parsing use case and diagnostics
 │   ├── cli/                     # Version/doctor/schema/parse-local commands
 │   ├── domain/, ports/          # Parser-neutral contract and protocol
@@ -312,7 +337,7 @@ license approval, security promotion, and their own implementation phases.
 │   ├── normalization/           # Neutral ParseResult to Canonical IR
 │   └── preflight/               # Deterministic CPU-only PDF signals
 ├── tests/
-│   ├── fixtures/docling/        # Small sanitized recorded parser contracts
+│   ├── fixtures/docling/        # Small synthetic parser contracts (not runtime recordings)
 │   ├── integration/             # Opt-in real Docling smoke
 │   ├── schema/                  # Runtime/JSON Schema parity and fixtures
 │   └── unit/                    # IR/parser/preflight/normalizer/CLI tests
@@ -354,8 +379,9 @@ runnable and all tests passing.
 | Status | Phases | Scope |
 |---|---|---|
 | Complete | 0–2 | Bootstrap, executable shell, complete Canonical IR graph, Schema, migrations |
-| Complete | 2.5 | Real PDF preflight, optional Docling primary, neutral normalization, diagnostics, local CLI |
-| Recommended next | Evaluation slice | Golden Dataset + Parsing Quality Evaluation |
+| Complete | 2.5 | Real PDF preflight, optional Docling baseline, neutral normalization, diagnostics, local CLI |
+| Complete | 2.6 | Native PDF evidence, PaddleOCR-VL candidate, accuracy metrics and benchmark foundation |
+| Recommended next | Quality calibration | Calibrate deterministic gates from observed benchmark failures |
 | Planned | 3–5 | Immutable local artifacts, SQLite job state, durable parser orchestration |
 | Planned | 6–8 | Secure PDF admission and production multipage normalization hardening |
 | Planned | 9–11 | Quality engine, selective fallback, transactional merge and revalidation |

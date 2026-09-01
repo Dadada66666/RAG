@@ -23,6 +23,11 @@ class ParserCapability(StrEnum):
     READING_ORDER = "READING_ORDER"
 
 
+class CoordinateUnit(StrEnum):
+    POINT = "POINT"
+    PIXEL = "PIXEL"
+
+
 class ParserHealthStatus(StrEnum):
     READY = "READY"
     UNAVAILABLE = "UNAVAILABLE"
@@ -118,6 +123,9 @@ class ParserDescriptor(NeutralModel):
     adapter_version: NonEmptyNfcString
     profile: NonEmptyNfcString
     capabilities: Annotated[tuple[ParserCapability, ...], Field(min_length=1)]
+    supported_scopes: Annotated[tuple[ParseScopeKind, ...], Field(min_length=1)] = (
+        ParseScopeKind.DOCUMENT,
+    )
     model_identifiers: tuple[NonEmptyNfcString, ...]
 
 
@@ -150,6 +158,22 @@ class ParserError(NeutralModel):
     retryable: bool
 
 
+class ParserExecutionError(RuntimeError):
+    """A complete parser call failed before a usable neutral result existed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "PARSER_FAILURE",
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.error = ParserError.model_validate(
+            {"code": code, "message": message, "retryable": retryable}
+        )
+
+
 class ExtractedElement(NeutralModel):
     source_object_id: NonEmptyNfcString
     element_type: ExtractedElementType
@@ -162,7 +186,13 @@ class ExtractedElement(NeutralModel):
     language: NfcString | None = None
     confidence: Confidence | None = None
     extraction_method: Literal[
-        "PDF_TEXT", "OCR", "LAYOUT_MODEL", "TABLE_MODEL", "FORMULA_MODEL", "IMPORTED"
+        "PDF_TEXT",
+        "OCR",
+        "VLM",
+        "LAYOUT_MODEL",
+        "TABLE_MODEL",
+        "FORMULA_MODEL",
+        "IMPORTED",
     ]
     parent_source_object_id: NfcString | None = None
     caption_for_source_object_id: NfcString | None = None
@@ -189,6 +219,8 @@ class ExtractedTable(NeutralModel):
     column_count: PositiveInt
     cells: Annotated[tuple[ExtractedTableCell, ...], Field(min_length=1)]
     caption_source_object_ids: tuple[NfcString, ...] = ()
+    continuation_from_source_object_id: NfcString | None = None
+    continuation_to_source_object_id: NfcString | None = None
     confidence: Confidence | None = None
 
 
@@ -197,6 +229,7 @@ class PageParseResult(NeutralModel):
     width: float = Field(strict=True, gt=0.0)
     height: float = Field(strict=True, gt=0.0)
     rotation: Literal[0, 90, 180, 270]
+    coordinate_unit: CoordinateUnit = CoordinateUnit.POINT
     elements: tuple[ExtractedElement, ...]
     tables: tuple[ExtractedTable, ...]
     warnings: tuple[NfcString, ...] = ()

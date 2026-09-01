@@ -14,6 +14,12 @@ from docparser.application.parsing import (
 )
 from docparser.config import load_config
 from docparser.domain.parser_contract import RuntimeDevice
+from docparser.evaluation import load_manifest, run_parsing_benchmark, write_benchmark_report
+from docparser.evaluation.schema import (
+    DEFAULT_EVALUATION_SCHEMA,
+    evaluation_schema_is_current,
+    write_evaluation_schema,
+)
 from docparser.ir.schema import (
     DEFAULT_SCHEMA_PATH,
     schema_is_current,
@@ -88,7 +94,9 @@ def parse_local(
             help="Local PDF to parse.",
         ),
     ],
-    parser: Annotated[str, typer.Option("--parser", help="Primary parser adapter.")] = "docling",
+    parser: Annotated[str, typer.Option("--parser", help="Parser profile under evaluation.")] = (
+        "docling-standard"
+    ),
     device: Annotated[
         RuntimeDevice,
         typer.Option("--device", help="auto, cpu, or cuda."),
@@ -98,7 +106,7 @@ def parse_local(
         typer.Option("--output", file_okay=False, resolve_path=True),
     ] = Path("./output"),
 ) -> None:
-    """Parse a local PDF through the Phase 2.5 development vertical slice."""
+    """Parse a local PDF through the Phase 2.6 development/evaluation slice."""
 
     try:
         outcome = parse_document_with_diagnostics(
@@ -117,6 +125,46 @@ def parse_local(
     )
 
 
+@app.command("benchmark-parsing")
+def benchmark_parsing(
+    manifest: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("--output", file_okay=False, resolve_path=True),
+    ] = Path("./benchmark-output"),
+    device: Annotated[
+        RuntimeDevice,
+        typer.Option("--device", help="auto, cpu, or cuda."),
+    ] = RuntimeDevice.AUTO,
+) -> None:
+    """Compare Docling and PaddleOCR-VL on the same local Golden manifest."""
+
+    try:
+        dataset = load_manifest(manifest)
+        report = run_parsing_benchmark(
+            dataset,
+            manifest_dir=manifest.parent,
+            device=device,
+        )
+        write_benchmark_report(report, output)
+    except (OSError, RuntimeError, ValueError, yaml.YAMLError, ValidationError) as exc:
+        typer.echo(f"benchmark failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"benchmark cases={len(report.results)} failures={len(report.failures)} "
+        f"recommendation={report.recommendation}; output={output}"
+    )
+
+
 @schema_app.command("generate")
 def schema_generate(
     output: Annotated[
@@ -127,6 +175,8 @@ def schema_generate(
     """Generate the committed Document IR schema from Pydantic models."""
 
     write_document_ir_schema(output)
+    if output == DEFAULT_SCHEMA_PATH:
+        write_evaluation_schema()
     typer.echo(f"generated {output.as_posix()}")
 
 
@@ -141,5 +191,10 @@ def schema_check(
 
     if not schema_is_current(schema_path):
         typer.echo(f"schema drift detected: {schema_path.as_posix()}", err=True)
+        raise typer.Exit(code=1)
+    if schema_path == DEFAULT_SCHEMA_PATH and not evaluation_schema_is_current():
+        typer.echo(
+            f"schema drift detected: {DEFAULT_EVALUATION_SCHEMA.as_posix()}", err=True
+        )
         raise typer.Exit(code=1)
     typer.echo(f"schema current: {schema_path.as_posix()}")

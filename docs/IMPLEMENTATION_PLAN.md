@@ -134,7 +134,7 @@ Reduce parser-integration risk before storage and job orchestration by proving a
 
 ### Files
 
-`src/docparser/{domain/parser_contract,ports/parsers,preflight,adapters/parsers/docling,normalization,application/parsing}.py`, the `parse-local` CLI, sanitized recorded fixtures, generated tiny PDFs, tests, and the existing IR/schema compatibility files.
+`src/docparser/{domain/parser_contract,ports/parsers,preflight,adapters/parsers/docling,normalization,application/parsing}.py`, the `parse-local` CLI, synthetic parser contract fixtures, generated tiny PDFs, tests, and the existing IR/schema compatibility files.
 
 ### Interfaces
 
@@ -152,11 +152,11 @@ Reduce parser-integration risk before storage and job orchestration by proving a
 
 ### Tests
 
-Parser contract and runtime tests; preflight fixtures; recorded Docling born-digital, two-column, scanned, table, merged-cell, rotated and Chinese/English cases; normalizer/provenance/failure tests; offline CLI/application tests; an opt-in real Docling CPU smoke test.
+Parser contract and runtime tests; preflight fixtures; synthetic Docling born-digital, two-column, scanned, table, merged-cell, rotated and Chinese/English contract cases; normalizer/provenance/failure tests; offline CLI/application tests; an opt-in real Docling CPU smoke test.
 
 ### Acceptance criteria
 
-Recorded parser evidence reaches a valid Canonical IR with complete block provenance; table structure is not flattened; CPU is a valid runtime; explicit unavailable CUDA fails clearly; diagnostics and local outputs are written; default lint, type, schema and tests require no network, GPU or model download.
+Synthetic parser contract evidence reaches a valid Canonical IR with complete block provenance; table structure is not flattened; CPU is a valid runtime; explicit unavailable CUDA fails clearly; diagnostics and local outputs are written; default lint, type, schema and tests require no network, GPU or model download.
 
 ### Dependencies
 
@@ -164,7 +164,46 @@ Phases 0–2. This risk-reduction increment intentionally precedes Phase 3 infra
 
 ### Risks
 
-Docling output drift, OCR/model license approval, weak cross-page table evidence, uncertain reading order and expensive first model acquisition. Mitigate with an exact adapter pin, recorded-contract fixtures, explicit unknowns/diagnostics and Golden Dataset evaluation before promotion.
+Docling output drift, OCR/model license approval, weak cross-page table evidence, uncertain reading order and expensive first model acquisition. Mitigate with an exact adapter pin, synthetic contract fixtures plus opt-in real runtime tests, explicit unknowns/diagnostics and Golden Dataset evaluation before promotion.
+
+## Phase 2.6 — Parsing Accuracy Foundation
+
+### Goal
+
+Move from “a real parser produces valid IR” to a measurable accuracy loop before storage and job orchestration. Preserve independent native PDF evidence, integrate the complete PaddleOCR-VL-1.6 pipeline as a second candidate, expose parser failure facts, and compare both candidates on the same development Golden Dataset. This remains development/evaluation quality and makes no 95% accuracy claim.
+
+### Files
+
+`src/docparser/{preflight,domain/parser_contract,adapters/parsers/paddleocr_vl,normalization,application,evaluation}`, `schemas/evaluation`, the `benchmark-parsing` CLI, fixture metadata, generated test PDFs, opt-in parser tests, README and parser/evaluation specifications.
+
+### Interfaces
+
+`NativeTextEvidence`, truthful `ParserDescriptor.supported_scopes`, `PaddleOCRVLParserAdapter`, `normalize_neutral_result`, `ParseDiagnostics`, `GoldenDatasetManifest`, `score_outcome`, `run_parsing_benchmark`, and `docparser benchmark-parsing`.
+
+### Implementation tasks
+
+- Preserve NFC native page text, conservative numeric tokens, extraction status, actual MediaBox/CropBox, rotation and image-only signals during deterministic preflight.
+- Keep `docling-standard` as the baseline and add the optional, exactly pinned complete `paddleocr-vl-1.6` pipeline; neither is promoted without local evidence.
+- Map Paddle page blocks and reading order into the neutral envelope; parse table HTML deterministically into logical cells with real rowspan/colspan and no fabricated cell geometry.
+- Normalize parser pixels/points into canonical CropBox page space and create cell-specific provenance even when precision is parent-region only.
+- Emit fact-only numeric, hierarchy, coordinate, extraction-method, table-precision and cross-page diagnostics.
+- Add a 20–50-page development Golden manifest/annotation schema and independent text, reading-order, table, numeric, provenance and performance metrics. Never collapse them into one parser score.
+
+### Tests
+
+Offline contract fixtures explicitly labeled synthetic; CropBox/MediaBox and 0/90/270 coordinate vectors; native numeric disagreement; Paddle table spans and provenance precision; benchmark/schema tests; opt-in real Docling and Paddle cases, including a real extracted table-cell assertion.
+
+### Acceptance criteria
+
+Both candidates pass through the same neutral-to-IR path; default CI remains offline; native evidence and actual PDF boxes survive; cell provenance precision is truthful; cross-page joins remain unresolved without explicit evidence; the benchmark emits JSON and Markdown comparisons by independent metric; Ruff, mypy, schema drift and pytest gates pass.
+
+### Dependencies
+
+Phases 0–2.5. This accuracy-risk increment intentionally precedes Phase 3 and does not reorder or remove Phases 3–16.
+
+### Risks
+
+No evaluation-approved corpus is committed, so accuracy cannot yet be claimed. Paddle model acquisition and CUDA compatibility remain opt-in; OCR-layer scans, page restructuring and cross-page tables require observed benchmark failures before stronger rules are added.
 
 ## Phase 3 — Local immutable artifact store
 

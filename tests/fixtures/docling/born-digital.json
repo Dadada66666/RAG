@@ -10,7 +10,7 @@
   "groups": [],
   "texts": [
     {"self_ref": "#/texts/0", "label": "title", "content_layer": "body", "text": "Annual Report", "prov": [{"page_no": 1, "bbox": {"l": 60.0, "t": 742.0, "r": 552.0, "b": 702.0, "coord_origin": "BOTTOMLEFT"}}]},
-    {"self_ref": "#/texts/1", "label": "paragraph", "content_layer": "body", "text": "Revenue increased during the year.", "prov": [{"page_no": 1, "bbox": {"l": 60.0, "t": 682.0, "r": 552.0, "b": 642.0, "coord_origin": "BOTTOMLEFT"}}]}
+    {"self_ref": "#/texts/1", "parent": {"cref": "#/texts/0"}, "label": "paragraph", "content_layer": "body", "text": "Revenue increased during the year.", "prov": [{"page_no": 1, "bbox": {"l": 60.0, "t": 682.0, "r": 552.0, "b": 642.0, "coord_origin": "BOTTOMLEFT"}}]}
   ],
   "pictures": [],
   "tables": []
