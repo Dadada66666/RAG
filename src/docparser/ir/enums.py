@@ -1,0 +1,107 @@
+"""Wire-stable Canonical IR enumerations."""
+
+from enum import StrEnum
+
+
+class BlockType(StrEnum):
+    TITLE = "TITLE"
+    HEADING = "HEADING"
+    PARAGRAPH = "PARAGRAPH"
+    LIST = "LIST"
+    LIST_ITEM = "LIST_ITEM"
+    TABLE = "TABLE"
+    FIGURE = "FIGURE"
+    FIGURE_CAPTION = "FIGURE_CAPTION"
+    EQUATION = "EQUATION"
+    CODE = "CODE"
+    QUOTE = "QUOTE"
+    FOOTNOTE = "FOOTNOTE"
+    HEADER = "HEADER"
+    FOOTER = "FOOTER"
+    PAGE_NUMBER = "PAGE_NUMBER"
+    UNKNOWN = "UNKNOWN"
+
+
+class ReadingOrderStatus(StrEnum):
+    IN_FLOW = "IN_FLOW"
+    DECORATIVE = "DECORATIVE"
+    UNRESOLVED = "UNRESOLVED"
+
+
+class TextDirection(StrEnum):
+    LTR = "LTR"
+    RTL = "RTL"
+    TTB = "TTB"
+    MIXED = "MIXED"
+    UNKNOWN = "UNKNOWN"
+
+
+class ConfidenceSource(StrEnum):
+    PARSER = "PARSER"
+    CALIBRATED = "CALIBRATED"
+    DERIVED = "DERIVED"
+
+
+class ExtractionMethod(StrEnum):
+    PDF_TEXT = "PDF_TEXT"
+    OCR = "OCR"
+    LAYOUT_MODEL = "LAYOUT_MODEL"
+    TABLE_MODEL = "TABLE_MODEL"
+    FORMULA_MODEL = "FORMULA_MODEL"
+    VLM = "VLM"
+    DETERMINISTIC_INFERENCE = "DETERMINISTIC_INFERENCE"
+    FALLBACK_REPLACEMENT = "FALLBACK_REPLACEMENT"
+    HUMAN_ANNOTATION = "HUMAN_ANNOTATION"
+    IMPORTED = "IMPORTED"
+
+
+class Determinism(StrEnum):
+    DETERMINISTIC = "DETERMINISTIC"
+    BEST_EFFORT = "BEST_EFFORT"
+    NONDETERMINISTIC = "NONDETERMINISTIC"
+
+
+class EquationFormat(StrEnum):
+    LATEX = "LATEX"
+    MATHML = "MATHML"
+    PLAIN = "PLAIN"
+    UNKNOWN = "UNKNOWN"
+
+
+class RelationshipType(StrEnum):
+    CONTAINS = "CONTAINS"
+    CAPTION_OF = "CAPTION_OF"
+    CONTINUES_ON = "CONTINUES_ON"
+    FOOTNOTE_OF = "FOOTNOTE_OF"
+    REFERENCES = "REFERENCES"
+    READING_NEXT = "READING_NEXT"
+    DERIVED_FROM = "DERIVED_FROM"
+    SUPERSEDES = "SUPERSEDES"
+    ALTERNATIVE_TO = "ALTERNATIVE_TO"
+
+
+class ChunkType(StrEnum):
+    PARENT = "PARENT"
+    CHILD = "CHILD"
+    TABLE = "TABLE"
+    FIGURE = "FIGURE"
+    EQUATION = "EQUATION"
+    REFERENCE = "REFERENCE"
+
+
+class QualityStatus(StrEnum):
+    PASS = "PASS"
+    DEGRADED = "DEGRADED"
+    FAIL = "FAIL"
+
+
+class IRShardKind(StrEnum):
+    PAGES = "PAGES"
+    SECTIONS = "SECTIONS"
+    TABLES = "TABLES"
+    FIGURES = "FIGURES"
+    EQUATIONS = "EQUATIONS"
+    REFERENCES = "REFERENCES"
+    CHUNKS = "CHUNKS"
+    RELATIONSHIPS = "RELATIONSHIPS"
+    PROVENANCE = "PROVENANCE"

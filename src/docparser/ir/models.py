@@ -3,15 +3,31 @@
 from __future__ import annotations
 
 import json
-from enum import StrEnum
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
+from pydantic import ConfigDict, Field, RootModel, field_validator, model_validator
 
+from docparser.ir.base import (
+    Confidence,
+    NonNegativeInt,
+    PageNumber,
+    PositiveInt,
+    StrictInt,
+    StrictIRModel,
+)
+from docparser.ir.chunks import Chunk
+from docparser.ir.content import Equation, Figure, QualitySummary, ReferenceEntry, Section
+from docparser.ir.enums import (
+    BlockType,
+    ConfidenceSource,
+    Determinism,
+    ExtractionMethod,
+    ReadingOrderStatus,
+    TextDirection,
+)
 from docparser.ir.geometry import (
     AffineTransform,
     BBox,
-    FiniteNumber,
     PageGeometry,
     Point,
     PositiveDimension,
@@ -32,6 +48,8 @@ from docparser.ir.ids import (
     TableId,
     generate_page_id,
 )
+from docparser.ir.relationships import Relationship
+from docparser.ir.tables import Table
 from docparser.ir.types import (
     MAX_DOCUMENT_EXTENSION_BYTES,
     BoundedJsonObject,
@@ -42,82 +60,6 @@ from docparser.ir.types import (
     Sha256Digest,
     UtcTimestamp,
 )
-
-StrictInt = Annotated[int, Field(strict=True)]
-PositiveInt = Annotated[StrictInt, Field(gt=0)]
-NonNegativeInt = Annotated[StrictInt, Field(ge=0)]
-PageNumber = Annotated[StrictInt, Field(ge=1)]
-Confidence = Annotated[FiniteNumber, Field(ge=0.0, le=1.0)]
-
-
-class StrictIRModel(BaseModel):
-    """Strict, closed base for every object-shaped IR wire model."""
-
-    model_config = ConfigDict(
-        extra="forbid",
-        strict=True,
-        frozen=True,
-        validate_default=True,
-        protected_namespaces=(),
-    )
-
-
-class BlockType(StrEnum):
-    TITLE = "TITLE"
-    HEADING = "HEADING"
-    PARAGRAPH = "PARAGRAPH"
-    LIST = "LIST"
-    LIST_ITEM = "LIST_ITEM"
-    TABLE = "TABLE"
-    FIGURE = "FIGURE"
-    FIGURE_CAPTION = "FIGURE_CAPTION"
-    EQUATION = "EQUATION"
-    CODE = "CODE"
-    QUOTE = "QUOTE"
-    FOOTNOTE = "FOOTNOTE"
-    HEADER = "HEADER"
-    FOOTER = "FOOTER"
-    PAGE_NUMBER = "PAGE_NUMBER"
-    UNKNOWN = "UNKNOWN"
-
-
-class ReadingOrderStatus(StrEnum):
-    IN_FLOW = "IN_FLOW"
-    DECORATIVE = "DECORATIVE"
-    UNRESOLVED = "UNRESOLVED"
-
-
-class TextDirection(StrEnum):
-    LTR = "LTR"
-    RTL = "RTL"
-    TTB = "TTB"
-    MIXED = "MIXED"
-    UNKNOWN = "UNKNOWN"
-
-
-class ConfidenceSource(StrEnum):
-    PARSER = "PARSER"
-    CALIBRATED = "CALIBRATED"
-    DERIVED = "DERIVED"
-
-
-class ExtractionMethod(StrEnum):
-    PDF_TEXT = "PDF_TEXT"
-    OCR = "OCR"
-    LAYOUT_MODEL = "LAYOUT_MODEL"
-    TABLE_MODEL = "TABLE_MODEL"
-    FORMULA_MODEL = "FORMULA_MODEL"
-    VLM = "VLM"
-    DETERMINISTIC_INFERENCE = "DETERMINISTIC_INFERENCE"
-    FALLBACK_REPLACEMENT = "FALLBACK_REPLACEMENT"
-    HUMAN_ANNOTATION = "HUMAN_ANNOTATION"
-    IMPORTED = "IMPORTED"
-
-
-class Determinism(StrEnum):
-    DETERMINISTIC = "DETERMINISTIC"
-    BEST_EFFORT = "BEST_EFFORT"
-    NONDETERMINISTIC = "NONDETERMINISTIC"
 
 
 class CharacterRange(RootModel[tuple[NonNegativeInt, PositiveInt]]):
@@ -182,6 +124,7 @@ class Block(StrictIRModel):
     provenance_ids: Annotated[tuple[ProvenanceId, ...], Field(min_length=1)]
     content_ref: TableId | FigureId | EquationId | None
     style: TextStyle | None
+    semantic_fingerprint: Sha256Digest | None = None
     extensions: Extensions = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -391,17 +334,25 @@ class DocumentIR(StrictIRModel):
     processing: ProcessingManifest
     page_count: Annotated[StrictInt, Field(ge=1, le=1000)]
     pages: Annotated[tuple[Page, ...], Field(min_length=1, max_length=1000)]
+    sections: tuple[Section, ...]
+    tables: tuple[Table, ...]
+    figures: tuple[Figure, ...]
+    equations: tuple[Equation, ...]
+    references: tuple[ReferenceEntry, ...]
+    chunks: tuple[Chunk, ...]
+    relationships: tuple[Relationship, ...]
     provenance: Annotated[tuple[ProvenanceRecord, ...], Field(min_length=1)]
+    quality_summary: QualitySummary
     extensions: Extensions = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_document(self) -> Self:
         self._validate_revision_lineage()
-        page_by_number = self._validate_pages()
-        provenance_by_id = self._validate_provenance_registry(page_by_number)
-        self._validate_entity_provenance(provenance_by_id)
-        self._validate_block_parents()
+        self._validate_pages()
         self._validate_extension_budget()
+        from docparser.ir.invariants import validate_document_invariants
+
+        validate_document_invariants(self)
         return self
 
     def _validate_revision_lineage(self) -> None:
@@ -412,7 +363,7 @@ class DocumentIR(StrictIRModel):
         if self.previous_revision_id == self.revision_id:
             raise ValueError("revision cannot be its own predecessor")
 
-    def _validate_pages(self) -> dict[int, Page]:
+    def _validate_pages(self) -> None:
         if len(self.pages) != self.page_count:
             raise ValueError("len(pages) must equal page_count")
         actual_numbers = tuple(page.page_number for page in self.pages)
@@ -432,111 +383,20 @@ class DocumentIR(StrictIRModel):
                 if block.block_id in block_ids:
                     raise ValueError("block_id must be unique within a document revision")
                 block_ids.add(block.block_id)
-        return {page.page_number: page for page in self.pages}
-
-    def _validate_provenance_registry(
-        self,
-        page_by_number: dict[int, Page],
-    ) -> dict[ProvenanceId, ProvenanceRecord]:
-        if self.source.source_artifact_id not in self.processing.artifact_ids:
-            raise ValueError("source artifact must be listed in processing.artifact_ids")
-        artifact_ids = set(self.processing.artifact_ids)
-        parser_run_ids = {run.parser_run_id for run in self.processing.parser_runs}
-        provenance_by_id: dict[ProvenanceId, ProvenanceRecord] = {}
-        for record in self.provenance:
-            if record.provenance_id in provenance_by_id:
-                raise ValueError("provenance_id must be unique")
-            provenance_by_id[record.provenance_id] = record
-            if record.document_id != self.document_id:
-                raise ValueError("provenance document_id must match DocumentIR.document_id")
-            if record.source_artifact_id not in artifact_ids:
-                raise ValueError("provenance source_artifact_id is not in processing manifest")
-            if record.parser_run_id is not None and record.parser_run_id not in parser_run_ids:
-                raise ValueError("provenance parser_run_id is not in processing manifest")
-            if record.page_number is not None:
-                page = page_by_number.get(record.page_number)
-                if page is None:
-                    raise ValueError("provenance page_number does not exist")
-                if record.bbox is not None and not page.geometry.contains_bbox(record.bbox):
-                    raise ValueError("provenance bbox lies outside canonical page bounds")
-                if record.to_canonical_transform is not None and record.source_bbox is not None:
-                    for corner in record.source_bbox.corners():
-                        if not record.to_canonical_transform.round_trip_within_tolerance(
-                            corner,
-                            page.geometry,
-                        ):
-                            raise ValueError("provenance transform exceeds round-trip tolerance")
-
-        for record in self.provenance:
-            for parent_id in record.parent_provenance_ids:
-                if parent_id not in provenance_by_id:
-                    raise ValueError("parent provenance reference does not resolve")
-                if parent_id == record.provenance_id:
-                    raise ValueError("provenance record cannot be its own parent")
-        self._validate_provenance_acyclic(provenance_by_id)
-        return provenance_by_id
-
-    @staticmethod
-    def _validate_provenance_acyclic(
-        provenance_by_id: dict[ProvenanceId, ProvenanceRecord],
-    ) -> None:
-        visiting: set[ProvenanceId] = set()
-        visited: set[ProvenanceId] = set()
-
-        def visit(provenance_id: ProvenanceId) -> None:
-            if provenance_id in visiting:
-                raise ValueError("provenance lineage contains a cycle")
-            if provenance_id in visited:
-                return
-            visiting.add(provenance_id)
-            for parent_id in provenance_by_id[provenance_id].parent_provenance_ids:
-                visit(parent_id)
-            visiting.remove(provenance_id)
-            visited.add(provenance_id)
-
-        for provenance_id in provenance_by_id:
-            visit(provenance_id)
-
-    def _validate_entity_provenance(
-        self,
-        provenance_by_id: dict[ProvenanceId, ProvenanceRecord],
-    ) -> None:
-        def require(ids: tuple[ProvenanceId, ...], page_number: int) -> None:
-            if len(set(ids)) != len(ids):
-                raise ValueError("provenance references must be unique per entity")
-            for provenance_id in ids:
-                record = provenance_by_id.get(provenance_id)
-                if record is None:
-                    raise ValueError("entity provenance reference does not resolve")
-                if record.page_number != page_number:
-                    raise ValueError("entity provenance must resolve to the same page")
-
-        for page in self.pages:
-            require(page.provenance_ids, page.page_number)
-            for block in page.blocks:
-                require(block.provenance_ids, page.page_number)
-                for span in block.text_spans:
-                    require(span.provenance_ids, page.page_number)
-
-    def _validate_block_parents(self) -> None:
-        blocks = {block.block_id: block for page in self.pages for block in page.blocks}
-        for block in blocks.values():
-            if block.parent_block_id is not None and block.parent_block_id not in blocks:
-                raise ValueError("parent_block_id does not resolve")
-
-        for block in blocks.values():
-            seen: set[BlockId] = set()
-            current = block
-            while current.parent_block_id is not None:
-                if current.block_id in seen:
-                    raise ValueError("parent_block_id graph contains a cycle")
-                seen.add(current.block_id)
-                current = blocks[current.parent_block_id]
 
     def _validate_extension_budget(self) -> None:
         extension_maps = [self.extensions]
         extension_maps.extend(page.extensions for page in self.pages)
         extension_maps.extend(block.extensions for page in self.pages for block in page.blocks)
+        extension_maps.extend(section.extensions for section in self.sections)
+        for table in self.tables:
+            extension_maps.append(table.extensions)
+            extension_maps.extend(segment.extensions for segment in table.segments)
+            extension_maps.extend(cell.extensions for cell in table.cells)
+        extension_maps.extend(figure.extensions for figure in self.figures)
+        extension_maps.extend(equation.extensions for equation in self.equations)
+        extension_maps.extend(reference.extensions for reference in self.references)
+        extension_maps.extend(relationship.extensions for relationship in self.relationships)
         total_bytes = sum(
             len(
                 json.dumps(

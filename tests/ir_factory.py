@@ -1,33 +1,42 @@
-"""Deterministic Phase 1 IR fixtures for offline tests."""
+"""Deterministic Canonical IR fixtures for offline tests."""
 
 from __future__ import annotations
 
 from uuid import UUID
 
+from docparser.ir.content import IssueCounts, QualitySummary
+from docparser.ir.enums import (
+    BlockType,
+    ConfidenceSource,
+    ExtractionMethod,
+    QualityStatus,
+    ReadingOrderStatus,
+    TextDirection,
+)
 from docparser.ir.geometry import AffineTransform, BBox, Rotation
 from docparser.ir.ids import (
     ArtifactId,
     BlockId,
     DocumentId,
+    EquationId,
+    FigureId,
     ProvenanceId,
+    QualityReportId,
+    RelationshipId,
     RevisionId,
+    TableId,
     generate_document_id,
     generate_page_id,
     generate_uuid5_id,
 )
 from docparser.ir.models import (
     Block,
-    BlockType,
-    ConfidenceSource,
     DocumentIR,
     DocumentMetadata,
-    ExtractionMethod,
     Page,
     ProcessingManifest,
     ProvenanceRecord,
-    ReadingOrderStatus,
     SourceDocument,
-    TextDirection,
     TextSpan,
     TextStyle,
 )
@@ -39,6 +48,7 @@ CONFIG_DIGEST = Sha256Digest(f"sha256:{'b' * 64}")
 DOCUMENT_ID = generate_document_id(TEST_NAMESPACE, "tenant-acme", SOURCE_DIGEST)
 REVISION_ID = RevisionId("rev_018bcfe5-6800-7000-8000-000000000001")
 ARTIFACT_ID = ArtifactId("art_018bcfe5-6800-7000-8000-000000000002")
+QUALITY_REPORT_ID = QualityReportId("qrep_018bcfe5-6800-7000-8000-000000000003")
 
 
 def _deterministic_id(id_type: type[BlockId] | type[ProvenanceId], name: str) -> str:
@@ -52,15 +62,20 @@ BLOCK_PROVENANCE_ID = ProvenanceId(_deterministic_id(ProvenanceId, "block-proven
 def make_block(
     *,
     ordinal: int = 0,
+    id_suffix: str | None = None,
+    page_number: int = 1,
+    block_type: BlockType | None = None,
     text: str | None = "年度报告 / Annual Report",
     bbox: BBox | None = None,
     text_spans: tuple[TextSpan, ...] = (),
+    relationship_ids: tuple[RelationshipId, ...] = (),
     provenance_ids: tuple[ProvenanceId, ...] = (BLOCK_PROVENANCE_ID,),
+    content_ref: TableId | FigureId | EquationId | None = None,
 ) -> Block:
     return Block(
-        block_id=BlockId(_deterministic_id(BlockId, f"block-{ordinal}")),
-        block_type=BlockType.TITLE if ordinal == 0 else BlockType.PARAGRAPH,
-        page_number=1,
+        block_id=BlockId(_deterministic_id(BlockId, id_suffix or f"block-{ordinal}")),
+        block_type=block_type or (BlockType.TITLE if ordinal == 0 else BlockType.PARAGRAPH),
+        page_number=page_number,
         bbox=bbox or BBox((50.0, 60.0 + ordinal * 50.0, 545.0, 100.0 + ordinal * 50.0)),
         polygon=None,
         reading_order=ordinal,
@@ -72,9 +87,9 @@ def make_block(
         confidence=0.95,
         confidence_source=ConfidenceSource.CALIBRATED,
         parent_block_id=None,
-        relationship_ids=(),
+        relationship_ids=relationship_ids,
         provenance_ids=provenance_ids,
-        content_ref=None,
+        content_ref=content_ref,
         style=TextStyle(
             font_family="Noto Sans CJK",
             font_size_pt=18.0,
@@ -182,14 +197,25 @@ def make_document(
                 media_box_original=page_bbox,
                 crop_box_original=page_bbox,
                 blocks=selected_blocks,
-                page_metadata={
-                    "document_type": "BORN_DIGITAL",
-                    "text_density": 0.22,
-                },
+                page_metadata={"document_type": "BORN_DIGITAL", "text_density": 0.22},
                 provenance_ids=(PAGE_PROVENANCE_ID,),
                 extensions={},
             ),
         ),
+        sections=(),
+        tables=(),
+        figures=(),
+        equations=(),
+        references=(),
+        chunks=(),
+        relationships=(),
         provenance=provenance,
+        quality_summary=QualitySummary(
+            quality_report_id=QUALITY_REPORT_ID,
+            score=1.0,
+            status=QualityStatus.PASS,
+            issue_counts=IssueCounts(INFO=0, WARNING=0, ERROR=0, CRITICAL=0),
+            publishable=True,
+        ),
         extensions={},
     )

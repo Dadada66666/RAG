@@ -6,7 +6,7 @@ import secrets
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, ClassVar, Self, TypeVar
+from typing import Any, ClassVar, Self, TypeAlias, TypeVar
 from uuid import UUID, uuid5
 
 from pydantic import GetCoreSchemaHandler
@@ -14,9 +14,8 @@ from pydantic_core import CoreSchema, core_schema
 
 from docparser.ir.types import Sha256Digest
 
-_UUID_PATTERN = (
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
-)
+_UUID_PREFIX_PATTERN = r"[0-9a-f]{8}-[0-9a-f]{4}"
+_UUID_SUFFIX_PATTERN = r"[89ab][0-9a-f]{3}-[0-9a-f]{12}"
 
 
 class OpaqueId(str):
@@ -54,9 +53,14 @@ class OpaqueId(str):
         handler: GetCoreSchemaHandler,
     ) -> CoreSchema:
         del source_type, handler
+        version_nibbles = "".join(str(version) for version in sorted(cls.allowed_versions))
+        uuid_pattern = (
+            rf"{_UUID_PREFIX_PATTERN}-[{version_nibbles}][0-9a-f]{{3}}-"
+            rf"{_UUID_SUFFIX_PATTERN}"
+        )
         return core_schema.no_info_after_validator_function(
             cls,
-            core_schema.str_schema(strict=True, pattern=rf"^{cls.prefix}_{_UUID_PATTERN}$"),
+            core_schema.str_schema(strict=True, pattern=rf"^{cls.prefix}_{uuid_pattern}$"),
             serialization=core_schema.to_string_ser_schema(),
         )
 
@@ -114,6 +118,54 @@ class FigureId(OpaqueId):
 class EquationId(OpaqueId):
     prefix = "eq"
     allowed_versions = frozenset({5})
+
+
+class SectionId(OpaqueId):
+    prefix = "sec"
+    allowed_versions = frozenset({5})
+
+
+class TableSegmentId(OpaqueId):
+    prefix = "tseg"
+    allowed_versions = frozenset({5})
+
+
+class TableCellId(OpaqueId):
+    prefix = "cell"
+    allowed_versions = frozenset({5})
+
+
+class ReferenceId(OpaqueId):
+    prefix = "ref"
+    allowed_versions = frozenset({5})
+
+
+class ChunkId(OpaqueId):
+    prefix = "chk"
+    allowed_versions = frozenset({5})
+
+
+class QualityReportId(OpaqueId):
+    prefix = "qrep"
+    allowed_versions = frozenset({7})
+
+
+EntityId: TypeAlias = (  # noqa: UP040 - mypy 1.11 lacks PEP 695 support
+    DocumentId
+    | PageId
+    | BlockId
+    | SectionId
+    | TableId
+    | TableSegmentId
+    | TableCellId
+    | FigureId
+    | EquationId
+    | ReferenceId
+    | ChunkId
+)
+ContentEntityId: TypeAlias = (  # noqa: UP040 - mypy 1.11 lacks PEP 695 support
+    SectionId | TableId | FigureId | EquationId | ReferenceId
+)
 
 
 Uuid5Id = TypeVar("Uuid5Id", bound=OpaqueId)

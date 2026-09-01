@@ -1,0 +1,80 @@
+[
+  {
+    "name": "table-cell-out-of-bounds",
+    "mutations": [
+      {"path": ["tables", 0, "cells", 0, "row_index"], "value": 3}
+    ],
+    "error": "cell span exceeds logical table dimensions"
+  },
+  {
+    "name": "table-cells-overlap",
+    "mutations": [
+      {"path": ["tables", 0, "cells", 1, "row_index"], "value": 0},
+      {"path": ["tables", 0, "cells", 1, "column_index"], "value": 0}
+    ],
+    "error": "table cells overlap"
+  },
+  {
+    "name": "missing-caption-block",
+    "mutations": [
+      {
+        "path": ["figures", 0, "caption_block_ids", 0],
+        "value": "blk_bb632dca-dfb7-5650-80dc-26ab96643e2b"
+      }
+    ],
+    "error": "caption_block_id"
+  },
+  {
+    "name": "broken-relationship-target",
+    "mutations": [
+      {
+        "path": ["relationships", 0, "target_id"],
+        "value": "sec_a5bab6c1-d8f9-5f89-b185-a4eca0395c44"
+      }
+    ],
+    "error": "relationship source or target"
+  },
+  {
+    "name": "section-cycle",
+    "mutations": [],
+    "cycle_section_id": "sec_a5bab6c1-d8f9-5f89-b185-a4eca0395c44",
+    "error": "section graph contains a cycle"
+  },
+  {
+    "name": "section-invalid-page-range",
+    "mutations": [
+      {"path": ["sections", 0, "page_end"], "value": 3}
+    ],
+    "error": "section page range"
+  },
+  {
+    "name": "table-segment-missing-block",
+    "mutations": [
+      {
+        "path": ["tables", 0, "segments", 0, "block_id"],
+        "value": "blk_bb632dca-dfb7-5650-80dc-26ab96643e2b"
+      }
+    ],
+    "error": "table segment block_id"
+  },
+  {
+    "name": "chunk-missing-source-block",
+    "mutations": [
+      {
+        "path": ["chunks", 0, "source_block_ids", 0],
+        "value": "blk_bb632dca-dfb7-5650-80dc-26ab96643e2b"
+      }
+    ],
+    "error": "chunk source_block_id"
+  },
+  {
+    "name": "broken-provenance",
+    "mutations": [
+      {
+        "path": ["equations", 0, "provenance_ids", 0],
+        "value": "prov_3dccbaf8-98c2-5dd5-8479-eefe0589484e"
+      }
+    ],
+    "error": "provenance reference"
+  }
+]

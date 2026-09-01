@@ -31,7 +31,11 @@ def _transform_number(value: object) -> float:
 
 FiniteNumber = Annotated[float, BeforeValidator(_finite_number)]
 Coordinate = Annotated[float, BeforeValidator(_coordinate)]
-PositiveDimension = Annotated[Coordinate, Field(gt=0.0)]
+PositiveDimension = Annotated[
+    float,
+    Field(gt=0.0),
+    BeforeValidator(_coordinate),
+]
 TransformNumber = Annotated[float, BeforeValidator(_transform_number)]
 
 

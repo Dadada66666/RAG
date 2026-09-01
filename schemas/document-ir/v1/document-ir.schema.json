@@ -55,7 +55,7 @@
           "$ref": "#/$defs/BBox"
         },
         "block_id": {
-          "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
           "title": "Block Id",
           "type": "string"
         },
@@ -65,8 +65,8 @@
         "confidence": {
           "anyOf": [
             {
-              "ge": 0.0,
-              "le": 1.0,
+              "maximum": 1.0,
+              "minimum": 0.0,
               "type": "number"
             },
             {
@@ -88,15 +88,15 @@
         "content_ref": {
           "anyOf": [
             {
-              "pattern": "^tbl_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "pattern": "^tbl_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
               "type": "string"
             },
             {
-              "pattern": "^fig_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "pattern": "^fig_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
               "type": "string"
             },
             {
-              "pattern": "^eq_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "pattern": "^eq_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
               "type": "string"
             },
             {
@@ -135,7 +135,7 @@
         "parent_block_id": {
           "anyOf": [
             {
-              "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
               "type": "string"
             },
             {
@@ -162,7 +162,7 @@
         },
         "provenance_ids": {
           "items": {
-            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
             "type": "string"
           },
           "minItems": 1,
@@ -186,11 +186,24 @@
         },
         "relationship_ids": {
           "items": {
-            "pattern": "^rel_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "pattern": "^rel_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
             "type": "string"
           },
           "title": "Relationship Ids",
           "type": "array"
+        },
+        "semantic_fingerprint": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Fingerprint"
         },
         "style": {
           "anyOf": [
@@ -286,6 +299,250 @@
       "title": "CharacterRange",
       "type": "array"
     },
+    "Chunk": {
+      "additionalProperties": false,
+      "properties": {
+        "bboxes": {
+          "items": {
+            "$ref": "#/$defs/ChunkBBox"
+          },
+          "minItems": 1,
+          "title": "Bboxes",
+          "type": "array"
+        },
+        "chunk_config_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Chunk Config Hash",
+          "type": "string"
+        },
+        "chunk_id": {
+          "pattern": "^chk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "chunk_schema_version": {
+          "const": "1.0.0",
+          "enum": [
+            "1.0.0"
+          ],
+          "title": "Chunk Schema Version",
+          "type": "string"
+        },
+        "chunk_type": {
+          "$ref": "#/$defs/ChunkType"
+        },
+        "chunker_version": {
+          "minLength": 1,
+          "title": "Chunker Version",
+          "type": "string"
+        },
+        "content_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "content_types": {
+          "items": {
+            "$ref": "#/$defs/BlockType"
+          },
+          "minItems": 1,
+          "title": "Content Types",
+          "type": "array"
+        },
+        "document_id": {
+          "pattern": "^doc_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "embedding_eligible": {
+          "title": "Embedding Eligible",
+          "type": "boolean"
+        },
+        "embedding_input_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Embedding Input Digest",
+          "type": "string"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Heading Path",
+          "type": "array"
+        },
+        "ir_revision_id": {
+          "pattern": "^rev_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Ir Revision Id",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 64,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "page_end": {
+          "minimum": 1,
+          "title": "Page End",
+          "type": "integer"
+        },
+        "page_start": {
+          "minimum": 1,
+          "title": "Page Start",
+          "type": "integer"
+        },
+        "parent_chunk_id": {
+          "anyOf": [
+            {
+              "pattern": "^chk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Chunk Id"
+        },
+        "parent_section_id": {
+          "anyOf": [
+            {
+              "pattern": "^sec_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Section Id"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "source_block_ids": {
+          "items": {
+            "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Block Ids",
+          "type": "array"
+        },
+        "source_entity_ids": {
+          "items": {
+            "anyOf": [
+              {
+                "pattern": "^sec_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^tbl_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^fig_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^eq_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^ref_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Source Entity Ids",
+          "type": "array"
+        },
+        "sparse_eligible": {
+          "title": "Sparse Eligible",
+          "type": "boolean"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "token_count": {
+          "minimum": 0,
+          "title": "Token Count",
+          "type": "integer"
+        },
+        "tokenizer_id": {
+          "minLength": 1,
+          "title": "Tokenizer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "document_id",
+        "ir_revision_id",
+        "chunk_schema_version",
+        "chunker_version",
+        "chunk_config_hash",
+        "chunk_type",
+        "parent_chunk_id",
+        "text",
+        "parent_section_id",
+        "heading_path",
+        "page_start",
+        "page_end",
+        "source_block_ids",
+        "source_entity_ids",
+        "bboxes",
+        "content_types",
+        "token_count",
+        "tokenizer_id",
+        "content_digest",
+        "embedding_input_digest",
+        "embedding_eligible",
+        "sparse_eligible",
+        "metadata",
+        "provenance_ids"
+      ],
+      "title": "Chunk",
+      "type": "object"
+    },
+    "ChunkBBox": {
+      "additionalProperties": false,
+      "properties": {
+        "bbox": {
+          "$ref": "#/$defs/BBox"
+        },
+        "page_number": {
+          "minimum": 1,
+          "title": "Page Number",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page_number",
+        "bbox"
+      ],
+      "title": "ChunkBBox",
+      "type": "object"
+    },
+    "ChunkType": {
+      "enum": [
+        "PARENT",
+        "CHILD",
+        "TABLE",
+        "FIGURE",
+        "EQUATION",
+        "REFERENCE"
+      ],
+      "title": "ChunkType",
+      "type": "string"
+    },
     "ConfidenceSource": {
       "enum": [
         "PARSER",
@@ -362,6 +619,93 @@
       "title": "DocumentMetadata",
       "type": "object"
     },
+    "Equation": {
+      "additionalProperties": false,
+      "properties": {
+        "block_id": {
+          "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Block Id",
+          "type": "string"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "equation_id": {
+          "pattern": "^eq_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Equation Id",
+          "type": "string"
+        },
+        "extensions": {
+          "additionalProperties": false,
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_-]*){2,}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "format": {
+          "$ref": "#/$defs/EquationFormat"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "equation_id",
+        "block_id",
+        "text",
+        "format",
+        "label",
+        "provenance_ids",
+        "confidence"
+      ],
+      "title": "Equation",
+      "type": "object"
+    },
+    "EquationFormat": {
+      "enum": [
+        "LATEX",
+        "MATHML",
+        "PLAIN",
+        "UNKNOWN"
+      ],
+      "title": "EquationFormat",
+      "type": "string"
+    },
     "ExtractionMethod": {
       "enum": [
         "PDF_TEXT",
@@ -377,6 +721,127 @@
       ],
       "title": "ExtractionMethod",
       "type": "string"
+    },
+    "Figure": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_artifact_ids": {
+          "items": {
+            "pattern": "^art_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Asset Artifact Ids",
+          "type": "array"
+        },
+        "block_ids": {
+          "items": {
+            "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Block Ids",
+          "type": "array"
+        },
+        "caption_block_ids": {
+          "items": {
+            "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Caption Block Ids",
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "extensions": {
+          "additionalProperties": false,
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_-]*){2,}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "figure_id": {
+          "pattern": "^fig_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Figure Id",
+          "type": "string"
+        },
+        "page_numbers": {
+          "items": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Page Numbers",
+          "type": "array"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "figure_id",
+        "block_ids",
+        "caption_block_ids",
+        "page_numbers",
+        "asset_artifact_ids",
+        "provenance_ids",
+        "confidence"
+      ],
+      "title": "Figure",
+      "type": "object"
+    },
+    "IssueCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "CRITICAL": {
+          "minimum": 0,
+          "title": "Critical",
+          "type": "integer"
+        },
+        "ERROR": {
+          "minimum": 0,
+          "title": "Error",
+          "type": "integer"
+        },
+        "INFO": {
+          "minimum": 0,
+          "title": "Info",
+          "type": "integer"
+        },
+        "WARNING": {
+          "minimum": 0,
+          "title": "Warning",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ],
+      "title": "IssueCounts",
+      "type": "object"
     },
     "JsonValue": {},
     "ModelIdentifier": {
@@ -451,7 +916,7 @@
           "type": "object"
         },
         "height": {
-          "gt": 0.0,
+          "exclusiveMinimum": 0.0,
           "title": "Height",
           "type": "number"
         },
@@ -466,7 +931,7 @@
           ]
         },
         "page_id": {
-          "pattern": "^page_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "pattern": "^page_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
           "title": "Page Id",
           "type": "string"
         },
@@ -485,7 +950,7 @@
         },
         "provenance_ids": {
           "items": {
-            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
             "type": "string"
           },
           "minItems": 1,
@@ -496,7 +961,7 @@
           "$ref": "#/$defs/Rotation"
         },
         "width": {
-          "gt": 0.0,
+          "exclusiveMinimum": 0.0,
           "title": "Width",
           "type": "number"
         }
@@ -563,7 +1028,7 @@
           "type": "string"
         },
         "parser_run_id": {
-          "pattern": "^prun_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "pattern": "^prun_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
           "title": "Parser Run Id",
           "type": "string"
         },
@@ -670,7 +1135,7 @@
       "properties": {
         "artifact_ids": {
           "items": {
-            "pattern": "^art_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "pattern": "^art_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
             "type": "string"
           },
           "minItems": 1,
@@ -760,8 +1225,8 @@
         "confidence": {
           "anyOf": [
             {
-              "ge": 0.0,
-              "le": 1.0,
+              "maximum": 1.0,
+              "minimum": 0.0,
               "type": "number"
             },
             {
@@ -771,7 +1236,7 @@
           "title": "Confidence"
         },
         "document_id": {
-          "pattern": "^doc_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "pattern": "^doc_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
           "title": "Document Id",
           "type": "string"
         },
@@ -814,7 +1279,7 @@
         },
         "parent_provenance_ids": {
           "items": {
-            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
             "type": "string"
           },
           "title": "Parent Provenance Ids",
@@ -823,7 +1288,7 @@
         "parser_run_id": {
           "anyOf": [
             {
-              "pattern": "^prun_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "pattern": "^prun_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
               "type": "string"
             },
             {
@@ -844,12 +1309,12 @@
           "title": "Parser Version"
         },
         "provenance_id": {
-          "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
           "title": "Provenance Id",
           "type": "string"
         },
         "source_artifact_id": {
-          "pattern": "^art_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "pattern": "^art_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
           "title": "Source Artifact Id",
           "type": "string"
         },
@@ -918,6 +1383,50 @@
       "title": "ProvenanceRecord",
       "type": "object"
     },
+    "QualityStatus": {
+      "enum": [
+        "PASS",
+        "DEGRADED",
+        "FAIL"
+      ],
+      "title": "QualityStatus",
+      "type": "string"
+    },
+    "QualitySummary": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_counts": {
+          "$ref": "#/$defs/IssueCounts"
+        },
+        "publishable": {
+          "title": "Publishable",
+          "type": "boolean"
+        },
+        "quality_report_id": {
+          "pattern": "^qrep_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Quality Report Id",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "status": {
+          "$ref": "#/$defs/QualityStatus"
+        }
+      },
+      "required": [
+        "quality_report_id",
+        "score",
+        "status",
+        "issue_counts",
+        "publishable"
+      ],
+      "title": "QualitySummary",
+      "type": "object"
+    },
     "ReadingOrderStatus": {
       "enum": [
         "IN_FLOW",
@@ -925,6 +1434,264 @@
         "UNRESOLVED"
       ],
       "title": "ReadingOrderStatus",
+      "type": "string"
+    },
+    "ReferenceEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "extensions": {
+          "additionalProperties": false,
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_-]*){2,}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "field_values": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 64,
+          "title": "Field Values",
+          "type": "object"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "raw_text": {
+          "minLength": 1,
+          "title": "Raw Text",
+          "type": "string"
+        },
+        "reference_id": {
+          "pattern": "^ref_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Reference Id",
+          "type": "string"
+        },
+        "source_block_ids": {
+          "items": {
+            "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Block Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "reference_id",
+        "label",
+        "raw_text",
+        "field_values",
+        "source_block_ids",
+        "provenance_ids",
+        "confidence"
+      ],
+      "title": "ReferenceEntry",
+      "type": "object"
+    },
+    "Relationship": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "extensions": {
+          "additionalProperties": false,
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_-]*){2,}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 64,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "relationship_id": {
+          "pattern": "^rel_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Relationship Id",
+          "type": "string"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "pattern": "^doc_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^page_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^sec_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^tbl_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^tseg_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^cell_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^fig_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^eq_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^ref_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^chk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          ],
+          "title": "Source Id"
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "pattern": "^doc_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^page_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^sec_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^tbl_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^tseg_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^cell_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^fig_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^eq_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^ref_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "pattern": "^chk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          ],
+          "title": "Target Id"
+        },
+        "type": {
+          "$ref": "#/$defs/RelationshipType"
+        }
+      },
+      "required": [
+        "relationship_id",
+        "type",
+        "source_id",
+        "target_id",
+        "confidence",
+        "provenance_ids",
+        "metadata"
+      ],
+      "title": "Relationship",
+      "type": "object"
+    },
+    "RelationshipType": {
+      "enum": [
+        "CONTAINS",
+        "CAPTION_OF",
+        "CONTINUES_ON",
+        "FOOTNOTE_OF",
+        "REFERENCES",
+        "READING_NEXT",
+        "DERIVED_FROM",
+        "SUPERSEDES",
+        "ALTERNATIVE_TO"
+      ],
+      "title": "RelationshipType",
       "type": "string"
     },
     "Rotation": {
@@ -936,6 +1703,105 @@
       ],
       "title": "Rotation",
       "type": "integer"
+    },
+    "Section": {
+      "additionalProperties": false,
+      "properties": {
+        "child_section_ids": {
+          "items": {
+            "pattern": "^sec_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Child Section Ids",
+          "type": "array"
+        },
+        "content_block_ids": {
+          "items": {
+            "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Content Block Ids",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": false,
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_-]*){2,}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "heading_block_id": {
+          "anyOf": [
+            {
+              "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Heading Block Id"
+        },
+        "level": {
+          "maximum": 12,
+          "minimum": 1,
+          "title": "Level",
+          "type": "integer"
+        },
+        "page_end": {
+          "minimum": 1,
+          "title": "Page End",
+          "type": "integer"
+        },
+        "page_start": {
+          "minimum": 1,
+          "title": "Page Start",
+          "type": "integer"
+        },
+        "parent_section_id": {
+          "anyOf": [
+            {
+              "pattern": "^sec_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Section Id"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "section_id": {
+          "pattern": "^sec_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Section Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section_id",
+        "level",
+        "heading_block_id",
+        "parent_section_id",
+        "child_section_ids",
+        "content_block_ids",
+        "page_start",
+        "page_end",
+        "provenance_ids"
+      ],
+      "title": "Section",
+      "type": "object"
     },
     "SourceDocument": {
       "additionalProperties": false,
@@ -990,7 +1856,7 @@
           "type": "integer"
         },
         "source_artifact_id": {
-          "pattern": "^art_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "pattern": "^art_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
           "title": "Source Artifact Id",
           "type": "string"
         },
@@ -1016,6 +1882,347 @@
         "ingested_at"
       ],
       "title": "SourceDocument",
+      "type": "object"
+    },
+    "Table": {
+      "additionalProperties": false,
+      "properties": {
+        "caption_block_ids": {
+          "items": {
+            "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Caption Block Ids",
+          "type": "array"
+        },
+        "cells": {
+          "items": {
+            "$ref": "#/$defs/TableCell"
+          },
+          "minItems": 1,
+          "title": "Cells",
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "extensions": {
+          "additionalProperties": false,
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_-]*){2,}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "header_row_indices": {
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Header Row Indices",
+          "type": "array"
+        },
+        "logical_column_count": {
+          "exclusiveMinimum": 0,
+          "title": "Logical Column Count",
+          "type": "integer"
+        },
+        "logical_row_count": {
+          "exclusiveMinimum": 0,
+          "title": "Logical Row Count",
+          "type": "integer"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "segments": {
+          "items": {
+            "$ref": "#/$defs/TableSegment"
+          },
+          "minItems": 1,
+          "title": "Segments",
+          "type": "array"
+        },
+        "table_id": {
+          "pattern": "^tbl_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Table Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "table_id",
+        "logical_row_count",
+        "logical_column_count",
+        "segments",
+        "cells",
+        "caption_block_ids",
+        "header_row_indices",
+        "provenance_ids",
+        "confidence"
+      ],
+      "title": "Table",
+      "type": "object"
+    },
+    "TableCell": {
+      "additionalProperties": false,
+      "properties": {
+        "bbox": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BBox"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cell_id": {
+          "pattern": "^cell_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Cell Id",
+          "type": "string"
+        },
+        "column_index": {
+          "minimum": 0,
+          "title": "Column Index",
+          "type": "integer"
+        },
+        "column_span": {
+          "exclusiveMinimum": 0,
+          "title": "Column Span",
+          "type": "integer"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "extensions": {
+          "additionalProperties": false,
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_-]*){2,}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "fragments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TableCellFragment"
+          },
+          "title": "Fragments",
+          "type": "array"
+        },
+        "is_header": {
+          "title": "Is Header",
+          "type": "boolean"
+        },
+        "page_number": {
+          "minimum": 1,
+          "title": "Page Number",
+          "type": "integer"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "row_index": {
+          "minimum": 0,
+          "title": "Row Index",
+          "type": "integer"
+        },
+        "row_span": {
+          "exclusiveMinimum": 0,
+          "title": "Row Span",
+          "type": "integer"
+        },
+        "source_block_ids": {
+          "items": {
+            "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Source Block Ids",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cell_id",
+        "row_index",
+        "column_index",
+        "row_span",
+        "column_span",
+        "text",
+        "is_header",
+        "page_number",
+        "bbox",
+        "source_block_ids",
+        "confidence",
+        "provenance_ids"
+      ],
+      "title": "TableCell",
+      "type": "object"
+    },
+    "TableCellFragment": {
+      "additionalProperties": false,
+      "properties": {
+        "bbox": {
+          "$ref": "#/$defs/BBox"
+        },
+        "page_number": {
+          "minimum": 1,
+          "title": "Page Number",
+          "type": "integer"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "segment_id": {
+          "pattern": "^tseg_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Segment Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "segment_id",
+        "page_number",
+        "bbox",
+        "provenance_ids"
+      ],
+      "title": "TableCellFragment",
+      "type": "object"
+    },
+    "TableSegment": {
+      "additionalProperties": false,
+      "properties": {
+        "bbox": {
+          "$ref": "#/$defs/BBox"
+        },
+        "block_id": {
+          "pattern": "^blk_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Block Id",
+          "type": "string"
+        },
+        "continued_from_segment_id": {
+          "anyOf": [
+            {
+              "pattern": "^tseg_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Continued From Segment Id"
+        },
+        "continues_to_segment_id": {
+          "anyOf": [
+            {
+              "pattern": "^tseg_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Continues To Segment Id"
+        },
+        "extensions": {
+          "additionalProperties": false,
+          "maxProperties": 64,
+          "patternProperties": {
+            "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_-]*){2,}$": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "page_number": {
+          "minimum": 1,
+          "title": "Page Number",
+          "type": "integer"
+        },
+        "provenance_ids": {
+          "items": {
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance Ids",
+          "type": "array"
+        },
+        "row_end_exclusive": {
+          "exclusiveMinimum": 0,
+          "title": "Row End Exclusive",
+          "type": "integer"
+        },
+        "row_start": {
+          "minimum": 0,
+          "title": "Row Start",
+          "type": "integer"
+        },
+        "segment_id": {
+          "pattern": "^tseg_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Segment Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "segment_id",
+        "page_number",
+        "bbox",
+        "block_id",
+        "row_start",
+        "row_end_exclusive",
+        "continued_from_segment_id",
+        "continues_to_segment_id",
+        "provenance_ids"
+      ],
+      "title": "TableSegment",
       "type": "object"
     },
     "TextDirection": {
@@ -1060,7 +2267,7 @@
         },
         "provenance_ids": {
           "items": {
-            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "pattern": "^prov_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
             "type": "string"
           },
           "minItems": 1,
@@ -1124,7 +2331,7 @@
         "font_size_pt": {
           "anyOf": [
             {
-              "gt": 0.0,
+              "exclusiveMinimum": 0.0,
               "type": "number"
             },
             {
@@ -1167,15 +2374,29 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "chunks": {
+      "items": {
+        "$ref": "#/$defs/Chunk"
+      },
+      "title": "Chunks",
+      "type": "array"
+    },
     "created_at": {
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$",
       "title": "Created At",
       "type": "string"
     },
     "document_id": {
-      "pattern": "^doc_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "pattern": "^doc_[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "title": "Document Id",
       "type": "string"
+    },
+    "equations": {
+      "items": {
+        "$ref": "#/$defs/Equation"
+      },
+      "title": "Equations",
+      "type": "array"
     },
     "extensions": {
       "additionalProperties": false,
@@ -1187,6 +2408,13 @@
       },
       "title": "Extensions",
       "type": "object"
+    },
+    "figures": {
+      "items": {
+        "$ref": "#/$defs/Figure"
+      },
+      "title": "Figures",
+      "type": "array"
     },
     "metadata": {
       "$ref": "#/$defs/DocumentMetadata"
@@ -1209,7 +2437,7 @@
     "previous_revision_id": {
       "anyOf": [
         {
-          "pattern": "^rev_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "pattern": "^rev_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
           "type": "string"
         },
         {
@@ -1229,8 +2457,25 @@
       "title": "Provenance",
       "type": "array"
     },
+    "quality_summary": {
+      "$ref": "#/$defs/QualitySummary"
+    },
+    "references": {
+      "items": {
+        "$ref": "#/$defs/ReferenceEntry"
+      },
+      "title": "References",
+      "type": "array"
+    },
+    "relationships": {
+      "items": {
+        "$ref": "#/$defs/Relationship"
+      },
+      "title": "Relationships",
+      "type": "array"
+    },
     "revision_id": {
-      "pattern": "^rev_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "pattern": "^rev_[0-9a-f]{8}-[0-9a-f]{4}-[7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "title": "Revision Id",
       "type": "string"
     },
@@ -1247,8 +2492,22 @@
       "title": "Schema Version",
       "type": "string"
     },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/Section"
+      },
+      "title": "Sections",
+      "type": "array"
+    },
     "source": {
       "$ref": "#/$defs/SourceDocument"
+    },
+    "tables": {
+      "items": {
+        "$ref": "#/$defs/Table"
+      },
+      "title": "Tables",
+      "type": "array"
     }
   },
   "required": [
@@ -1263,7 +2522,15 @@
     "processing",
     "page_count",
     "pages",
-    "provenance"
+    "sections",
+    "tables",
+    "figures",
+    "equations",
+    "references",
+    "chunks",
+    "relationships",
+    "provenance",
+    "quality_summary"
   ],
   "title": "DocumentIR",
   "type": "object"
