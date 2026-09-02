@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from tests.parser_fixture import load_contract_result
@@ -8,6 +9,7 @@ from typer.testing import CliRunner
 from docparser.application.parsing import ParsingConfig, parse_document_with_diagnostics
 from docparser.cli.main import app
 from docparser.domain.parser_contract import RuntimeDevice
+from docparser.quality import QualityDecision, QualityMode
 from docparser.version import __version__
 
 runner = CliRunner()
@@ -27,11 +29,46 @@ def test_version_succeeds() -> None:
     assert result.stdout.strip() == __version__
 
 
-def test_parse_robust_help_exposes_independent_supported_slice() -> None:
-    result = runner.invoke(app, ["parse-robust", "--help"])
+def test_parse_robust_accepts_independent_supported_slice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_robust_parse_document(
+        path: Path,
+        config: ParsingConfig,
+        **kwargs: object,
+    ) -> SimpleNamespace:
+        captured["supported_slice"] = kwargs["supported_slice"]
+        return SimpleNamespace(
+            final_quality_report=SimpleNamespace(
+                mode=QualityMode.OBSERVE_ONLY,
+                calibration_required=True,
+            ),
+            final_decision=QualityDecision.REJECT,
+        )
+
+    monkeypatch.setattr(
+        "docparser.cli.main.robust_parse_document",
+        fake_robust_parse_document,
+    )
+    monkeypatch.setattr("docparser.cli.main.write_robust_outputs", lambda *_: None)
+    input_pdf = write_tiny_pdf(tmp_path / "robust.pdf")
+    result = runner.invoke(
+        app,
+        [
+            "parse-robust",
+            str(input_pdf),
+            "--supported-slice",
+            "enterprise-financial",
+            "--output",
+            str(tmp_path / "output"),
+        ],
+    )
 
     assert result.exit_code == 0
-    assert "--supported-slice" in result.stdout
+    assert captured["supported_slice"] == "enterprise-financial"
 
 
 def test_doctor_accepts_default_config() -> None:

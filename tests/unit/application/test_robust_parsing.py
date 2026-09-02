@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from pypdf import PdfReader
 from tests.parser_fixture import load_contract_result
 from tests.pdf_factory import write_tiny_pdf
@@ -171,6 +172,18 @@ def test_calibrated_accept_does_not_require_fallback_profile(tmp_path: Path) -> 
     assert outcome.final_decision is QualityDecision.ACCEPT
     assert outcome.final_document.quality_summary.publishable
     assert outcome.fallback_result is None
+
+
+def test_calibration_profile_cannot_run_against_a_different_primary_parser(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="calibration parser_profile"):
+        robust_parse_document(
+            tmp_path / "not-read.pdf",
+            ParsingConfig(parser="paddleocr-vl-1.6", device=RuntimeDevice.CPU),
+            calibration=calibration_profile(),
+            supported_slice="test",
+        )
 
 
 def test_candidate_calibration_profile_never_executes_automatic_fallback(

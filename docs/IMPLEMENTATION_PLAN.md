@@ -1,6 +1,7 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: Next 2 + Next 3 hardened; next allowed work is Next 4**
+> **CURRENT EXECUTION POINTER: parsing hardening complete; run the real benchmark and freeze the
+> parsing stage before Next 4**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.

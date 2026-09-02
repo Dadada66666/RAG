@@ -69,6 +69,8 @@ Quality execution has exactly three modes:
 
 `supported_slice` is an explicit Quality Gate input. It is not inferred from `FallbackProfile`.
 An unsupported or omitted slice evaluates as `OBSERVE_ONLY` even when a profile is supplied.
+Each `CalibrationProfile` also declares one exact `parser_profile`; robust parsing rejects the
+profile when it does not equal the configured primary parser profile.
 
 ## 3. Evidence and rule contracts
 
@@ -258,10 +260,18 @@ The recommendation engine must not:
 Every sample has defect labels, affected scope, supported-slice label and an adjudicated
 `meets_acceptance_standard` outcome. Document-family/template leakage is prohibited.
 
-`CalibrationTruth.failure_labels[]` stores zero or more `FailureLabel` values. Each label contains
-`rule_id`, `scope=DOCUMENT|PAGE|TABLE`, and the required `page_number`/`table_id` identity. Rule
-confusion matrices compare canonical `(rule_id, scope, page_number, table_id)` keys. A prediction
-on the wrong page/table is one false positive plus one false negative, never a true positive.
+`CalibrationTruth.target_truths[]` explicitly defines the benchmark population. Each entry contains
+a `QualityTarget` and its human-adjudicated `meets_acceptance_standard` value.
+`CalibrationTruth.failure_labels[]` independently stores zero or more known rule-addressable
+defects. Each label contains `rule_id`, `scope=DOCUMENT|PAGE|TABLE`, and the required
+`page_number`/`table_id` identity. Rule confusion matrices compare canonical
+`(rule_id, scope, page_number, table_id)` keys. A prediction on the wrong page/table is one false
+positive plus one false negative, never a true positive.
+
+Rule calibration interprets outcomes as follows: `TRIGGERED` is positive, `CLEAR` is negative,
+and `NOT_APPLICABLE`/`PROVISIONAL` are excluded from the normal rule denominator. When truth
+explicitly contains the matching failure label, a missing, `NOT_APPLICABLE`, or `PROVISIONAL`
+prediction is a false negative. Neither excluded outcome may inflate true negatives.
 
 ### 7.2 Rule-level metrics
 

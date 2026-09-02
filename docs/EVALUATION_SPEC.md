@@ -238,6 +238,11 @@ that page and its tables; TABLE decisions include document blockers plus that ex
 unit reuses the global document decision, so one failed page/table does not contaminate unrelated
 accepted units.
 
+The DOCUMENT/PAGE/TABLE evaluation population comes only from explicit human-adjudicated
+`target_truths`; emitted detector signals never create or remove benchmark targets. A target marked
+incorrect remains in accepted-output precision even when no existing Quality Rule has a matching
+failure label. This prevents unknown defects from disappearing from system-level denominators.
+
 Fallback evaluation compares baseline, candidate and committed revision on the exact target and
 boundary context. Report target precision, quality delta by metric, collateral regression, cost and
 revalidation outcome. A fallback that does not demonstrably improve the calibrated acceptance

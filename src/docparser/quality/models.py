@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import Field, model_validator
 
@@ -78,6 +78,7 @@ class TableThresholds(StrictIRModel):
 
 class CalibrationProfile(StrictIRModel):
     profile_id: NonEmptyNfcString
+    parser_profile: NonEmptyNfcString
     dataset_digest: Sha256Digest
     ruleset_version: NonEmptyNfcString
     supported_slices: tuple[NonEmptyNfcString, ...]
@@ -220,19 +221,24 @@ class FailureLabel(StrictIRModel):
         )
 
 
+class CalibrationTargetTruth(StrictIRModel):
+    target: QualityTarget
+    meets_acceptance_standard: bool
+
+
 class CalibrationTruth(StrictIRModel):
     sample_id: NonEmptyNfcString
-    acceptance_unit: AcceptanceUnit
-    meets_acceptance_standard: bool
+    target_truths: Annotated[tuple[CalibrationTargetTruth, ...], Field(min_length=1)]
     failure_labels: tuple[FailureLabel, ...] = ()
 
     @model_validator(mode="after")
     def _validate_failure_labels(self) -> Self:
+        targets = [target_truth.target for target_truth in self.target_truths]
+        if len(set(target.model_dump_json() for target in targets)) != len(targets):
+            raise ValueError("target_truths must be unique")
         keys = [label.canonical_key for label in self.failure_labels]
         if len(set(keys)) != len(keys):
             raise ValueError("failure_labels must be unique")
-        if self.meets_acceptance_standard and self.failure_labels:
-            raise ValueError("accepted truth cannot declare failure_labels")
         return self
 
 

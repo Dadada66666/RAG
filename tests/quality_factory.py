@@ -73,6 +73,7 @@ def quality_profile(
 def calibration_profile(*, frozen: bool = True) -> CalibrationProfile:
     return CalibrationProfile(
         profile_id="quality-test-v1",
+        parser_profile="docling-standard",
         dataset_digest=Sha256Digest(f"sha256:{'c' * 64}"),
         ruleset_version="quality-test@1.0.0",
         supported_slices=("test",),

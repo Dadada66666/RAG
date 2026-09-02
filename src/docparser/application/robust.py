@@ -109,6 +109,8 @@ def robust_parse_document(
     """Return a trusted evaluated IR or an honestly non-publishable baseline."""
 
     gate = quality_gate or DeterministicQualityGate()
+    if calibration is not None and calibration.parser_profile != primary_config.parser:
+        raise ValueError("calibration parser_profile does not match primary parser configuration")
     if (
         fallback_profile is not None
         and fallback_profile.primary_profile != primary_config.parser
@@ -172,14 +174,6 @@ def robust_parse_document(
                         original_page_number=planned.target.page_number,
                         materialized_digest=materialized.digest,
                         document=candidate_outcome.document,
-                    )
-                    gate.evaluate(
-                        ValidationRequest(
-                            document=candidate.document,
-                            profile=candidate_outcome.profile,
-                            calibration=calibration,
-                            supported_slice=supported_slice,
-                        )
                     )
                     if planned.target.scope is QualityScope.PAGE:
                         proposed = replace_page_atomic(

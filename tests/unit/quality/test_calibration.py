@@ -13,6 +13,7 @@ from docparser.quality import (
     CalibrationProfile,
     CalibrationReport,
     CalibrationSample,
+    CalibrationTargetTruth,
     CalibrationTruth,
     DeterministicQualityGate,
     FailureLabel,
@@ -49,13 +50,14 @@ def _signal(
     rule_id: str,
     target: QualityTarget,
     *,
-    triggered: bool,
+    triggered: bool = False,
+    outcome: SignalOutcome | None = None,
 ) -> QualitySignal:
     return QualitySignal(
         rule_id=rule_id,
         signal_kind=SignalKind.ANOMALY,
         severity=SignalSeverity.ERROR,
-        outcome=SignalOutcome.TRIGGERED if triggered else SignalOutcome.CLEAR,
+        outcome=outcome or (SignalOutcome.TRIGGERED if triggered else SignalOutcome.CLEAR),
         target=target,
         predicted_failure_type="TEST_FAILURE",
         action=RuleAction.FALLBACK,
@@ -63,6 +65,14 @@ def _signal(
         evidence={},
         message="Calibration known-answer signal.",
     )
+
+
+def _target_truth(
+    target: QualityTarget,
+    *,
+    meets: bool,
+) -> CalibrationTargetTruth:
+    return CalibrationTargetTruth(target=target, meets_acceptance_standard=meets)
 
 
 def _report(signals: Iterable[QualitySignal]) -> QualityReport:
@@ -119,6 +129,106 @@ def test_calibration_profile_applies_policy_without_publishing() -> None:
     assert not any(signal.calibrated for signal in report.signals)
 
 
+def test_not_applicable_and_provisional_signals_do_not_receive_true_negative_credit() -> None:
+    candidate = calibration_profile(frozen=False)
+    image_only_report = _gate().evaluate(
+        ValidationRequest(
+            quality_document("OCR 10"),
+            quality_profile(image_only=True),
+            candidate,
+            "test",
+        )
+    )
+    provisional_profile = candidate.model_copy(update={"completeness": None})
+    provisional_report = _gate().evaluate(
+        ValidationRequest(
+            quality_document("short"),
+            quality_profile("This source has enough native text for completeness evaluation"),
+            provisional_profile,
+            "test",
+        )
+    )
+    page_truth = (
+        _target_truth(
+            QualityTarget(scope=QualityScope.PAGE, page_number=1),
+            meets=True,
+        ),
+    )
+    image_result = evaluate_calibration(
+        candidate,
+        (
+            CalibrationSample(
+                truth=CalibrationTruth(
+                    sample_id="not-applicable",
+                    target_truths=page_truth,
+                ),
+                report=image_only_report,
+            ),
+        ),
+    )
+    provisional_result = evaluate_calibration(
+        provisional_profile,
+        (
+            CalibrationSample(
+                truth=CalibrationTruth(
+                    sample_id="provisional",
+                    target_truths=page_truth,
+                ),
+                report=provisional_report,
+            ),
+        ),
+    )
+
+    numeric = _metric(image_result, NUMERIC_RULE, AcceptanceUnit.PAGE)
+    completeness = _metric(
+        provisional_result,
+        "COMPLETENESS.SOURCE_RICH_PARSE_SPARSE",
+        AcceptanceUnit.PAGE,
+    )
+    assert numeric.confusion.tn == 0
+    assert completeness.confusion.tn == 0
+
+
+def test_expected_failure_with_not_applicable_signal_counts_as_false_negative() -> None:
+    candidate = calibration_profile(frozen=False)
+    report = _gate().evaluate(
+        ValidationRequest(
+            quality_document("OCR 10"),
+            quality_profile(image_only=True),
+            candidate,
+            "test",
+        )
+    )
+    result = evaluate_calibration(
+        candidate,
+        (
+            CalibrationSample(
+                truth=CalibrationTruth(
+                    sample_id="expected-but-not-applicable",
+                    target_truths=(
+                        _target_truth(
+                            QualityTarget(scope=QualityScope.PAGE, page_number=1),
+                            meets=False,
+                        ),
+                    ),
+                    failure_labels=(
+                        FailureLabel(
+                            rule_id=NUMERIC_RULE,
+                            scope=QualityScope.PAGE,
+                            page_number=1,
+                        ),
+                    ),
+                ),
+                report=report,
+            ),
+        ),
+    )
+
+    numeric = _metric(result, NUMERIC_RULE, AcceptanceUnit.PAGE)
+    assert numeric.confusion.fn == 1
+    assert numeric.confusion.tn == 0
+
+
 def test_scope_mismatch_counts_one_false_positive_and_one_false_negative() -> None:
     report = _report(
         (
@@ -140,8 +250,16 @@ def test_scope_mismatch_counts_one_false_positive_and_one_false_negative() -> No
             CalibrationSample(
                 truth=CalibrationTruth(
                     sample_id="wrong-page",
-                    acceptance_unit=AcceptanceUnit.PAGE,
-                    meets_acceptance_standard=False,
+                    target_truths=(
+                        _target_truth(
+                            QualityTarget(scope=QualityScope.PAGE, page_number=3),
+                            meets=False,
+                        ),
+                        _target_truth(
+                            QualityTarget(scope=QualityScope.PAGE, page_number=4),
+                            meets=True,
+                        ),
+                    ),
                     failure_labels=(
                         FailureLabel(
                             rule_id=NUMERIC_RULE,
@@ -186,8 +304,12 @@ def test_multiple_scoped_failure_labels_each_receive_true_positive_credit() -> N
             CalibrationSample(
                 truth=CalibrationTruth(
                     sample_id="two-failures",
-                    acceptance_unit=AcceptanceUnit.PAGE,
-                    meets_acceptance_standard=False,
+                    target_truths=(
+                        _target_truth(
+                            QualityTarget(scope=QualityScope.PAGE, page_number=2),
+                            meets=False,
+                        ),
+                    ),
                     failure_labels=labels,
                 ),
                 report=report,
@@ -203,13 +325,12 @@ def test_multiple_scoped_failure_labels_each_receive_true_positive_credit() -> N
 
 
 def test_page_system_metrics_isolate_one_failed_page_from_99_accepted_pages() -> None:
-    signals = tuple(
+    signals = (
         _signal(
             ORDER_RULE,
-            QualityTarget(scope=QualityScope.PAGE, page_number=page_number),
-            triggered=page_number == 100,
-        )
-        for page_number in range(1, 101)
+            QualityTarget(scope=QualityScope.PAGE, page_number=100),
+            triggered=True,
+        ),
     )
     result = evaluate_calibration(
         calibration_profile(frozen=False),
@@ -217,8 +338,13 @@ def test_page_system_metrics_isolate_one_failed_page_from_99_accepted_pages() ->
             CalibrationSample(
                 truth=CalibrationTruth(
                     sample_id="hundred-pages",
-                    acceptance_unit=AcceptanceUnit.PAGE,
-                    meets_acceptance_standard=False,
+                    target_truths=tuple(
+                        _target_truth(
+                            QualityTarget(scope=QualityScope.PAGE, page_number=page_number),
+                            meets=page_number != 100,
+                        )
+                        for page_number in range(1, 101)
+                    ),
                     failure_labels=(
                         FailureLabel(
                             rule_id=ORDER_RULE,
@@ -244,6 +370,39 @@ def test_page_system_metrics_isolate_one_failed_page_from_99_accepted_pages() ->
     assert page.fallback_rate == 0.01
 
 
+def test_unknown_defect_lowers_accepted_precision_without_a_rule_label() -> None:
+    result = evaluate_calibration(
+        calibration_profile(frozen=False),
+        (
+            CalibrationSample(
+                truth=CalibrationTruth(
+                    sample_id="unknown-defect-page-37",
+                    target_truths=tuple(
+                        _target_truth(
+                            QualityTarget(scope=QualityScope.PAGE, page_number=page_number),
+                            meets=page_number != 37,
+                        )
+                        for page_number in range(1, 101)
+                    ),
+                    failure_labels=(),
+                ),
+                report=_report(()),
+            ),
+        ),
+    )
+    page = next(
+        metric
+        for metric in result.system_metrics
+        if metric.acceptance_unit is AcceptanceUnit.PAGE
+    )
+
+    assert page.samples == 100
+    assert page.accepted == 100
+    assert page.accepted_correct == 99
+    assert page.accepted_output_precision == 0.99
+    assert page.coverage == 1.0
+
+
 def test_table_metrics_isolate_two_tables_on_the_same_page() -> None:
     result = evaluate_calibration(
         calibration_profile(frozen=False),
@@ -251,8 +410,24 @@ def test_table_metrics_isolate_two_tables_on_the_same_page() -> None:
             CalibrationSample(
                 truth=CalibrationTruth(
                     sample_id="two-tables",
-                    acceptance_unit=AcceptanceUnit.TABLE,
-                    meets_acceptance_standard=False,
+                    target_truths=(
+                        _target_truth(
+                            QualityTarget(
+                                scope=QualityScope.TABLE,
+                                page_number=1,
+                                table_id=TABLE_A,
+                            ),
+                            meets=False,
+                        ),
+                        _target_truth(
+                            QualityTarget(
+                                scope=QualityScope.TABLE,
+                                page_number=1,
+                                table_id=TABLE_B,
+                            ),
+                            meets=True,
+                        ),
+                    ),
                     failure_labels=(
                         FailureLabel(
                             rule_id=TABLE_RULE,
@@ -309,8 +484,12 @@ def test_freeze_binds_matching_nonempty_calibration_evidence() -> None:
             CalibrationSample(
                 truth=CalibrationTruth(
                     sample_id="good-page",
-                    acceptance_unit=AcceptanceUnit.PAGE,
-                    meets_acceptance_standard=True,
+                    target_truths=(
+                        _target_truth(
+                            QualityTarget(scope=QualityScope.PAGE, page_number=1),
+                            meets=True,
+                        ),
+                    ),
                 ),
                 report=good,
             ),
