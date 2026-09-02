@@ -1,0 +1,15 @@
+{
+  "access_policy": "engineering holdout: no parser or Quality Gate tuning; not statistically adequate for a final 95% claim without a documented confidence analysis",
+  "candidate_id_ordering": "sha256(seed:item_id),item_id",
+  "dataset_id": "parsebench-complex-v1-holdout",
+  "manifest_version": "1.0.0",
+  "seed": 260402,
+  "selected_item_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "selected_items": [],
+  "selection_script_version": "parsebench-complex-selector@1.0.0",
+  "selection_status": "UNPROVISIONED",
+  "split": "PROTECTED_HOLDOUT",
+  "target_count": 20,
+  "upstream_repository": "llamaindex/ParseBench",
+  "upstream_revision": "57fb218011ac95a628ddefacecda8010343ca0a6"
+}

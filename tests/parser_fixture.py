@@ -121,23 +121,27 @@ def profile_for_result(result: ParseResult, *, scanned: bool = False) -> Documen
 def normalize_contract_fixture(name: str, *, scanned: bool = False) -> DocumentIR:
     result = load_contract_result(name)
     profile = profile_for_result(result, scanned=scanned)
+    return normalize_docling_result(result, normalization_context(profile, name))
+
+
+def normalization_context(
+    profile: DocumentProfile,
+    name: str = "fixture",
+) -> NormalizationContext:
     document_id = generate_document_id(TEST_NAMESPACE, "test", SOURCE_DIGEST)
-    return normalize_docling_result(
-        result,
-        NormalizationContext(
-            namespace=TEST_NAMESPACE,
-            tenant_scope="test",
-            document_id=document_id,
-            revision_id=RevisionId("rev_018bcfe5-6800-7000-8000-000000000012"),
-            source_artifact_id=ArtifactId(
-                "art_018bcfe5-6800-7000-8000-000000000013"
-            ),
-            source_digest=SOURCE_DIGEST,
-            source_size_bytes=1024,
-            original_filename_safe=f"{name}.pdf",
-            ingested_at=UtcTimestamp("2026-09-01T00:00:02Z"),
-            created_at=UtcTimestamp("2026-09-01T00:00:02Z"),
-            config_digest=Sha256Digest(f"sha256:{'d' * 64}"),
-            profile=profile,
+    return NormalizationContext(
+        namespace=TEST_NAMESPACE,
+        tenant_scope="test",
+        document_id=document_id,
+        revision_id=RevisionId("rev_018bcfe5-6800-7000-8000-000000000012"),
+        source_artifact_id=ArtifactId(
+            "art_018bcfe5-6800-7000-8000-000000000013"
         ),
+        source_digest=SOURCE_DIGEST,
+        source_size_bytes=1024,
+        original_filename_safe=f"{name}.pdf",
+        ingested_at=UtcTimestamp("2026-09-01T00:00:02Z"),
+        created_at=UtcTimestamp("2026-09-01T00:00:02Z"),
+        config_digest=Sha256Digest(f"sha256:{'d' * 64}"),
+        profile=profile,
     )

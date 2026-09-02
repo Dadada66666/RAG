@@ -276,6 +276,12 @@ Accepted-output precision is always reported beside coverage and the supported-s
 declared correctness standard. It does **not** mean 95% of arbitrary PDFs are perfectly parsed.
 No quality number may be published without its denominator, coverage, slice and confidence interval.
 
+Every acceptance result declares exactly one `acceptance_unit`: `DOCUMENT`, `PAGE`, or `TABLE`.
+Numerators and denominators are computed within that unit and must never be pooled across units.
+Thus document accepted precision, page accepted precision and table accepted precision are three
+different results. Any future 95% claim must name the acceptance unit, supported slice, sample size,
+coverage and uncertainty/confidence-interval method.
+
 ### 7.4 Threshold freeze and promotion
 
 1. Record rule/policy versions, dataset digests and all candidate thresholds.

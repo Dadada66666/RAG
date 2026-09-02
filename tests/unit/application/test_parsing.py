@@ -65,6 +65,12 @@ def test_vertical_slice_returns_metric_ready_valid_ir(tmp_path: Path) -> None:
         == outcome.diagnostics.generated_blocks
     )
     assert outcome.diagnostics.device is RuntimeDevice.CPU
+    assert outcome.diagnostics.eligible_retrieval_blocks == 2
+    assert outcome.diagnostics.section_assigned_blocks == 0
+    assert outcome.diagnostics.section_assignment_coverage == 0.0
+    assert outcome.diagnostics.reading_order_eligible_pages == 1
+    assert outcome.diagnostics.reading_order_resolved_pages == 1
+    assert outcome.diagnostics.resolved_reading_order_page_rate == 1.0
 
 
 def test_benchmark_hook_and_output_files_do_not_require_cli_scraping(

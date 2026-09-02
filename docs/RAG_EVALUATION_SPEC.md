@@ -58,12 +58,19 @@ source recall.
 
 ### 4.2 Mandatory incremental comparison
 
-Run the same frozen query set and retrieval budget:
+Run the same frozen query set, embedding model, dense backend and retrieval budget:
 
-1. simple/native PDF text + fixed-token chunks + dense retrieval;
-2. Canonical IR structure-aware parent-child chunks + dense retrieval;
-3. structure-aware chunks + dense/sparse hybrid RRF;
-4. structure-aware hybrid + pinned reranker.
+1. **A — Legacy baseline:** simple/native PDF text → fixed-token chunks → dense retrieval;
+2. **B — IR-controlled baseline:** Canonical IR → deterministic flat-text rendering → the same
+   fixed-token chunker → the same dense retrieval;
+3. **C — Structure-aware:** Canonical IR → parent-child/structure-aware chunks → the same dense
+   retrieval;
+4. **D — Hybrid:** C + sparse/BM25 + Reciprocal Rank Fusion;
+5. **E — Reranked:** D + pinned reranker and parent/context expansion.
+
+Interpret deltas independently: `A → B` measures document representation, `B → C` measures
+chunking, `C → D` measures hybrid retrieval, and `D → E` measures reranking/context construction.
+No stage may change an earlier controlled variable without creating a separate experiment.
 
 Publish absolute results and incremental delta for each stage. A later stage is promoted only when it
 improves its declared target slices without unacceptable latency, citation or other-slice regression.
@@ -147,4 +154,3 @@ and every compared system uses the same eligible query set and budgets.
 Late Chunking may be tested only with a compatible pinned embedding model. RAPTOR is tested only if
 multi-hop/document-level error analysis establishes a need. Graph RAG, agents and LLM-generated
 parent summaries are not part of the first RAG evaluation.
-

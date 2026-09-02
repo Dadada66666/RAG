@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from tests.parser_fixture import normalization_context, profile_for_result
 from tests.pdf_factory import write_tiny_pdf
 from tests.unit.adapters.paddleocr_vl.test_mapping import _descriptor, _run
 
@@ -16,6 +17,8 @@ from docparser.domain.parser_contract import (
     RuntimeDevice,
 )
 from docparser.ir.enums import ExtractionMethod
+from docparser.ir.serialization import dump_canonical_json
+from docparser.normalization import normalize_neutral_result, normalize_paddleocr_vl_result
 
 
 class _StaticPaddleParser:
@@ -73,3 +76,13 @@ def test_pixels_scale_to_cropbox_points_and_bboxless_cells_keep_cell_provenance(
         record.extraction_method is ExtractionMethod.VLM
         for record in outcome.document.provenance
     )
+
+
+def test_paddle_entrypoint_has_neutral_normalizer_parity() -> None:
+    result = _result()
+    context = normalization_context(profile_for_result(result), "paddle-structured")
+
+    paddle_document = normalize_paddleocr_vl_result(result, context)
+    neutral_document = normalize_neutral_result(result, context)
+
+    assert dump_canonical_json(paddle_document) == dump_canonical_json(neutral_document)

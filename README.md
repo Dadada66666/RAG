@@ -7,7 +7,8 @@ traceable, parser-independent representation suitable for downstream RAG ingesti
 
 > Project status: Phases 0–2.6 are implemented. `docling-standard` remains the baseline and the
 > complete PaddleOCR-VL-1.6 pipeline is an optional GPU-first comparison candidate. Native PDF
-> evidence and a local Golden Dataset benchmark make accuracy measurable. This is still
+> evidence and benchmark infrastructure make accuracy measurable once an approved benchmark
+> corpus is supplied. This is still
 > development/evaluation quality, not a production service or a 95% accuracy claim.
 
 ## What this project is
@@ -228,6 +229,7 @@ fails when the pinned GPU runtime is unavailable; the core domain contains no CU
 .\.venv\Scripts\docparser.exe schema check
 .\.venv\Scripts\docparser.exe parse-local --help
 .\.venv\Scripts\docparser.exe benchmark-parsing --help
+.\.venv\Scripts\docparser.exe prepare-parsebench-manifests --help
 ```
 
 Expected command responsibilities:
@@ -237,6 +239,10 @@ Expected command responsibilities:
   loading a parser, or using the network.
 - `schema check` fails if the committed JSON Schema differs from the Pydantic-generated contract.
 - `parse-local` exposes the optional local-PDF development path.
+- `prepare-parsebench-manifests` reads a user-provisioned local JSONL candidate catalog and freezes
+  deterministic, document-family-disjoint development/holdout IDs. It never downloads ParseBench
+  files. Until that catalog is supplied, committed manifests remain `UNPROVISIONED` and no accuracy
+  claim is valid.
 
 After installing the optional parser, run:
 
@@ -381,7 +387,9 @@ runnable and all tests passing.
 | Complete | 0–2 | Bootstrap, executable shell, complete Canonical IR graph, Schema, migrations |
 | Complete | 2.5 | Real PDF preflight, optional Docling baseline, neutral normalization, diagnostics, local CLI |
 | Complete | 2.6 | Native PDF evidence, PaddleOCR-VL candidate, accuracy metrics and benchmark foundation |
-| Recommended next | Quality calibration | Calibrate deterministic gates from observed benchmark failures |
+| Complete | Next 1 offline preparation | Correct project evaluator, pinned Official ParseBench boundary, deterministic unprovisioned development/holdout manifests |
+| Awaiting local corpus | Next 1 baselines | User-provisioned approved ParseBench data; no dataset is downloaded by default |
+| Recommended after baselines | Next 2 | Calibrated Quality Gate from observed benchmark failures |
 | Planned | 3–5 | Immutable local artifacts, SQLite job state, durable parser orchestration |
 | Planned | 6–8 | Secure PDF admission and production multipage normalization hardening |
 | Planned | 9–11 | Quality engine, selective fallback, transactional merge and revalidation |

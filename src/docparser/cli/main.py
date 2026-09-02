@@ -15,10 +15,17 @@ from docparser.application.parsing import (
 from docparser.config import load_config
 from docparser.domain.parser_contract import RuntimeDevice
 from docparser.evaluation import load_manifest, run_parsing_benchmark, write_benchmark_report
+from docparser.evaluation.parsebench.subset import (
+    load_candidate_catalog,
+    prepare_subset_manifests,
+    write_subset_manifest,
+)
 from docparser.evaluation.schema import (
     DEFAULT_EVALUATION_SCHEMA,
     evaluation_schema_is_current,
+    parsebench_subset_schema_is_current,
     write_evaluation_schema,
+    write_parsebench_subset_schema,
 )
 from docparser.ir.schema import (
     DEFAULT_SCHEMA_PATH,
@@ -165,6 +172,45 @@ def benchmark_parsing(
     )
 
 
+@app.command("prepare-parsebench-manifests")
+def prepare_parsebench_manifests(
+    candidate_catalog: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="Local JSONL metadata catalog; no PDF data is downloaded.",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("--output", file_okay=False, resolve_path=True),
+    ] = Path("./tests/golden/manifests"),
+) -> None:
+    """Freeze deterministic development/holdout IDs from a local candidate catalog."""
+
+    try:
+        development, holdout = prepare_subset_manifests(
+            load_candidate_catalog(candidate_catalog)
+        )
+        write_subset_manifest(
+            development, output / "parsebench-complex-v1-dev.json"
+        )
+        write_subset_manifest(
+            holdout, output / "parsebench-complex-v1-holdout.json"
+        )
+    except (OSError, ValueError, ValidationError) as exc:
+        typer.echo(f"ParseBench manifest preparation failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"prepared {len(development.selected_items)} development and "
+        f"{len(holdout.selected_items)} protected-holdout IDs"
+    )
+
+
 @schema_app.command("generate")
 def schema_generate(
     output: Annotated[
@@ -177,6 +223,7 @@ def schema_generate(
     write_document_ir_schema(output)
     if output == DEFAULT_SCHEMA_PATH:
         write_evaluation_schema()
+        write_parsebench_subset_schema()
     typer.echo(f"generated {output.as_posix()}")
 
 
@@ -196,5 +243,8 @@ def schema_check(
         typer.echo(
             f"schema drift detected: {DEFAULT_EVALUATION_SCHEMA.as_posix()}", err=True
         )
+        raise typer.Exit(code=1)
+    if schema_path == DEFAULT_SCHEMA_PATH and not parsebench_subset_schema_is_current():
+        typer.echo("schema drift detected: ParseBench subset schema", err=True)
         raise typer.Exit(code=1)
     typer.echo(f"schema current: {schema_path.as_posix()}")

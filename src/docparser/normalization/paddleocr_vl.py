@@ -3,7 +3,7 @@
 from docparser.domain.parser_contract import ParseResult
 from docparser.ir.models import DocumentIR
 from docparser.normalization.base import NormalizationContext
-from docparser.normalization.docling import normalize_neutral_result
+from docparser.normalization.neutral import normalize_neutral_result
 
 
 def normalize_paddleocr_vl_result(

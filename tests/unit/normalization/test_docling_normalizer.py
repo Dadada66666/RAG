@@ -9,7 +9,9 @@ from tests.parser_fixture import (
     SOURCE_DIGEST,
     TEST_NAMESPACE,
     load_contract_result,
+    normalization_context,
     normalize_contract_fixture,
+    profile_for_result,
 )
 
 from docparser.ir.enums import BlockType, QualityStatus, ReadingOrderStatus
@@ -22,6 +24,7 @@ from docparser.normalization import (
     NormalizationContext,
     NormalizationError,
     normalize_docling_result,
+    normalize_neutral_result,
 )
 from docparser.preflight import (
     DocumentProfile,
@@ -40,6 +43,16 @@ def test_born_digital_normalizes_to_valid_unpublished_ir() -> None:
     assert document.quality_summary.score is None
     assert document.quality_summary.quality_report_id is None
     assert not document.quality_summary.publishable
+
+
+def test_docling_compatibility_entrypoint_has_neutral_normalizer_parity() -> None:
+    result = load_contract_result("simple-table")
+    context = normalization_context(profile_for_result(result), "simple-table")
+
+    docling_document = normalize_docling_result(result, context)
+    neutral_document = normalize_neutral_result(result, context)
+
+    assert dump_canonical_json(docling_document) == dump_canonical_json(neutral_document)
 
 
 def test_bilingual_unicode_and_rotation_are_preserved() -> None:

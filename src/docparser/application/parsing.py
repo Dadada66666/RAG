@@ -85,6 +85,16 @@ class ParseDiagnostics(StrictIRModel):
     table_cells_with_exact_bbox: int = Field(strict=True, ge=0)
     table_cells_without_bbox: int = Field(strict=True, ge=0)
     unresolved_hierarchy_count: int = Field(strict=True, ge=0)
+    eligible_retrieval_blocks: int = Field(strict=True, ge=0)
+    section_assigned_blocks: int = Field(strict=True, ge=0)
+    section_assignment_coverage: float | None = Field(
+        default=None, strict=True, ge=0.0, le=1.0
+    )
+    reading_order_eligible_pages: int = Field(strict=True, ge=0)
+    reading_order_resolved_pages: int = Field(strict=True, ge=0)
+    resolved_reading_order_page_rate: float | None = Field(
+        default=None, strict=True, ge=0.0, le=1.0
+    )
     cross_page_table_candidates: int = Field(strict=True, ge=0)
     native_numeric_tokens: int = Field(strict=True, ge=0)
     parser_numeric_tokens: int = Field(strict=True, ge=0)
@@ -245,6 +255,47 @@ def _diagnostics(
         for page in result.pages
         for element in page.elements
     )
+    retrieval_types = {
+        "TITLE",
+        "HEADING",
+        "PARAGRAPH",
+        "LIST",
+        "LIST_ITEM",
+        "TABLE",
+        "FIGURE",
+        "FIGURE_CAPTION",
+        "EQUATION",
+        "CODE",
+        "QUOTE",
+        "FOOTNOTE",
+    }
+    eligible_blocks = [
+        block for block in blocks if block.block_type.value in retrieval_types
+    ]
+    section_block_ids = {
+        block_id
+        for section in document.sections
+        for block_id in (
+            *((section.heading_block_id,) if section.heading_block_id is not None else ()),
+            *section.content_block_ids,
+        )
+    }
+    section_assigned = sum(
+        block.block_id in section_block_ids for block in eligible_blocks
+    )
+    order_eligible_pages = [
+        page
+        for page in document.pages
+        if any(block.block_type.value in retrieval_types for block in page.blocks)
+    ]
+    order_resolved_pages = sum(
+        all(
+            block.reading_order_status is ReadingOrderStatus.IN_FLOW
+            for block in page.blocks
+            if block.block_type.value in retrieval_types
+        )
+        for page in order_eligible_pages
+    )
     explicit_continuations = sum(
         table.continuation_from_source_object_id is not None
         or table.continuation_to_source_object_id is not None
@@ -274,6 +325,18 @@ def _diagnostics(
         table_cells_with_exact_bbox=exact_cells,
         table_cells_without_bbox=len(cells) - exact_cells,
         unresolved_hierarchy_count=unresolved_hierarchy,
+        eligible_retrieval_blocks=len(eligible_blocks),
+        section_assigned_blocks=section_assigned,
+        section_assignment_coverage=(
+            section_assigned / len(eligible_blocks) if eligible_blocks else None
+        ),
+        reading_order_eligible_pages=len(order_eligible_pages),
+        reading_order_resolved_pages=order_resolved_pages,
+        resolved_reading_order_page_rate=(
+            order_resolved_pages / len(order_eligible_pages)
+            if order_eligible_pages
+            else None
+        ),
         cross_page_table_candidates=explicit_continuations,
         native_numeric_tokens=sum(sum(values.values()) for values in native_by_page.values()),
         parser_numeric_tokens=sum(sum(values.values()) for values in parser_by_page.values()),

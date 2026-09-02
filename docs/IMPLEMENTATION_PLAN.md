@@ -1,5 +1,12 @@
 # Incremental Implementation Plan
 
+> **CURRENT EXECUTION POINTER: Next 1 — Benchmark correctness + Official ParseBench integration**
+>
+> The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
+> implement historical storage/API/distributed phases until the quality track releases them.
+> Next 1 code and offline contracts are implemented; its real Docling/Paddle baseline remains
+> pending until an approved corpus is provisioned and is not an accuracy claim.
+
 | Field | Value |
 |---|---|
 | Status | Proposed after architecture approval |
@@ -735,9 +742,10 @@ behavior-preserving move from `normalization/docling.py` to `normalization/neutr
 **Interfaces:** corrected project metric protocol, `ParseBenchExportAdapter`, benchmark/run manifests.
 
 **Implementation tasks:** repair table matching/aggregation/numeric-location defects listed in
-`EVALUATION_SPEC.md`; pin official ParseBench revision/protocol; freeze `parsebench-complex-v1-dev`
-and protected holdout; move only truly neutral normalization code and retain compatibility imports;
-run Docling/Paddle baselines without changing defaults.
+`EVALUATION_SPEC.md`; pin official ParseBench revision/protocol; deterministically freeze
+`parsebench-complex-v1-dev` and the protected holdout after a local approved candidate catalog is
+provisioned; move only truly neutral normalization code and retain compatibility imports; run
+Docling/Paddle baselines without changing defaults. Dataset download is external to this increment.
 
 **Tests:** permutation/missing/extra/multi-table/merged/cross-page/wrong-location vectors; macro/micro
 and parser-failure aggregation; upstream export contract; normalizer parity.
@@ -746,7 +754,8 @@ and parser-failure aggregation; upstream export contract; normalizer parity.
 correct; manifests/digests are immutable; per-slice baselines and raw denominators exist, or report
 `NO ACCURACY CLAIM`; all prior behavior/tests remain green.
 
-**Dependencies:** Phase 2.6, approved corpus access and upstream license review.
+**Dependencies:** Phase 2.6. Real baseline execution additionally requires approved corpus access
+and upstream license review; offline implementation and CI do not.
 
 **Risks:** evaluator drift or data leakage. Pin upstream and protect holdout before parser inspection.
 

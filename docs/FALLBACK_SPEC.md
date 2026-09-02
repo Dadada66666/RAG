@@ -28,6 +28,25 @@ Automatic fallback is prohibited until all of the following are true:
 4. the alternate adapter truthfully supports that executable scope;
 5. candidate-vs-baseline comparison and full revalidation are available.
 
+### 1.2 First fallback MVP boundary
+
+The first implementation supports only `PAGE` and `TABLE` targets. Table replacement is atomic:
+the logical table, its segments/cells, table block and required provenance are compared and replaced
+as one unit. The proof is deliberately narrow:
+
+```text
+known failed page/table
+  -> alternate parser candidate
+  -> stronger frozen acceptance predicate passes
+  -> atomic scope replacement
+  -> full-document invariant and Quality Gate revalidation
+  -> commit only with no collateral regression
+```
+
+Generic block/region reconciliation, one-to-many or many-to-one matching, sparse bipartite/Hungarian
+assignment and general entity graph repair remain future capabilities. They are not MVP acceptance
+criteria unless an observed Golden failure case proves they are necessary.
+
 Current Docling and Paddle adapters execute `DOCUMENT` scope. They are parser candidates, not yet
 selective page/table fallback executors. The planner must never advertise a scope the adapter cannot
 execute. No profile rule such as “Paddle always wins tables” or “Docling wins born-digital” is valid
@@ -161,7 +180,7 @@ Before matching:
 
 A stale baseline returns `STALE`; the orchestrator may re-plan once against the latest revision. It never applies the old patch optimistically.
 
-## 7. Entity matching algorithm
+## 7. Future general entity matching algorithm (deferred beyond MVP)
 
 ### 7.1 Target set and anchors
 

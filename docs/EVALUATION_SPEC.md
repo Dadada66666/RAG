@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Authoritative next-phase contract; current Phase 2.6 evaluator is development-only |
-| Contract version | `parsing-eval/2.0.0` |
+| Status | Next 1 offline evaluator and integration contract implemented; real corpus baselines pending |
+| Contract version | `parsing-eval/2.1.0` |
 | Scope | Parser accuracy, provenance, Quality Gate and fallback evaluation |
 
 ## 1. Purpose and terminology
@@ -25,11 +25,11 @@ The following names are disjoint:
 README, reports, CI and public claims must use one of these labels verbatim. Project table metrics
 must never be renamed to ParseBench GTRM or any other upstream metric.
 
-## 2. Current evaluator status and required corrections
+## 2. Current evaluator status and implemented corrections
 
-The Phase 2.6 benchmark runner, schemas and metrics are **PARTIALLY_IMPLEMENTED development
-scaffolding**. They must not be used for parser promotion, quality thresholds or public claims until
-these defects are fixed and regression-tested:
+Next 1 implements and regression-tests the following project-local evaluator corrections. The
+evaluator remains development quality and cannot support parser promotion, quality thresholds or
+public claims until a real adjudicated corpus is executed:
 
 | Defect | Required correction |
 |---|---|
@@ -73,7 +73,7 @@ leak across development, calibration and holdout.
 
 ### 3.1 `parsebench-complex-v1`
 
-The first development subset is a versioned manifest of approximately 60 unique difficult pages
+The first development subset is a versioned manifest of 60 unique difficult pages
 selected from the pinned ParseBench dataset release. Selection is deterministic, made before parser
 results are inspected and records:
 
@@ -89,6 +89,12 @@ is selected from the remaining pool before Quality Gate calibration. Its outcome
 until thresholds/policy are frozen. The full ParseBench dataset is not required for each local
 iteration.
 
+Committed manifests are initially `UNPROVISIONED`: they pin upstream revision, selector version,
+seed, target count and access policy but contain no dataset binaries or selected IDs. After the user
+provides a locally approved candidate catalog, `docparser prepare-parsebench-manifests` creates both
+disjoint `FROZEN` manifests. Selection is independent of parser outputs; default CI performs no
+network access or dataset download.
+
 ## 4. Official ParseBench integration
 
 Public comparability uses the pinned official ParseBench evaluator instead of reimplementing its
@@ -102,7 +108,9 @@ Canonical IR / parser prediction
   -> immutable upstream result artifact
 ```
 
-The integration contract records upstream repository/commit, dataset revision, evaluator command,
+The integration pins ParseBench repository commit
+`a9d1391da8a9e83c0a6c56a65ea994574ff43098` and dataset revision
+`57fb218011ac95a628ddefacecda8010343ca0a6`. The contract records evaluator command,
 container/environment digest, export adapter version and unsupported mappings. Golden contract
 fixtures validate export shape; a small upstream-compatible smoke validates the adapter. Upstream
 metric names, including table metrics such as GTRM, are copied only from the official result.
@@ -162,7 +170,9 @@ successful outputs.
 - page completeness: expected pages with output / expected pages;
 - CER and normalized edit similarity using the versioned text assembly profile;
 - missing parser result counts as missing output, not an excluded sample;
-- long pages are divided only at annotated/canonical boundaries; any computational cap is reported.
+- the current exact evaluator runs only within a fixed matrix-cell budget; an over-budget page is
+  `METRIC_INCOMPLETE`, records required/scored characters and makes the mandatory benchmark run
+  incomplete. It never silently truncates or fail-opens.
 
 ### 6.2 Reading order
 
@@ -174,8 +184,10 @@ matching. Missing members produce incorrect pairs; extra predicted blocks are se
 1. Build candidate truth/prediction table pairs on the same allowed page/logical segment using bbox
    overlap when available plus caption/header/cell-text evidence.
 2. Compute a versioned compatibility score without using parser list order.
-3. Solve deterministic maximum-weight one-to-one assignment with stable tie-breaks.
-4. Apply a calibrated minimum compatibility; remaining tables are unmatched.
+3. Iteratively accept only reciprocal unique-best one-to-one pairs with stable ID ordering.
+   Equal-score ambiguity remains unmatched rather than receiving an arbitrary assignment.
+4. Apply the versioned provisional development compatibility floor; it is an association mechanism,
+   not a calibrated Quality Gate threshold. Remaining tables are unmatched.
 5. Score cells only inside each matched pair using table-scoped logical anchors.
 
 Report:
@@ -215,6 +227,10 @@ For each rule and defect type report `TP/FP/TN/FN`, detection precision/recall, 
 false-negative rates. At system level report accepted-output precision **with coverage**, fallback
 rate and unresolved failure rate. Supported-slice definition and confidence intervals accompany
 every result.
+
+Every accepted-output result declares `acceptance_unit=DOCUMENT|PAGE|TABLE`. Units are reported
+separately; no aggregate may mix them. A 95% claim also declares supported slice, sample size,
+coverage and confidence interval or other documented uncertainty method.
 
 Fallback evaluation compares baseline, candidate and committed revision on the exact target and
 boundary context. Report target precision, quality delta by metric, collateral regression, cost and
