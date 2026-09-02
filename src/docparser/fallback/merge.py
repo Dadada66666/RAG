@@ -179,6 +179,7 @@ def _processing_with_candidate(
                     **run.runtime,
                     "materialized_single_page": True,
                     "original_page_number": candidate.original_page_number,
+                    "materialized_digest": str(candidate.materialized_digest),
                 },
             }
         )

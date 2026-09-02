@@ -57,9 +57,18 @@ IR 1.2 implements the backward-compatible lifecycle amendment: evaluated
 `PASS/DEGRADED/FAIL` may carry `score=null` for the discrete gate, while
 `quality_report_id` remains mandatory. No synthetic `1.0`, `0.5`, or `0.0` is emitted.
 
-The implemented automatic policy remains disabled unless a frozen `CalibrationProfile` covers
-the requested slice. Without one, rules emit observable facts in `OBSERVE_ONLY` mode, the result
-is non-publishable, and the decision cannot be treated as a production acceptance.
+Quality execution has exactly three modes:
+
+- `OBSERVE_ONLY`: no applicable profile; signals are visible, but the result cannot be accepted,
+  published, or sent to automatic fallback.
+- `CALIBRATION`: an applicable candidate profile is present but is not frozen; its thresholds and
+  actions compute real decisions for calibration metrics, while publication and automatic fallback
+  remain disabled.
+- `CALIBRATED`: an applicable frozen profile is bound to calibration evidence; its policy may
+  accept content or authorize fallback planning.
+
+`supported_slice` is an explicit Quality Gate input. It is not inferred from `FallbackProfile`.
+An unsupported or omitted slice evaluates as `OBSERVE_ONLY` even when a profile is supplied.
 
 ## 3. Evidence and rule contracts
 
@@ -249,6 +258,11 @@ The recommendation engine must not:
 Every sample has defect labels, affected scope, supported-slice label and an adjudicated
 `meets_acceptance_standard` outcome. Document-family/template leakage is prohibited.
 
+`CalibrationTruth.failure_labels[]` stores zero or more `FailureLabel` values. Each label contains
+`rule_id`, `scope=DOCUMENT|PAGE|TABLE`, and the required `page_number`/`table_id` identity. Rule
+confusion matrices compare canonical `(rule_id, scope, page_number, table_id)` keys. A prediction
+on the wrong page/table is one false positive plus one false negative, never a true positive.
+
 ### 7.2 Rule-level metrics
 
 For every applicable rule, report raw `TP`, `FP`, `TN`, `FN` and:
@@ -291,6 +305,10 @@ coverage and uncertainty/confidence-interval method.
 4. Evaluate accepted precision, coverage, fallback rate and unresolved failure rate on holdout.
 5. Promote only if critical-slice requirements and sample adequacy are met; otherwise expand data
    or narrow supported slices. Never repeatedly tune against the holdout.
+
+`freeze_profile()` must match `profile_id` and `dataset_digest`, require a non-empty calibration
+report, and persist `calibration_report_digest` plus `calibration_sample_count`. `frozen=true`
+therefore proves artifact lineage only; it does not assert that any target precision was achieved.
 
 ## 8. Native PDF evidence semantics
 

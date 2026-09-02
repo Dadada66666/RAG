@@ -6,12 +6,16 @@ from tests.fallback_factory import candidate_document, multi_page_document
 from docparser.fallback import CandidatePage, replace_page_atomic
 from docparser.ir.geometry import BBox
 from docparser.ir.ids import RevisionId
-from docparser.ir.types import UtcTimestamp
+from docparser.ir.types import Sha256Digest, UtcTimestamp
 
 
 def test_page_replacement_changes_only_page_six_and_records_fallback_provenance() -> None:
     baseline = multi_page_document()
-    candidate = CandidatePage(original_page_number=6, document=candidate_document())
+    candidate = CandidatePage(
+        original_page_number=6,
+        materialized_digest=Sha256Digest(f"sha256:{'a' * 64}"),
+        document=candidate_document(),
+    )
 
     revised = replace_page_atomic(
         baseline,
@@ -38,6 +42,9 @@ def test_page_replacement_changes_only_page_six_and_records_fallback_provenance(
     )
     assert all(record.page_number == 6 for record in fallback_records)
     assert all(record.parser_run_id is not None for record in fallback_records)
+    assert revised.processing.parser_runs[-1].runtime["materialized_digest"] == (
+        f"sha256:{'a' * 64}"
+    )
 
 
 def test_invalid_candidate_rolls_back_without_mutating_baseline() -> None:
@@ -53,7 +60,11 @@ def test_invalid_candidate_rolls_back_without_mutating_baseline() -> None:
     with pytest.raises(ValueError):
         replace_page_atomic(
             baseline,
-            CandidatePage(original_page_number=6, document=invalid_candidate),
+            CandidatePage(
+                original_page_number=6,
+                materialized_digest=Sha256Digest(f"sha256:{'a' * 64}"),
+                document=invalid_candidate,
+            ),
             attempt_fingerprint=f"sha256:{'1' * 64}",
             triggering_rule_ids=("ORDER.UNRESOLVED",),
         )

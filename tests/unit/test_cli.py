@@ -27,6 +27,13 @@ def test_version_succeeds() -> None:
     assert result.stdout.strip() == __version__
 
 
+def test_parse_robust_help_exposes_independent_supported_slice() -> None:
+    result = runner.invoke(app, ["parse-robust", "--help"])
+
+    assert result.exit_code == 0
+    assert "--supported-slice" in result.stdout
+
+
 def test_doctor_accepts_default_config() -> None:
     result = runner.invoke(app, ["doctor", "--config", "configs/default.yaml"])
 

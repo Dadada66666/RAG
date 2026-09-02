@@ -39,6 +39,7 @@ def build_fallback_plan(
     report: QualityReport,
     calibration: CalibrationProfile | None,
     fallback_profile: FallbackProfile | None,
+    supported_slice: str | None = None,
 ) -> FallbackPlan:
     """Plan PAGE/TABLE targets only when both evidence profiles are frozen."""
 
@@ -53,6 +54,13 @@ def build_fallback_plan(
         return FallbackPlan(
             enabled=False,
             reason="FROZEN_FALLBACK_PROFILE_REQUIRED",
+            targets=(),
+            max_rounds=1,
+        )
+    if supported_slice != fallback_profile.supported_slice:
+        return FallbackPlan(
+            enabled=False,
+            reason="FALLBACK_PROFILE_SLICE_MISMATCH",
             targets=(),
             max_rounds=1,
         )

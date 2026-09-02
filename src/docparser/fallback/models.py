@@ -37,6 +37,8 @@ class FallbackBudget(StrictIRModel):
 class FallbackProfile(StrictIRModel):
     profile_id: NonEmptyNfcString
     evidence_dataset_digest: Sha256Digest
+    evidence_report_digest: Sha256Digest | None = None
+    evidence_sample_count: int | None = Field(default=None, strict=True, ge=1)
     created_from_commit: NonEmptyNfcString
     primary_profile: NonEmptyNfcString
     alternate_profile: NonEmptyNfcString
@@ -51,8 +53,11 @@ class FallbackProfile(StrictIRModel):
     def _validate_unique_rules(self) -> Self:
         if len(set(self.eligible_rule_ids)) != len(self.eligible_rule_ids):
             raise ValueError("eligible_rule_ids must be unique")
-        if self.frozen and not self.eligible_rule_ids:
-            raise ValueError("frozen fallback profile requires eligible_rule_ids")
+        if self.frozen:
+            if not self.eligible_rule_ids:
+                raise ValueError("frozen fallback profile requires eligible_rule_ids")
+            if self.evidence_report_digest is None or self.evidence_sample_count is None:
+                raise ValueError("frozen fallback profile requires evidence report linkage")
         return self
 
 
@@ -74,6 +79,7 @@ class FallbackTargetResult(StrictIRModel):
     status: FallbackTargetStatus
     attempt_fingerprint: Sha256Digest
     alternate_profile: NonEmptyNfcString
+    materialized_digest: Sha256Digest | None = None
     detail: NonEmptyNfcString
 
 
@@ -108,6 +114,7 @@ class MaterializedPage:
 @dataclass(frozen=True, slots=True)
 class CandidatePage:
     original_page_number: int
+    materialized_digest: Sha256Digest
     document: DocumentIR
 
 

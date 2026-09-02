@@ -64,7 +64,7 @@ module = ["docling.*", "paddleocr.*", "paddle.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "-q -m 'not network and not gpu and not parser' --cov=docparser.ir --cov-report=term-missing --cov-fail-under=85"
+addopts = "-q -m 'not network and not gpu and not parser' --cov=docparser.ir --cov=docparser.quality --cov=docparser.fallback --cov=docparser.application.robust --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests"]
 markers = [
   "gpu: requires a local GPU and model runtime",
@@ -75,8 +75,13 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["docparser.ir"]
+source = [
+  "docparser.application.robust",
+  "docparser.fallback",
+  "docparser.ir",
+  "docparser.quality",
+]
 
 [tool.coverage.report]
-fail_under = 85
+fail_under = 80
 show_missing = true

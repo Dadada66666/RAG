@@ -92,4 +92,8 @@ def calibration_profile(*, frozen: bool = True) -> CalibrationProfile:
         },
         frozen=frozen,
         created_from_commit="test-commit",
+        calibration_report_digest=(
+            Sha256Digest(f"sha256:{'d' * 64}") if frozen else None
+        ),
+        calibration_sample_count=20 if frozen else None,
     )

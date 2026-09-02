@@ -11,6 +11,7 @@ from docparser.ir.enums import BlockType, ReadingOrderStatus
 from docparser.ir.tables import Table
 from docparser.preflight import TextExtractionStatus, extract_numeric_tokens
 from docparser.quality.models import (
+    QualityMode,
     QualityScope,
     QualitySignal,
     QualityTarget,
@@ -19,6 +20,7 @@ from docparser.quality.models import (
     SignalOutcome,
     SignalSeverity,
     ValidationRequest,
+    quality_mode_for_request,
 )
 
 
@@ -30,9 +32,13 @@ class QualityRule(Protocol):
 
 def _action(context: ValidationRequest, rule_id: str) -> tuple[RuleAction, bool]:
     profile = context.calibration
-    if profile is None or not profile.frozen:
+    mode = quality_mode_for_request(context)
+    if profile is None or mode is QualityMode.OBSERVE_ONLY:
         return RuleAction.ADVISORY, False
-    return profile.rule_actions.get(rule_id, RuleAction.ADVISORY), True
+    return (
+        profile.rule_actions.get(rule_id, RuleAction.ADVISORY),
+        mode is QualityMode.CALIBRATED,
+    )
 
 
 def _page_text(context: ValidationRequest, page_number: int) -> str:
@@ -52,7 +58,12 @@ class SourceRichParseSparseRule:
 
     def evaluate(self, context: ValidationRequest) -> tuple[QualitySignal, ...]:
         action, calibrated = _action(context, self.rule_id)
-        thresholds = context.calibration.completeness if context.calibration else None
+        thresholds = (
+            context.calibration.completeness
+            if context.calibration is not None
+            and quality_mode_for_request(context) is not QualityMode.OBSERVE_ONLY
+            else None
+        )
         signals: list[QualitySignal] = []
         for source_page in context.profile.pages:
             native_chars = source_page.text_char_count
@@ -195,7 +206,12 @@ class DegenerateTableRule:
 
     def evaluate(self, context: ValidationRequest) -> tuple[QualitySignal, ...]:
         action, calibrated = _action(context, self.rule_id)
-        thresholds = context.calibration.table if context.calibration else None
+        thresholds = (
+            context.calibration.table
+            if context.calibration is not None
+            and quality_mode_for_request(context) is not QualityMode.OBSERVE_ONLY
+            else None
+        )
         signals: list[QualitySignal] = []
         for table in context.document.tables:
             empty_ratio = sum(not cell.text.strip() for cell in table.cells) / len(table.cells)

@@ -23,6 +23,7 @@ class QualityDecision(StrEnum):
 
 class QualityMode(StrEnum):
     OBSERVE_ONLY = "OBSERVE_ONLY"
+    CALIBRATION = "CALIBRATION"
     CALIBRATED = "CALIBRATED"
 
 
@@ -85,13 +86,19 @@ class CalibrationProfile(StrictIRModel):
     rule_actions: dict[str, RuleAction]
     frozen: bool
     created_from_commit: NonEmptyNfcString
+    calibration_report_digest: Sha256Digest | None = None
+    calibration_sample_count: int | None = Field(default=None, strict=True, ge=1)
 
     @model_validator(mode="after")
     def _validate_frozen_profile(self) -> Self:
         if len(set(self.supported_slices)) != len(self.supported_slices):
             raise ValueError("supported_slices must be unique")
+        if (self.calibration_report_digest is None) != (self.calibration_sample_count is None):
+            raise ValueError("calibration evidence digest and sample count must be set together")
         if not self.frozen:
             return self
+        if self.calibration_report_digest is None or self.calibration_sample_count is None:
+            raise ValueError("frozen profile requires calibration report evidence")
         if not self.supported_slices:
             raise ValueError("frozen profile requires at least one supported slice")
         if (
@@ -174,12 +181,59 @@ class ValidationRequest:
     supported_slice: str | None = None
 
 
+def quality_mode_for_request(request: ValidationRequest) -> QualityMode:
+    """Resolve whether a profile may observe, measure, or control publication."""
+
+    profile = request.calibration
+    if profile is None or request.supported_slice is None:
+        return QualityMode.OBSERVE_ONLY
+    if (
+        request.supported_slice not in profile.supported_slices
+        and "*" not in profile.supported_slices
+    ):
+        return QualityMode.OBSERVE_ONLY
+    return QualityMode.CALIBRATED if profile.frozen else QualityMode.CALIBRATION
+
+
+class FailureLabel(StrictIRModel):
+    rule_id: NonEmptyNfcString
+    scope: QualityScope
+    page_number: int | None = Field(default=None, strict=True, ge=1)
+    table_id: TableId | None = None
+
+    @model_validator(mode="after")
+    def _validate_scope(self) -> Self:
+        QualityTarget(
+            scope=self.scope,
+            page_number=self.page_number,
+            table_id=self.table_id,
+        )
+        return self
+
+    @property
+    def canonical_key(self) -> tuple[str, QualityScope, int | None, str | None]:
+        return (
+            str(self.rule_id),
+            self.scope,
+            self.page_number,
+            str(self.table_id) if self.table_id is not None else None,
+        )
+
+
 class CalibrationTruth(StrictIRModel):
     sample_id: NonEmptyNfcString
     acceptance_unit: AcceptanceUnit
     meets_acceptance_standard: bool
-    failure_type: NonEmptyNfcString | None
-    scope_key: NonEmptyNfcString
+    failure_labels: tuple[FailureLabel, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_failure_labels(self) -> Self:
+        keys = [label.canonical_key for label in self.failure_labels]
+        if len(set(keys)) != len(keys):
+            raise ValueError("failure_labels must be unique")
+        if self.meets_acceptance_standard and self.failure_labels:
+            raise ValueError("accepted truth cannot declare failure_labels")
+        return self
 
 
 class CalibrationSample(StrictIRModel):

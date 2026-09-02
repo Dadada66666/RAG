@@ -28,6 +28,11 @@ Automatic fallback is prohibited until all of the following are true:
 4. the alternate adapter can truthfully parse the bounded materialized input;
 5. candidate-vs-baseline comparison and full revalidation are available.
 
+The frozen `FallbackProfile` records `evidence_dataset_digest`, `evidence_report_digest`, and
+`evidence_sample_count`. These fields establish routing-policy lineage; they do not rank parsers or
+certify a reliability target. Its supported slice governs fallback eligibility only and does not
+select the Quality Gate slice.
+
 ### 1.2 First fallback MVP boundary
 
 The first implementation supports only `PAGE` and `TABLE` targets. Table replacement is atomic:
@@ -53,6 +58,10 @@ adapter still receives `DOCUMENT` scope over that bounded artifact. TABLE replac
 containing page, selects one uniquely compatible candidate, and atomically replaces the complete
 single-page logical table. The temporary PDF is never canonical source truth. No profile rule such
 as “Paddle always wins tables” is valid without frozen corpus evidence.
+
+The `MaterializedPage.digest` is carried through `CandidatePage`, fallback result diagnostics, and
+the fallback parser-run runtime metadata together with `materialized_single_page=true` and the
+original page number. Canonical provenance continues to reference the original PDF artifact.
 
 The authoritative control flow is:
 

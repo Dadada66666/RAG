@@ -23,6 +23,7 @@ from docparser.quality.models import (
     SignalOutcome,
     SignalSeverity,
     ValidationRequest,
+    quality_mode_for_request,
 )
 from docparser.quality.rules import DEFAULT_RULES, QualityRule
 
@@ -84,14 +85,7 @@ class DeterministicQualityGate:
 
     def evaluate(self, request: ValidationRequest) -> QualityReport:
         profile = request.calibration
-        calibrated = (
-            profile is not None
-            and profile.frozen
-            and (
-                request.supported_slice in profile.supported_slices
-                or "*" in profile.supported_slices
-            )
-        )
+        mode = quality_mode_for_request(request)
         signals: list[QualitySignal] = []
         try:
             DocumentIR.model_validate(request.document.model_dump(mode="python"))
@@ -104,7 +98,7 @@ class DeterministicQualityGate:
         triggered = [signal for signal in signals if signal.is_triggered]
         if any(signal.action is RuleAction.REJECT for signal in triggered):
             decision = QualityDecision.REJECT
-        elif not calibrated:
+        elif mode is QualityMode.OBSERVE_ONLY:
             decision = QualityDecision.REJECT
         elif any(signal.action is RuleAction.FALLBACK for signal in triggered):
             decision = QualityDecision.FALLBACK_REQUIRED
@@ -121,11 +115,11 @@ class DeterministicQualityGate:
             revision_id=request.document.revision_id,
             ruleset_version=(profile.ruleset_version if profile else QUALITY_RULESET_VERSION),
             calibration_profile_id=profile.profile_id if profile else None,
-            mode=QualityMode.CALIBRATED if calibrated else QualityMode.OBSERVE_ONLY,
+            mode=mode,
             decision=decision,
             signals=tuple(signals),
             fallback_targets=tuple(unique_targets),
-            calibration_required=not calibrated,
+            calibration_required=mode is not QualityMode.CALIBRATED,
             created_at=self._clock(),
         )
 

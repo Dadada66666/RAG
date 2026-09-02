@@ -1,6 +1,12 @@
 """Public Quality Gate API."""
 
-from docparser.quality.calibration import evaluate_calibration, freeze_profile
+from docparser.quality.calibration import (
+    calibration_report_digest,
+    decision_for_scope,
+    evaluate_calibration,
+    failure_label_matches_signal,
+    freeze_profile,
+)
 from docparser.quality.engine import (
     QUALITY_RULESET_VERSION,
     DeterministicQualityGate,
@@ -13,6 +19,7 @@ from docparser.quality.models import (
     CalibrationSample,
     CalibrationTruth,
     CompletenessThresholds,
+    FailureLabel,
     QualityDecision,
     QualityMode,
     QualityReport,
@@ -23,6 +30,7 @@ from docparser.quality.models import (
     SignalOutcome,
     TableThresholds,
     ValidationRequest,
+    quality_mode_for_request,
 )
 
 __all__ = [
@@ -34,6 +42,7 @@ __all__ = [
     "CalibrationTruth",
     "CompletenessThresholds",
     "DeterministicQualityGate",
+    "FailureLabel",
     "QualityDecision",
     "QualityMode",
     "QualityReport",
@@ -45,6 +54,10 @@ __all__ = [
     "TableThresholds",
     "ValidationRequest",
     "apply_quality_report",
+    "calibration_report_digest",
+    "decision_for_scope",
     "evaluate_calibration",
+    "failure_label_matches_signal",
     "freeze_profile",
+    "quality_mode_for_request",
 ]

@@ -232,6 +232,12 @@ Every accepted-output result declares `acceptance_unit=DOCUMENT|PAGE|TABLE`. Uni
 separately; no aggregate may mix them. A 95% claim also declares supported slice, sample size,
 coverage and confidence interval or other documented uncertainty method.
 
+Calibration truth may contain multiple scoped failure labels. Rule detection is matched on exact
+`(rule_id, scope, page_number, table_id)` identity. PAGE decisions include document blockers plus
+that page and its tables; TABLE decisions include document blockers plus that exact table. Neither
+unit reuses the global document decision, so one failed page/table does not contaminate unrelated
+accepted units.
+
 Fallback evaluation compares baseline, candidate and committed revision on the exact target and
 boundary context. Report target precision, quality delta by metric, collateral regression, cost and
 revalidation outcome. A fallback that does not demonstrably improve the calibrated acceptance

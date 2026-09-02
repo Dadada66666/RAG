@@ -1,10 +1,10 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: Next 2 + Next 3 implemented; next allowed work is Next 4**
+> **CURRENT EXECUTION POINTER: Next 2 + Next 3 hardened; next allowed work is Next 4**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
-> Next 1 offline contracts and the Next 2/3 runtime are implemented. Real benchmark/calibration
+> Next 1 offline contracts and the hardened Next 2/3 runtime are implemented. Real benchmark/calibration
 > corpora remain unprovisioned, so automatic production routing and reliability claims remain
 > disabled. Historical storage/API ordering remains superseded by the quality track.
 
@@ -766,6 +766,9 @@ and upstream license review; offline implementation and CI do not.
 rules, discrete IR 1.2 lifecycle, profile freeze contract and per-unit calibration metrics run
 offline. No repository profile is frozen from real corpus evidence, so no reliability claim exists.
 
+Hardening adds explicit `OBSERVE_ONLY/CALIBRATION/CALIBRATED` modes, evidence-bound profile freeze,
+multi-label scope-aware truth matching, and independently computed DOCUMENT/PAGE/TABLE decisions.
+
 **Goal:** decide `ACCEPT/FALLBACK_REQUIRED/REJECT` from a small evidence-driven rule set.
 
 **Files:** quality domain/ports/rules/calibration/report schema, IR 1.x compatibility amendment,
@@ -793,6 +796,9 @@ coverage** are reported on protected holdout; no uncalibrated weight/threshold c
 single-page PDF materializer while adapters remain DOCUMENT-scoped; replacement supports atomic
 PAGE and single-page TABLE only, one round, copy-on-write revision, provenance and full
 revalidation. Automatic execution requires frozen calibration and fallback profiles.
+
+Hardening decouples Quality Gate slice selection from fallback configuration and carries the
+materialized single-page digest into candidate/result/parser-run evidence.
 
 **Goal:** repair reliably detected page/table scopes only when an alternate candidate demonstrably
 improves the acceptance predicate.

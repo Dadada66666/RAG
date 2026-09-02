@@ -19,7 +19,7 @@ from docparser.fallback import FallbackBudget, FallbackProfile, FallbackTargetSt
 from docparser.ir.ids import ParserRunId
 from docparser.ir.types import Sha256Digest
 from docparser.ports.parsers import DocumentParser
-from docparser.quality import QualityDecision
+from docparser.quality import QualityDecision, QualityMode
 
 
 def _result_with_paragraph(
@@ -66,6 +66,8 @@ def test_robust_parse_materializes_one_page_and_commits_clear_gain(tmp_path: Pat
     fallback_profile = FallbackProfile(
         profile_id="fallback-test-v1",
         evidence_dataset_digest=Sha256Digest(f"sha256:{'c' * 64}"),
+        evidence_report_digest=Sha256Digest(f"sha256:{'e' * 64}"),
+        evidence_sample_count=20,
         created_from_commit="test-commit",
         primary_profile="docling-standard",
         alternate_profile="paddleocr-vl-1.6",
@@ -91,6 +93,7 @@ def test_robust_parse_materializes_one_page_and_commits_clear_gain(tmp_path: Pat
         ParsingConfig(parser="docling-standard", device=RuntimeDevice.CPU),
         calibration=calibration_profile(),
         fallback_profile=fallback_profile,
+        supported_slice="test",
         primary_parser=primary,
         alternate_parser=alternate,
         parse_provider=parse_provider,
@@ -104,6 +107,11 @@ def test_robust_parse_materializes_one_page_and_commits_clear_gain(tmp_path: Pat
     assert outcome.final_document.revision_number == 1
     assert outcome.final_document.previous_revision_id == outcome.baseline_document.revision_id
     assert outcome.final_document.quality_summary.score is None
+    materialized_digest = outcome.fallback_result.results[0].materialized_digest
+    assert materialized_digest is not None
+    assert outcome.final_document.processing.parser_runs[-1].runtime["materialized_digest"] == str(
+        materialized_digest
+    )
 
     bad_alternate = ContractFixtureParser(
         _result_with_paragraph(
@@ -117,6 +125,7 @@ def test_robust_parse_materializes_one_page_and_commits_clear_gain(tmp_path: Pat
         ParsingConfig(parser="docling-standard", device=RuntimeDevice.CPU),
         calibration=calibration_profile(),
         fallback_profile=fallback_profile,
+        supported_slice="test",
         primary_parser=primary,
         alternate_parser=bad_alternate,
         parse_provider=parse_provider,
@@ -145,3 +154,74 @@ def test_robust_parse_without_calibration_never_runs_fallback(tmp_path: Path) ->
     assert outcome.fallback_plan is not None
     assert not outcome.fallback_plan.enabled
     assert outcome.fallback_result is None
+
+
+def test_calibrated_accept_does_not_require_fallback_profile(tmp_path: Path) -> None:
+    source = write_tiny_pdf(tmp_path / "accepted.pdf")
+    primary = ContractFixtureParser(load_contract_result("born-digital"))
+
+    outcome = robust_parse_document(
+        source,
+        ParsingConfig(parser="docling-standard", device=RuntimeDevice.CPU),
+        calibration=calibration_profile(),
+        supported_slice="test",
+        primary_parser=primary,
+    )
+
+    assert outcome.final_decision is QualityDecision.ACCEPT
+    assert outcome.final_document.quality_summary.publishable
+    assert outcome.fallback_result is None
+
+
+def test_candidate_calibration_profile_never_executes_automatic_fallback(
+    tmp_path: Path,
+) -> None:
+    source = write_tiny_pdf(tmp_path / "candidate-calibration.pdf", layout="numeric")
+    primary = ContractFixtureParser(
+        _result_with_paragraph(
+            "Revenue missing",
+            parser_name="docling",
+            parser_run_id="prun_018bcfe5-6800-7000-8000-000000000021",
+        )
+    )
+    fallback_profile = FallbackProfile(
+        profile_id="fallback-test-v1",
+        evidence_dataset_digest=Sha256Digest(f"sha256:{'c' * 64}"),
+        evidence_report_digest=Sha256Digest(f"sha256:{'e' * 64}"),
+        evidence_sample_count=20,
+        created_from_commit="test-commit",
+        primary_profile="docling-standard",
+        alternate_profile="paddleocr-vl-1.6",
+        supported_slice="test",
+        eligible_rule_ids=("NUMERIC.NATIVE_PARSER_DISAGREEMENT",),
+        minimum_candidate_match=0.5,
+        winner_margin=0.1,
+        frozen=True,
+    )
+    parse_calls = 0
+
+    def parse_provider(
+        path: Path,
+        config: ParsingConfig,
+        parser: DocumentParser | None,
+    ) -> ParseOutcome:
+        nonlocal parse_calls
+        parse_calls += 1
+        return parse_document_with_diagnostics(path, config, parser=parser)
+
+    outcome = robust_parse_document(
+        source,
+        ParsingConfig(parser="docling-standard", device=RuntimeDevice.CPU),
+        calibration=calibration_profile(frozen=False),
+        fallback_profile=fallback_profile,
+        supported_slice="test",
+        primary_parser=primary,
+        parse_provider=parse_provider,
+    )
+
+    assert outcome.baseline_quality_report.mode is QualityMode.CALIBRATION
+    assert outcome.baseline_quality_report.decision is QualityDecision.FALLBACK_REQUIRED
+    assert outcome.fallback_plan is not None
+    assert not outcome.fallback_plan.enabled
+    assert outcome.fallback_result is None
+    assert parse_calls == 1

@@ -46,6 +46,23 @@ def test_missing_calibration_is_observe_only_and_never_accepts() -> None:
     assert report.calibration_required
 
 
+def test_candidate_profile_computes_decision_but_cannot_publish() -> None:
+    document = quality_document()
+    report = _gate().evaluate(
+        ValidationRequest(
+            document,
+            quality_profile(),
+            calibration_profile(frozen=False),
+            "test",
+        )
+    )
+    evaluated = apply_quality_report(document, report)
+
+    assert report.mode is QualityMode.CALIBRATION
+    assert report.decision is QualityDecision.ACCEPT
+    assert not evaluated.quality_summary.publishable
+
+
 def test_source_rich_parser_sparse_is_blocking_when_calibrated() -> None:
     report = _gate().evaluate(
         ValidationRequest(

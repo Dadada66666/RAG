@@ -100,6 +100,7 @@ def robust_parse_document(
     *,
     calibration: CalibrationProfile | None = None,
     fallback_profile: FallbackProfile | None = None,
+    supported_slice: str | None = None,
     primary_parser: DocumentParser | None = None,
     alternate_parser: DocumentParser | None = None,
     quality_gate: DeterministicQualityGate | None = None,
@@ -125,11 +126,17 @@ def robust_parse_document(
             document=baseline_outcome.document,
             profile=baseline_outcome.profile,
             calibration=calibration,
-            supported_slice=fallback_profile.supported_slice if fallback_profile else None,
+            supported_slice=supported_slice,
         )
     )
     baseline = apply_quality_report(baseline_outcome.document, baseline_report)
-    plan = build_fallback_plan(baseline, baseline_report, calibration, fallback_profile)
+    plan = build_fallback_plan(
+        baseline,
+        baseline_report,
+        calibration,
+        fallback_profile,
+        supported_slice,
+    )
     working = baseline
     current_report = baseline_report
     results: list[FallbackTargetResult] = []
@@ -163,6 +170,7 @@ def robust_parse_document(
                     )
                     candidate = CandidatePage(
                         original_page_number=planned.target.page_number,
+                        materialized_digest=materialized.digest,
                         document=candidate_outcome.document,
                     )
                     gate.evaluate(
@@ -170,7 +178,7 @@ def robust_parse_document(
                             document=candidate.document,
                             profile=candidate_outcome.profile,
                             calibration=calibration,
-                            supported_slice=fallback_profile.supported_slice,
+                            supported_slice=supported_slice,
                         )
                     )
                     if planned.target.scope is QualityScope.PAGE:
@@ -194,6 +202,7 @@ def robust_parse_document(
                                     status=FallbackTargetStatus.UNSUPPORTED_CROSS_PAGE_TABLE_FALLBACK,
                                     attempt_fingerprint=planned.attempt_fingerprint,
                                     alternate_profile=fallback_profile.alternate_profile,
+                                    materialized_digest=materialized.digest,
                                     detail="Cross-page table fallback is outside the MVP.",
                                 )
                             )
@@ -211,6 +220,7 @@ def robust_parse_document(
                                     status=FallbackTargetStatus.CONFLICT,
                                     attempt_fingerprint=planned.attempt_fingerprint,
                                     alternate_profile=fallback_profile.alternate_profile,
+                                    materialized_digest=materialized.digest,
                                     detail="Two candidate tables are too close to select safely.",
                                 )
                             )
@@ -222,6 +232,7 @@ def robust_parse_document(
                                     status=FallbackTargetStatus.REJECTED_NO_CLEAR_GAIN,
                                     attempt_fingerprint=planned.attempt_fingerprint,
                                     alternate_profile=fallback_profile.alternate_profile,
+                                    materialized_digest=materialized.digest,
                                     detail=(
                                         "No candidate table met the frozen compatibility predicate."
                                     ),
@@ -241,7 +252,7 @@ def robust_parse_document(
                             document=proposed,
                             profile=baseline_outcome.profile,
                             calibration=calibration,
-                            supported_slice=fallback_profile.supported_slice,
+                            supported_slice=supported_slice,
                         )
                     )
                     if not _clear_gain(
@@ -256,6 +267,7 @@ def robust_parse_document(
                                 status=FallbackTargetStatus.REJECTED_NO_CLEAR_GAIN,
                                 attempt_fingerprint=planned.attempt_fingerprint,
                                 alternate_profile=fallback_profile.alternate_profile,
+                                materialized_digest=materialized.digest,
                                 detail=(
                                     "Candidate did not resolve its trigger without new blockers."
                                 ),
@@ -270,6 +282,7 @@ def robust_parse_document(
                             status=FallbackTargetStatus.APPLIED,
                             attempt_fingerprint=planned.attempt_fingerprint,
                             alternate_profile=fallback_profile.alternate_profile,
+                            materialized_digest=materialized.digest,
                             detail=(
                                 "Candidate resolved the frozen predicate and passed full "
                                 "revalidation."
@@ -283,6 +296,7 @@ def robust_parse_document(
                             status=FallbackTargetStatus.REJECTED_UNSUPPORTED_DEPENDENCY,
                             attempt_fingerprint=planned.attempt_fingerprint,
                             alternate_profile=fallback_profile.alternate_profile,
+                            materialized_digest=materialized.digest,
                             detail=str(exc),
                         )
                     )
@@ -293,6 +307,7 @@ def robust_parse_document(
                             status=FallbackTargetStatus.PARSER_FAILED,
                             attempt_fingerprint=planned.attempt_fingerprint,
                             alternate_profile=fallback_profile.alternate_profile,
+                            materialized_digest=materialized.digest,
                             detail=str(exc) or type(exc).__name__,
                         )
                     )

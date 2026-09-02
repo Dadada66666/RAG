@@ -183,6 +183,13 @@ def parse_robust(
             resolve_path=True,
         ),
     ] = None,
+    supported_slice: Annotated[
+        str | None,
+        typer.Option(
+            "--supported-slice",
+            help="Calibrated document slice to evaluate; independent of fallback configuration.",
+        ),
+    ] = None,
 ) -> None:
     """Parse, validate, optionally fall back, and emit the final evaluated IR."""
 
@@ -202,6 +209,7 @@ def parse_robust(
             ParsingConfig(parser=parser, device=device),
             calibration=calibration,
             fallback_profile=fallback,
+            supported_slice=supported_slice,
         )
         write_robust_outputs(outcome, output)
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError, ValidationError) as exc:

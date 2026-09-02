@@ -14,7 +14,7 @@ from docparser.fallback import (
     replace_table_atomic,
 )
 from docparser.ir.ids import RevisionId, TableId, generate_uuid5_id
-from docparser.ir.types import UtcTimestamp
+from docparser.ir.types import Sha256Digest, UtcTimestamp
 
 
 def test_atomic_table_replacement_leaves_second_table_unchanged() -> None:
@@ -22,7 +22,11 @@ def test_atomic_table_replacement_leaves_second_table_unchanged() -> None:
     target = baseline.tables[0]
     untouched = baseline.tables[1]
     candidate_document = with_alternate_run(normalize_contract_fixture("simple-table"))
-    candidate = CandidatePage(original_page_number=1, document=candidate_document)
+    candidate = CandidatePage(
+        original_page_number=1,
+        materialized_digest=Sha256Digest(f"sha256:{'a' * 64}"),
+        document=candidate_document,
+    )
 
     revised = replace_table_atomic(
         baseline,
@@ -80,7 +84,11 @@ def test_cross_page_table_replacement_is_explicitly_unsupported() -> None:
     with pytest.raises(UnsupportedDependencyError, match="cross-page"):
         replace_table_atomic(
             baseline,
-            CandidatePage(original_page_number=1, document=candidate_document),
+            CandidatePage(
+                original_page_number=1,
+                materialized_digest=Sha256Digest(f"sha256:{'a' * 64}"),
+                document=candidate_document,
+            ),
             baseline.tables[0],
             candidate_document.tables[0],
             attempt_fingerprint=f"sha256:{'f' * 64}",
