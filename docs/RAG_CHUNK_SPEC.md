@@ -2,13 +2,16 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed |
+| Status | Authoritative next-phase contract; not implemented |
 | Chunk schema version | `1.0.0` |
 | Default chunker version | `1.0.0` |
 
 ## 1. Purpose
 
 Chunks are deterministic retrieval views over a specific immutable IR revision. They are not a second source of truth. Every chunk must be reconstructible from its ordered source blocks and must resolve to page/bbox/source provenance.
+
+Parent-child chunking and structure-aware chunking are **not implemented** in the current
+repository. They are the first RAG ingestion experiment, not a claim of global optimality.
 
 Fixed-size character splitting is prohibited as the primary policy because it:
 
@@ -133,7 +136,9 @@ Greedy ordered packing is deterministic:
 4. If an atomic unit exceeds soft max, invoke its type-specific splitter.
 5. Never emit above hard max; record a validation issue if no legal split exists.
 
-The algorithm minimizes a versioned cost function over boundary penalties (section, paragraph, list, context) and token deviation. Given equal cost, stable source-block ID order wins.
+The MVP stops at this deterministic greedy policy. It does not require a cost-function optimizer.
+Any later optimizer must specify its objective and demonstrate an improvement on the retrieval
+evaluation set; stable source-block order remains the tie-break.
 
 ## 5. Type-specific behavior
 
@@ -215,6 +220,19 @@ Old chunk manifests remain immutable and are withdrawn from downstream indexing 
 - Dense, sparse and hybrid indexes may render different text fields from the same chunk, but cannot drop provenance.
 
 ## 10. Validation and evaluation
+
+### 10.1 Required A/B experiment
+
+Before promotion, evaluate on the same versioned query/QA set:
+
+- **Baseline A:** native/simple extracted PDF text, fixed-token chunks, deterministic overlap;
+- **Baseline B:** Canonical IR, structure-aware parent-child chunks defined here.
+
+Report retrieval, table retrieval, citation and latency deltas independently. Later optional
+experiments may add contextual heading/path enrichment. Late Chunking is allowed only when the
+chosen embedding model supports it and the same benchmark shows value. RAPTOR is deferred until a
+multi-hop/document-level evaluation demonstrates need. The first RAG version must not implement
+RAPTOR or use LLM-generated summaries as core parent chunks.
 
 Hard validation:
 

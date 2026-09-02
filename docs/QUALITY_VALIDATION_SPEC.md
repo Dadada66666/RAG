@@ -1,377 +1,325 @@
-# Quality Validation Specification
+# Calibrated Quality Gate Specification
 
 | Field | Value |
 |---|---|
-| Status | Proposed |
-| Ruleset version | `1.0.0` |
-| Core policy | Deterministic/heuristic/statistical first; no required LLM |
+| Status | Authoritative next-phase contract; not implemented |
+| Contract version | `quality-gate/1.1.0` |
+| Decision policy | Evidence sufficiency and risk gating, not proof of correctness |
+| Core policy | Deterministic/statistical first; no LLM required |
 
-## 1. Semantics
+## 1. Purpose and boundary
 
-Parser execution and parse quality are independent facts:
+Parser execution and output acceptance are separate facts. `ParseResult.status=SUCCESS` means the
+adapter returned a complete neutral envelope. It does not mean the content is correct or safe to
+index.
+
+The Quality Gate answers one bounded question:
+
+> Is the available evidence sufficient to accept this parsed scope automatically, or must the
+> scope be reparsed/escalated or rejected?
+
+The Quality Gate is not a correctness oracle. It cannot prove that an arbitrary document is
+perfectly parsed. It consumes an immutable Canonical IR revision, `DocumentProfile`, native PDF
+evidence, parser diagnostics and a versioned calibration profile. It emits facts and a policy
+decision; it never silently edits IR.
+
+## 2. Decision model and IR lifecycle
+
+### 2.1 Primary decision
 
 ```text
-ParseResult.status == COMPLETE
+QualityDecision:
+  ACCEPT
+  FALLBACK_REQUIRED
+  REJECT
 ```
 
-means the adapter returned syntactically complete output for the requested scope. It does **not** imply:
+| Decision | Meaning | IR status | Publishable |
+|---|---|---|:---:|
+| `ACCEPT` | No hard failure; all mandatory applicable evidence passed the calibrated supported-slice policy | `PASS` | Yes |
+| `FALLBACK_REQUIRED` | One or more reliably targetable failures are detected and an eligible alternate execution path may improve them | `DEGRADED` | No, until candidate comparison and revalidation accept a new revision |
+| `REJECT` | Hard integrity failure, unsupported/insufficient evidence with no safe fallback, non-targetable failure, or exhausted repair | `FAIL` | No |
 
-```text
-QualityReport.status == PASS
-```
+`PARTIAL` remains a job state, not a quality status. A later explicit policy may activate selected
+`DEGRADED` scopes, but deny-by-default remains authoritative.
 
-The validator consumes Canonical IR, `DocumentProfile`, source/render evidence and parser-run metadata. It produces issues, dimension scores, a publication decision and repair recommendations. It never silently edits IR.
+### 2.2 Continuous score policy
 
-## 2. Interfaces
+The MVP decision does not require a weighted continuous quality score. The prior weights
+(`COMPLETENESS=0.25`, `TABLE=0.15`, and similar) and thresholds (`PASS=0.80`, fallback `0.65`) are
+**UNCALIBRATED PROPOSALS** and must not control acceptance.
+
+A continuous `quality_score` may be introduced only when protected-set evidence shows that it adds
+decision value beyond the discrete rules. Its calibration target, reliability curve and decision
+threshold must then be versioned and reported.
+
+Current IR 1.1 requires a non-null score for evaluated statuses. Before implementing this MVP,
+make one backward-compatible V1 minor amendment: evaluated `PASS/DEGRADED/FAIL` may carry
+`score=null` when the ruleset declares `score_model=NONE`; `quality_report_id` remains mandatory.
+This requires an ADR-006 compatibility note, generated schema/migration updates and runtime/schema
+tests. Until that amendment ships, the gate must not fabricate `1.0`, `0.5` or `0.0`; IR remains
+`NOT_EVALUATED` and non-publishable.
+
+## 3. Evidence and rule contracts
 
 ```python
 class QualityRule(Protocol):
-    @property
     def descriptor(self) -> RuleDescriptor: ...
+    def evaluate(self, context: ValidationContext) -> tuple[QualitySignal, ...]: ...
 
-    def evaluate(self, context: ValidationContext) -> list[QualityIssue]: ...
-
-class QualityValidator(Protocol):
-    def validate(self, request: ValidationRequest) -> QualityReport: ...
+class QualityGate(Protocol):
+    def decide(self, request: ValidationRequest) -> QualityReport: ...
 ```
 
-`RuleDescriptor` declares:
+Every `RuleDescriptor` must define:
 
-- stable `rule_id`, version and description;
-- dimension and supported scopes;
-- evidence required (IR only, preflight, raster statistics, source text count);
-- applicability predicate;
-- deterministic flag;
-- default severity/impact calculation;
-- fallback mappings and suppression/deduplication key;
-- computational budget.
+| Field | Contract |
+|---|---|
+| `rule_id`, `rule_version` | Stable machine identity and behavior version |
+| `evidence_required` | Exact IR/preflight/native/raster/parser evidence fields |
+| `scope` | `DOCUMENT`, `PAGE`, `REGION`, `TABLE`, `FIGURE`, or `BLOCK` |
+| `applicability` | Deterministic predicate; false means `NOT_APPLICABLE`, not pass |
+| `signal_class` | `HARD_INTEGRITY`, `CROSS_SOURCE_DISAGREEMENT`, `ANOMALY`, or `PARSER_UNCERTAINTY` |
+| `deterministic` | Whether identical evidence must produce identical output |
+| `predicted_failure_type` | Defect label the signal attempts to detect |
+| `output_severity` | Default `INFO/WARNING/ERROR/CRITICAL` |
+| `false_positive_mode` | Known correct inputs likely to trigger the rule |
+| `false_negative_mode` | Known defects likely to escape the rule |
+| `repairability` | Target capability/scope, or `NONE` |
+| `calibration_profile_id` | Frozen calibration evidence or `PROVISIONAL` |
+| `complexity_budget` | Bounded operations/evidence and timeout behavior |
 
-Rules are registered by configuration/entry point. Application code does not enumerate parser-specific rule sets. Parser-specific facts may be evaluated only through generic evidence fields or namespaced rule plug-ins that emit canonical issues.
+### 3.1 Signal classes
 
-## 3. Core types
+1. **Hard integrity failures** are deterministic violations such as missing pages, invalid geometry,
+   broken provenance or impossible table occupancy. They block publication independently of any
+   score.
+2. **Cross-source disagreement signals** compare independent evidence such as native PDF numbers
+   and parser output. They establish disagreement, not which source is correct.
+3. **Statistical/anomaly signals** detect unusual content loss/density/sparsity relative to a
+   calibrated slice. They require documented false-positive/false-negative behavior.
+4. **Parser uncertainty signals** preserve unresolved order, unknown hierarchy, parser warnings or
+   missing confidence. Parser confidence alone never authorizes acceptance or replacement.
 
-### 3.1 Enums
-
-```text
-QualityDimension:
-  COMPLETENESS, TEXT, LAYOUT, TABLE, STRUCTURE, PROVENANCE
-
-Severity:
-  INFO, WARNING, ERROR, CRITICAL
-
-QualityStatus:
-  NOT_EVALUATED, PASS, DEGRADED, FAIL
-
-FallbackUrgency:
-  OPTIONAL, RECOMMENDED, REQUIRED
-
-IssueDisposition:
-  OPEN, REPAIRED, ACCEPTED_BY_POLICY, NOT_APPLICABLE, SUPERSEDED
-```
-
-`CRITICAL` is reserved for integrity/publication hard gates, not “very bad-looking” content. An issue may be an `ERROR` and highly repairable without being critical.
-
-`NOT_EVALUATED` is the required lifecycle state after normalization and before this validator runs. It is not an evaluated outcome: `score=null`, `quality_report_id=null`, and `publishable=false`. Only the Quality Validator may transition the summary to `PASS`, `DEGRADED`, or `FAIL`, at which point both score and report ID are required. Parser success never performs this transition.
-
-### 3.2 `QualityIssue`
+### 3.2 `QualitySignal`
 
 Required fields:
 
-| Field | Meaning |
-|---|---|
-| `issue_id` | Deterministic ID from report input revision + rule + scope + evidence key |
-| `rule_id`, `rule_version` | Producing rule |
-| `type` | Stable machine code, e.g. `TABLE.IMPOSSIBLE_SPAN` |
-| `dimension`, `severity` | Classification |
-| `message_safe` | Human-readable, no extracted text by default |
-| `scope` | Document/page/region/table/figure/block plus IDs/bbox |
-| `evidence` | Bounded metrics/references, not raw page text |
-| `impact` | Normalized `[0,1]` document-scope penalty contribution |
-| `confidence` | Rule certainty `[0,1]`; not parser confidence |
-| `repairable` | Whether fallback can plausibly repair it |
-| `candidate_capabilities` | Required parser capabilities |
-| `disposition` | Lifecycle in this report/revalidation lineage |
-| `provenance_ids` | Evidence provenance |
+```text
+signal_id, rule_id, rule_version, signal_class, failure_type,
+scope, applicability, severity, evidence_refs, observed_values,
+threshold_profile_id, deterministic, repairable, candidate_capabilities,
+false_positive_mode, false_negative_mode, provenance_ids
+```
 
-`impact` is calculated by rule-specific severity and affected-scope coverage. The aggregator does not guess impact from issue count.
+Evidence is bounded and redacted by default. A signal is a fact/prediction, not a final decision.
+Signals from the same evidence may be deduplicated, but one weak signal cannot be multiplied into a
+strong decision by emitting duplicates.
 
 ### 3.3 `QualityReport`
 
 ```text
 QualityReport
-├── quality_report_id, report_version, ruleset_version
-├── document_id, ir_revision_id
-├── validation_scope, started_at, ended_at
-├── dimension_scores{}
-├── quality_score
-├── status
+├── quality_report_id, report_version, ruleset_version, policy_version
+├── calibration_profile_id, benchmark_dataset_digest
+├── document_id, ir_revision_id, validation_scope
+├── decision: ACCEPT | FALLBACK_REQUIRED | REJECT
+├── quality_status: PASS | DEGRADED | FAIL
 ├── publishable
-├── hard_gate_failures[]
-├── issues[]
+├── quality_score: number | null
+├── score_model: NONE | <versioned model id>
+├── signals[]
+├── hard_failures[]
 ├── fallback_recommendations[]
-├── fallback_required
-├── evaluated_rules[], skipped_rules[]
-├── thresholds
-└── evidence_artifact_ids[]
+├── evaluated_rules[], not_applicable_rules[], skipped_rules[]
+├── evidence_coverage
+└── started_at, ended_at, report_digest
 ```
 
-Skipped applicable rules are explicit. A report with a skipped mandatory rule cannot be `PASS`.
+An applicable mandatory rule that is skipped or times out prevents `ACCEPT`. A rule that lacks its
+required evidence emits `INSUFFICIENT_EVIDENCE`; policy chooses fallback or reject. Missing evidence
+is never equivalent to passing evidence.
 
-### 3.4 `FallbackRecommendation`
+## 4. MVP rule set
 
-Required: `recommendation_id`, `issue_ids`, `target_scope`, `required_capabilities`, `urgency`, `preferred_strategy`, `estimated_gain`, `estimated_cost`, `boundary_context`, `constraints`, `reason_codes`. It recommends capability and scope, not a hard-coded parser name.
+The first implementation is deliberately small. Additional rules require observed failure examples
+and calibration evidence.
 
-## 4. Rule execution model
+### 4.1 Hard integrity
 
-Rules run in ordered groups:
-
-1. **Schema/integrity hard gates:** cardinality, references, coordinates, IDs, provenance reachability.
-2. **Completeness:** compare preflight/page/source signals with IR.
-3. **Local content/layout/table rules:** parallel by page where safe.
-4. **Cross-page/document structure:** duplicates, repeated margins, cross-page tables, heading tree.
-5. **Aggregation and recommendation coalescing.**
-
-Each rule receives an immutable context and deterministic config. Results are sorted by `(page, bbox, rule_id, issue_id)` before hashing. Timeouts of optional rules produce `skipped_rules`; mandatory-rule timeout fails validation.
-
-Rules must declare complexity and operation/evidence budgets. Spatial rules use an R-tree/sweep-line/grid index over page-local bboxes; text duplicate rules use bounded fingerprints/inverted indexes before pair scoring. Unbounded all-pairs block/cell comparisons are prohibited. Exceeding a mandatory-rule budget produces an explicit validation failure or conservative degraded result according to the rule descriptor; it never silently skips evidence. Metrics expose candidate-pair counts and budget exhaustion.
-
-Revalidation after merge executes:
-
-- all rules whose evidence intersects changed entities/pages;
-- neighbor-page/cross-page rules declared by dependencies;
-- all document hard invariants;
-- score aggregation across retained unchanged results and new results.
-
-## 5. Rule catalog for ruleset 1.0
-
-### 5.1 Completeness/document
-
-| Rule code | Detection | Default outcome | Repair scope |
-|---|---|---|---|
-| `DOC.PAGE_COUNT_MISMATCH` | IR vs verified preflight pages | CRITICAL hard gate | Document/re-normalize |
-| `DOC.MISSING_PAGE` | Gap/duplicate page numbers | CRITICAL hard gate | Page/document |
-| `DOC.SUSPECT_CONTENT_LOSS` | Source text objects/image/text density vs IR by page | ERROR | Page |
-| `DOC.DUPLICATE_PAGE_CONTENT` | Near-identical normalized content/geometry on non-template pages | ERROR | Page |
-| `DOC.ABNORMAL_EMPTY_PAGE` | Nonblank raster/source signals but no flow blocks | ERROR | Page |
-| `DOC.UNEXPECTED_PAGE_DIMENSION` | Large unexplained difference from preflight | CRITICAL | Page/normalization |
-
-Intentional blank pages are not failures when raster entropy, source objects and neighboring pagination support blankness.
-
-### 5.2 Text
-
-| Rule code | Detection | Notes |
+| Rule | Evidence | Decision behavior |
 |---|---|---|
-| `TEXT.ABNORMAL_CHARACTER_RATIO` | Control/private-use/replacement/unassigned ratios by language slice | Unicode-script aware |
-| `TEXT.ENCODING_CORRUPTION` | mojibake signatures, replacement runs, impossible mappings | Never “fix” silently |
-| `TEXT.OCR_GARBAGE` | token-length, entropy, script transitions, punctuation/repetition profile | Calibrated per zh/en/mixed |
-| `TEXT.REPETITION_LOOP` | repeated n-grams/lines beyond legitimate headers | Region/page repair |
-| `TEXT.LOW_DENSITY` | expected source/raster density vs extracted characters | Excludes figures/blank areas |
-| `TEXT.DUPLICATED_BLOCK` | high text similarity + overlapping/near geometry | Merge/dedup candidate |
-| `TEXT.LANGUAGE_MISMATCH` | strong profile hint vs extracted script | WARNING unless content loss evidence |
+| `INTEGRITY.PAGE_COUNT_MISMATCH` | verified preflight page count and IR pages | `REJECT`, or `FALLBACK_REQUIRED` only when missing page scope is executable and identifiable |
+| `INTEGRITY.MISSING_OR_DUPLICATE_PAGE` | ordered page registry | Same as above |
+| `INTEGRITY.INVALID_BBOX` | canonical page geometry and spatial entities | `REJECT`; normalization defect is not accepted |
+| `INTEGRITY.BROKEN_PROVENANCE` | source/provenance/parser-run graph | `REJECT` |
+| `INTEGRITY.TABLE_GRID_INVALID` | table dimensions, spans and occupied grid | `REJECT` current revision; targetable table candidate may be requested |
 
-### 5.3 Layout/reading order
+Most of these are already Canonical IR invariants. The Quality Gate must reuse the invariant result
+or map a normalization failure into a report; it must not implement a second divergent validator.
 
-| Rule code | Detection | Notes |
-|---|---|---|
-| `LAYOUT.INVALID_BBOX` | NaN/out-of-page/non-positive geometry | CRITICAL hard gate |
-| `LAYOUT.EXCESSIVE_OVERLAP` | IoU/intersection ratio for incompatible block types | Ignore intentional containment |
-| `LAYOUT.ORDER_NOT_TOTAL` | duplicate/gapped order among flow blocks | ERROR |
-| `LAYOUT.ORDER_CYCLE` | relationship DAG cycle | CRITICAL hard gate |
-| `LAYOUT.COLUMN_JUMP` | geometry/order transitions inconsistent with inferred columns | Page repair |
-| `LAYOUT.DISCONNECTED_CONTENT` | visible/source content without nearby canonical ownership | Region repair |
-| `LAYOUT.CAPTION_ORPHAN` | caption without plausible figure/table | Region/page repair |
-| `LAYOUT.REPEATED_MARGIN_MISCLASSIFIED` | repeated header/footer in body flow | Document heuristic, no fallback always needed |
+### 4.2 Completeness
 
-### 5.4 Tables
+`COMPLETENESS.SOURCE_RICH_PARSE_SPARSE` applies only when cheap source/raster evidence indicates a
+nonblank page and parser output is abnormally sparse. Evidence includes native character count,
+image-only classification, parser block characters, table-cell characters and optionally bounded
+raster occupancy. Thresholds are slice-specific and provisional until calibrated. Intentional blank
+pages, full-page figures and broken-font native extraction are explicit false-positive modes.
 
-| Rule code | Detection | Notes |
-|---|---|---|
-| `TABLE.INVALID_DIMENSIONS` | row/column count <= 0 or cell outside grid | CRITICAL |
-| `TABLE.IMPOSSIBLE_SPAN` | zero/out-of-range/overlapping occupied grid | CRITICAL |
-| `TABLE.INCONSISTENT_ROWS` | unexpected occupied-column pattern | Language/domain neutral |
-| `TABLE.EXCESSIVE_EMPTY_CELLS` | empty ratio vs detected lines/text and table type | Slice calibrated |
-| `TABLE.MISSING_COLUMNS` | alignment/grid evidence implies lost column | Table fallback |
-| `TABLE.TEXT_OUTSIDE_CELLS` | table-region source text not assigned to cells | Table/region fallback |
-| `TABLE.CROSS_PAGE_BREAK` | adjacent continuation evidence but no relationship | Neighbor-page repair/merge |
-| `TABLE.REPEATED_HEADER_DUPLICATION` | repeated page header retained as data rows | Deterministic repair candidate |
-| `TABLE.CELL_ORDER_ANOMALY` | cell reading order conflicts with grid | Table fallback |
+### 4.3 Numeric evidence
 
-### 5.5 Structure and provenance
+`NUMERIC.NATIVE_PARSER_DISAGREEMENT` compares normalized numeric **multisets**, not sets. It reports
+exact overlap, missing native multiplicity and extra parser multiplicity. It is cross-source
+disagreement: native text is not assumed correct.
 
-| Rule code | Detection | Default |
-|---|---|---|
-| `STRUCTURE.INVALID_SECTION_TREE` | cycle, level jump without policy, partial overlap | ERROR/CRITICAL cycle |
-| `STRUCTURE.HEADING_ORPHAN` | heading not represented in section forest | ERROR |
-| `STRUCTURE.FOOTNOTE_ORPHAN` | footnote with no nearby target/evidence | WARNING |
-| `PROVENANCE.MISSING` | published entity has no provenance | CRITICAL hard gate |
-| `PROVENANCE.BROKEN_CHAIN` | artifact/parser-run/source path unresolved | CRITICAL hard gate |
-| `PROVENANCE.BBOX_MISMATCH` | entity vs provenance geometry inconsistent | ERROR |
-| `PROVENANCE.OUT_OF_SCOPE` | fallback content originates outside authorized target | CRITICAL hard gate |
+Page token presence and structural correctness are separate:
 
-## 6. Scoring
+- runtime page-level disagreement may trigger review/fallback after calibration;
+- benchmark table-cell truth measures whether the number is in the correct logical table/cell;
+- a number elsewhere on the page cannot satisfy structural numeric correctness.
 
-Scoring is a diagnostic and routing signal, never a replacement for hard gates.
+### 4.4 Table evidence
 
-For dimension `d`, each rule emits already scope-normalized `impact_i` in `[0, 0.95]`. Duplicate issues with the same deduplication key are collapsed to the maximum impact. The dimension score is:
+| Rule | Applicability and behavior |
+|---|---|
+| `TABLE.REGION_TEXT_ASSIGNMENT_SPARSE` | Only applies when trustworthy source/table-region text evidence exists. Compare source-supported tokens/lines with cell assignment coverage. No positional evidence means `NOT_APPLICABLE`, not pass. |
+| `TABLE.LOGICAL_OCCUPANCY_INVALID` | Deterministic reuse of table-grid invariant: dimensions/spans/overlap/out-of-grid are hard failures. |
+
+No rule infers missing columns solely from visual intuition or parser confidence in the MVP.
+
+### 4.5 Reading order
+
+| Rule | Behavior |
+|---|---|
+| `ORDER.UNRESOLVED` | Emits affected page/block scope. It may require page fallback for multicolumn supported slices after calibration; it is not silently sorted by geometry. |
+| `ORDER.DUPLICATE_OR_CYCLE` | Duplicate canonical order or explicit order cycle is a hard integrity failure. |
+
+## 5. Decision policy
+
+Evaluation order is deterministic:
+
+1. Validate required evidence and Canonical IR hard invariants.
+2. Run applicable hard-integrity rules.
+3. Run calibrated disagreement/anomaly/uncertainty rules within their evidence budgets.
+4. Map signals to declared failure scopes.
+5. Apply the frozen policy table; no issue-count arithmetic or parser confidence voting.
+
+Default policy:
 
 ```text
-dimension_score[d] = product(1 - impact_i for open issues in d)
+if any unrecoverable hard failure:
+    REJECT
+elif any calibrated blocking signal with reliable executable target:
+    FALLBACK_REQUIRED
+elif any mandatory evidence missing or applicable mandatory rule skipped:
+    REJECT
+elif document/scope is outside calibrated supported slices:
+    REJECT (or explicit manual-review policy outside this MVP)
+else:
+    ACCEPT
 ```
 
-The overall score is a weighted geometric mean:
+An `ACCEPT` decision means the output met the declared supported-slice correctness policy under the
+measured detector coverage. It does not mean every semantic fact in the document is correct.
+
+## 6. Fallback recommendation
+
+A recommendation contains `recommendation_id`, contributing signal IDs, minimal target scope,
+required capabilities, boundary context, evidence coverage, calibrated detection precision/recall,
+expected repair evidence, budget and reason codes. It does not name a parser unless capability,
+license, runtime and fixed-corpus benchmark evidence have already selected an eligible candidate.
+
+The recommendation engine must not:
+
+- use raw parser confidence as the replacement decision;
+- broaden a target for scheduling convenience;
+- issue a selective scope unsupported by the actual adapter;
+- estimate quality gain without a benchmark profile;
+- execute fallback before the policy and threshold profile are frozen.
+
+## 7. Calibration contract
+
+### 7.1 Datasets
+
+- `development`: rule implementation and error analysis.
+- `calibration`: threshold/policy selection; document families separated from development.
+- `protected_holdout`: one evaluation after policy freeze; no threshold tuning.
+
+Every sample has defect labels, affected scope, supported-slice label and an adjudicated
+`meets_acceptance_standard` outcome. Document-family/template leakage is prohibited.
+
+### 7.2 Rule-level metrics
+
+For every applicable rule, report raw `TP`, `FP`, `TN`, `FN` and:
 
 ```text
-quality_score = exp(sum(weight[d] * ln(max(dimension_score[d], 0.001))))
+detection_precision = TP / (TP + FP)
+detection_recall    = TP / (TP + FN)
+false_positive_rate = FP / (FP + TN)
+false_negative_rate = FN / (FN + TP)
 ```
 
-Default weights, configurable only by versioned ruleset:
+Undefined denominators are reported as `N/A`, never zero or one. Report by rule, failure type,
+scope, language/document slice and dataset split with document-level confidence intervals.
 
-```yaml
-COMPLETENESS: 0.25
-TEXT:         0.20
-LAYOUT:       0.15
-TABLE:        0.15
-STRUCTURE:    0.10
-PROVENANCE:   0.15
+### 7.3 System-level metrics
+
+```text
+accepted_output_precision = accepted outputs meeting declared standard / all accepted outputs
+coverage                  = accepted eligible outputs / all eligible outputs
+fallback_rate             = outputs sent to fallback / all eligible outputs
+unresolved_failure_rate   = defective outputs neither repaired nor safely accepted / all eligible outputs
 ```
 
-If a document has no applicable tables, the TABLE weight is redistributed proportionally. A hard-gate failure caps status at `FAIL` regardless of numeric score. The report stores raw issue impacts and weights for explainability.
+Accepted-output precision is always reported beside coverage and the supported-slice definition.
+`accepted_output_precision >= 95%` means at least 95% of automatically accepted outputs meet that
+declared correctness standard. It does **not** mean 95% of arbitrary PDFs are perfectly parsed.
+No quality number may be published without its denominator, coverage, slice and confidence interval.
 
-### Thresholds and status
+### 7.4 Threshold freeze and promotion
 
-Default:
+1. Record rule/policy versions, dataset digests and all candidate thresholds.
+2. Tune only on development/calibration data.
+3. Freeze the selected policy before opening the protected holdout.
+4. Evaluate accepted precision, coverage, fallback rate and unresolved failure rate on holdout.
+5. Promote only if critical-slice requirements and sample adequacy are met; otherwise expand data
+   or narrow supported slices. Never repeatedly tune against the holdout.
 
-```yaml
-pass_threshold: 0.80
-fallback_trigger_score: 0.65
-partial_publish_threshold: 0.50
+## 8. Native PDF evidence semantics
+
+Native PDF text is evidence, not ground truth. Preflight must eventually classify:
+
+```text
+BORN_DIGITAL_NATIVE
+OCR_BACKED_HIDDEN_LAYER
+BROKEN_OR_UNRELIABLE_EXTRACTION
+IMAGE_ONLY
+UNKNOWN
 ```
 
-Decision order:
+`has_text_layer=true` means extraction returned characters. It does not mean those characters are
+correct, complete or native authoring text. OCR-backed layers may duplicate visible content;
+custom/broken fonts may extract garbage; image-only pages have no textual comparator. Classification
+is heuristic and carries evidence/reason codes. Numeric disagreement rules disclose this class and
+become non-applicable when source evidence is unreliable.
 
-1. Mandatory rule skipped or any open hard gate -> `FAIL`, `publishable=false`.
-2. Score `< 0.65` -> `FAIL`.
-3. Score `0.65..<0.80` or any open `ERROR` -> `DEGRADED`.
-4. Score `>=0.80` with no open ERROR/CRITICAL -> `PASS`.
-5. `PARTIAL` job publication is possible only when status is `DEGRADED`, score >= 0.50, `allow_partial=true`, no hard gate, complete page manifest, and every gap is disclosed. `QualityStatus` remains `DEGRADED`; job state is `PARTIAL`.
+## 9. Testing and observability
 
-This prevents a high aggregate score from hiding a missing page or broken provenance.
+- Known-answer tests per rule: true positive, false-positive guard, false-negative example and
+  applicability boundary.
+- Golden confusion-matrix vectors and policy decision tables.
+- Property tests for geometry/table/order invariants reuse Canonical validators.
+- Tests proving missing evidence and timeout cannot become `ACCEPT`.
+- Calibration runner tests for denominators, macro/micro aggregation, slice isolation and holdout
+  freeze enforcement.
+- Structured telemetry: signal count by rule/severity/decision, rule latency/budget exhaustion,
+  fallback rate, accepted precision/coverage report ID and unresolved failures. No document text or
+  high-cardinality IDs in metric labels.
 
-## 7. Fallback decision
+## 10. Explicit non-goals
 
-Fallback is not determined from score alone. The recommendation engine considers:
-
-- open issue severity/impact and repairability;
-- minimal target scope and capability availability;
-- expected quality gain from historical benchmark/calibration;
-- area/page/time/cost/fallback-round budgets;
-- whether the same adapter/version already failed that scope;
-- risk of cross-boundary damage.
-
-Urgency:
-
-- `REQUIRED`: repairable CRITICAL, repairable ERROR that blocks publication, or score below fallback trigger.
-- `RECOMMENDED`: degraded targetable issue with positive expected gain and budget.
-- `OPTIONAL`: warning-level improvement; not run by default in MVP.
-
-`fallback_required` is true if at least one coalesced recommendation is `REQUIRED`. A PASS report normally has no executed fallback recommendation. A targeted WARNING can be configured as required for protected document classes, such as financial tables.
-
-Recommendation coalescing merges overlapping issues only when their required capabilities and context boundaries agree. It must not convert three isolated regions into a page fallback solely for scheduling convenience unless the planner proves the page call stays within the configured area/cost threshold.
-
-## 8. Example reports
-
-### Pass
-
-```json
-{
-  "quality_report_id": "qrep_01",
-  "report_version": "1.0.0",
-  "ruleset_version": "1.0.0",
-  "document_id": "doc_01",
-  "ir_revision_id": "rev_01",
-  "validation_scope": {"kind": "DOCUMENT"},
-  "dimension_scores": {"COMPLETENESS": 1.0, "TEXT": 0.94, "LAYOUT": 0.91, "TABLE": 0.90, "STRUCTURE": 0.93, "PROVENANCE": 1.0},
-  "quality_score": 0.95,
-  "status": "PASS",
-  "publishable": true,
-  "hard_gate_failures": [],
-  "issues": [],
-  "fallback_recommendations": [],
-  "fallback_required": false,
-  "evaluated_rules": ["DOC.PAGE_COUNT_MISMATCH@1.0.0"],
-  "skipped_rules": [],
-  "thresholds": {"pass": 0.8, "fallback_trigger": 0.65, "partial_publish": 0.5},
-  "evidence_artifact_ids": []
-}
-```
-
-### Failed table requiring fallback
-
-```json
-{
-  "quality_report_id": "qrep_02",
-  "report_version": "1.0.0",
-  "ruleset_version": "1.0.0",
-  "document_id": "doc_01",
-  "ir_revision_id": "rev_02",
-  "validation_scope": {"kind": "DOCUMENT"},
-  "dimension_scores": {"COMPLETENESS": 1.0, "TEXT": 0.88, "LAYOUT": 0.82, "TABLE": 0.12, "STRUCTURE": 0.90, "PROVENANCE": 1.0},
-  "quality_score": 0.64,
-  "status": "FAIL",
-  "publishable": false,
-  "hard_gate_failures": [],
-  "issues": [{
-    "issue_id": "qis_02",
-    "rule_id": "TABLE.IMPOSSIBLE_SPAN",
-    "rule_version": "1.0.0",
-    "type": "TABLE.IMPOSSIBLE_SPAN",
-    "dimension": "TABLE",
-    "severity": "ERROR",
-    "message_safe": "Table cells overlap in the logical grid.",
-    "scope": {"kind": "TABLE", "page_numbers": [23], "entity_id": "table_023_02", "bbox": [42.0, 180.0, 553.0, 410.0]},
-    "evidence": {"overlapping_cell_pairs": 3},
-    "impact": 0.70,
-    "confidence": 1.0,
-    "repairable": true,
-    "candidate_capabilities": ["TABLE", "TABLE_SPANS", "REGION_INPUT"],
-    "disposition": "OPEN",
-    "provenance_ids": ["prov_02"]
-  }],
-  "fallback_recommendations": [{
-    "recommendation_id": "frec_02",
-    "issue_ids": ["qis_02"],
-    "target_scope": {"kind": "TABLE", "page_numbers": [23], "entity_id": "table_023_02", "bbox": [42.0, 180.0, 553.0, 410.0]},
-    "required_capabilities": ["TABLE", "TABLE_SPANS", "REGION_INPUT"],
-    "urgency": "REQUIRED",
-    "preferred_strategy": "REPLACE_TABLE_ATOMICALLY",
-    "estimated_gain": 0.42,
-    "estimated_cost": {"page_equivalents": 0.31},
-    "boundary_context": {"padding_points": 12, "neighbor_pages": []},
-    "constraints": {"preserve_external_caption_edges": true},
-    "reason_codes": ["PUBLISH_BLOCKED", "LOCALIZED_TABLE_FAILURE"]
-  }],
-  "fallback_required": true,
-  "evaluated_rules": ["TABLE.IMPOSSIBLE_SPAN@1.0.0"],
-  "skipped_rules": [],
-  "thresholds": {"pass": 0.8, "fallback_trigger": 0.65, "partial_publish": 0.5},
-  "evidence_artifact_ids": ["art_table_debug_02"]
-}
-```
-
-## 9. Calibration and change management
-
-- Rule thresholds are learned/tuned only on training/development fixtures, never on the protected test split.
-- Per-language/document-type calibration is allowed through explicit versioned profiles; missing slice configuration falls back conservatively.
-- Every ruleset change emits a benchmark report showing issue-count and score distribution shifts, not only final pass rate.
-- Rules that use statistical models must be small, local, pinned and deterministic under fixed inputs; they declare model digest and remain optional unless promoted by ADR.
-- LLM-based semantic validation, if added, emits a separate advisory issue source and cannot be a hard gate without a later ADR and deterministic fallback path.
-
-## 10. Testing and observability
-
-- Unit fixtures for true positive, false positive guard and boundary values per rule.
-- Property tests for bbox/order/table/graph invariants.
-- Metamorphic tests: translation/scaling of coordinates, page reordering rejection, equivalent Unicode normalization.
-- Golden issue snapshots and ruleset backward-compatibility tests.
-- Fault tests for missing evidence, mandatory-rule timeout and partial rule execution.
-- Metrics: issue count by rule/severity, dimension score histograms, validation duration, fallback recommendations, repair success rate and false-positive review rate. Labels exclude document/tenant IDs.
-- Logs contain issue IDs and evidence artifact IDs, not extracted text.
+- LLM judge or LLM repair in the MVP gate.
+- A large speculative rule catalog.
+- Treating parser confidence as calibrated correctness.
+- Claiming a discrete gate proves semantic correctness.
+- Automatically publishing `DEGRADED` output.

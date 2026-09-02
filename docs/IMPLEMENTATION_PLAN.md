@@ -718,7 +718,194 @@ Phase 15 plus a documented capacity trigger.
 
 Distributed complexity, migration downtime and cost. Keep feature conditional and rehearse rollback.
 
-## 2. Cross-phase Definition of Done
+## 2. Prioritized quality execution track after Phase 2.6
+
+This track takes priority over the historical numeric ordering below Phase 2.6. Historical phases
+remain valid planning records; operational storage/API/distribution work is secondary until parsing
+and downstream RAG quality are empirically validated. Every increment leaves the repository runnable
+and all prior tests green.
+
+### Next 1 — Benchmark correctness and ParseBench integration
+
+**Goal:** make parser comparison mathematically valid and establish frozen Docling/Paddle baselines.
+
+**Files:** `src/docparser/evaluation/`, ParseBench export adapter, dataset manifests, evaluator tests;
+behavior-preserving move from `normalization/docling.py` to `normalization/neutral.py`.
+
+**Interfaces:** corrected project metric protocol, `ParseBenchExportAdapter`, benchmark/run manifests.
+
+**Implementation tasks:** repair table matching/aggregation/numeric-location defects listed in
+`EVALUATION_SPEC.md`; pin official ParseBench revision/protocol; freeze `parsebench-complex-v1-dev`
+and protected holdout; move only truly neutral normalization code and retain compatibility imports;
+run Docling/Paddle baselines without changing defaults.
+
+**Tests:** permutation/missing/extra/multi-table/merged/cross-page/wrong-location vectors; macro/micro
+and parser-failure aggregation; upstream export contract; normalizer parity.
+
+**Acceptance criteria:** every expected sample is accounted for; official/project terminology is
+correct; manifests/digests are immutable; per-slice baselines and raw denominators exist, or report
+`NO ACCURACY CLAIM`; all prior behavior/tests remain green.
+
+**Dependencies:** Phase 2.6, approved corpus access and upstream license review.
+
+**Risks:** evaluator drift or data leakage. Pin upstream and protect holdout before parser inspection.
+
+### Next 2 — Calibrated Quality Gate MVP
+
+**Goal:** decide `ACCEPT/FALLBACK_REQUIRED/REJECT` from a small evidence-driven rule set.
+
+**Files:** quality domain/ports/rules/calibration/report schema, IR 1.x compatibility amendment,
+calibration manifests and tests.
+
+**Interfaces:** `QualityRule`, `QualityGate`, `QualityReport`, calibration/result manifests.
+
+**Implementation tasks:** make evaluated score nullable only for `score_model=NONE` via documented
+minor wire change; implement hard-integrity reuse plus calibrated completeness/numeric/table/order
+signals; tune on development/calibration; freeze policy; open holdout once.
+
+**Tests:** rule known vectors and applicability, missing-evidence fail-closed, confusion matrices,
+holdout freeze, schema/migration/round-trip tests.
+
+**Acceptance criteria:** rule precision/recall/FPR/FNR and system accepted-output precision **with
+coverage** are reported on protected holdout; no uncalibrated weight/threshold controls publication.
+
+**Dependencies:** Next 1 and adjudicated defect/supported-slice labels.
+
+**Risks:** gate overfits or rejects most documents. Report coverage and narrow supported slices.
+
+### Next 3 — Selective fallback
+
+**Goal:** repair reliably detected page/table scopes only when an alternate candidate demonstrably
+improves the acceptance predicate.
+
+**Files:** truthful page/table adapter capability work, planner, isolated candidate normalizer/merge,
+revalidation and fallback evaluation tests.
+
+**Interfaces:** `FallbackPlan`, target materializer, candidate comparison, transactional `MergeResult`.
+
+**Implementation tasks:** implement only executable scopes; materialize bounded target/context;
+compare baseline/candidate; revalidate full revision; commit transactionally or retain diagnostic
+candidate. No confidence-only or parser-name routing.
+
+**Tests:** target precision, coordinate/boundary/provenance, stale revision, rejection/no-regression,
+table atomic replacement and calibrated fallback effectiveness.
+
+**Acceptance criteria:** target selection precision is measured; committed candidates improve the
+frozen predicate without collateral hard failure; fallback rate/cost/unresolved failures reported.
+
+**Dependencies:** Next 2 and at least one alternate parser with truthful selective scope.
+
+**Risks:** current adapters are document-scope. Do not fake selectivity; defer until executable.
+
+### Next 4 — Structure-aware parent-child chunker
+
+**Goal:** compare fixed-token baseline with deterministic IR-derived section/table-aware chunks.
+
+**Files:** chunking pipeline/renderers/tokenizer profiles/manifests and evaluation fixtures.
+
+**Interfaces:** fixed-token baseline, semantic-unit stream, parent/child/table renderers.
+
+**Implementation tasks:** pin tokenizer; implement Baseline A; build semantic units; greedy pack with
+protected boundaries/small semantic overlap; table row groups with repeated headers; provenance and
+deterministic IDs/digests. No optimizer, RAPTOR or LLM summaries.
+
+**Tests:** token budgets, boundaries, tables/merged cells, bilingual text, determinism/provenance and
+fallback invalidation.
+
+**Acceptance criteria:** both baselines run on the same corpus; every chunk is provenance-resolvable;
+retrieval A/B inputs are frozen and repository remains runnable.
+
+**Dependencies:** accepted/revalidated Canonical IR and pinned tokenizer artifacts.
+
+**Risks:** unresolved hierarchy/order. Isolate units and disclose warnings instead of inventing order.
+
+### Next 5 — Dense retrieval baseline
+
+**Goal:** establish a local exact dense baseline over fixed and structure-aware child/table chunks.
+
+**Files:** retrieval ports, embedding profile/cache, local exact index, benchmark query set.
+
+**Interfaces:** `DenseIndex`, embedding/render profiles, `RankedCandidate`.
+
+**Implementation tasks:** select/pin multilingual embedding candidate after benchmark/license review;
+embed byte-exact versioned representations; cache by digest; exhaustive cosine search; compare
+chunking baselines.
+
+**Tests:** profile/cache invalidation, deterministic ranking/filter isolation, Chinese/English/table
+queries and retrieval known answers.
+
+**Acceptance criteria:** Recall/MRR/nDCG/table/citation-source recall and latency are reproducible;
+no production vector database is required.
+
+**Dependencies:** Next 4 and adjudicated retrieval query/relevance set.
+
+**Risks:** model/profile truncation and GPU variability. Record exact revision, hardware and inputs.
+
+### Next 6 — Hybrid retrieval
+
+**Goal:** add sparse retrieval and explainable RRF, measuring incremental value.
+
+**Files:** sparse port/backend, pinned zh/en analyzers, RRF and comparison reports.
+
+**Interfaces:** `SparseIndex`, analyzer profile, fusion result/trace.
+
+**Implementation tasks:** BM25 fields for heading/body/table; protect numerics/identifiers; implement
+rank-only RRF and source dedup; tune candidate limits only on development queries.
+
+**Tests:** bilingual/numeric tokenization, BM25/RRF vectors, tie determinism, filter parity and dedup.
+
+**Acceptance criteria:** dense vs hybrid deltas and latency are reported on frozen queries; fusion
+does not rely on incomparable raw score weights.
+
+**Dependencies:** Next 5.
+
+**Risks:** Chinese analyzer choice dominates outcome. Version and compare it explicitly.
+
+### Next 7 — Reranking and parent/context expansion
+
+**Goal:** optionally rerank bounded candidates and assemble coherent citation-ready context.
+
+**Files:** reranker port/profile, parent expander, context builder/citation bundle and tests.
+
+**Interfaces:** `Reranker`, `ContextBuilder`, `ContextBundle`.
+
+**Implementation tasks:** pin candidate model; record pre/post ranks/latency; group selected children;
+expand bounded parent neighborhoods; enforce token/diversity/dedup/table coherence and citations.
+
+**Tests:** optional-reranker degradation path, parent-child dedup, exact budgets, table headers,
+tenant filters and end-to-end provenance.
+
+**Acceptance criteria:** hybrid vs reranked/context-expanded delta is measured; every context span has
+resolvable citation evidence; latency budget is explicit.
+
+**Dependencies:** Next 6 and pinned generation tokenizer/context budget.
+
+**Risks:** context expansion can erase retrieval precision. Keep child evidence and bounded expansion.
+
+### Next 8 — End-to-end RAG evaluation
+
+**Goal:** measure parsing, retrieval and answer/citation quality as separate layers.
+
+**Files:** curated QA manifests, retrieval/answer metric implementations and reproducible reports.
+
+**Interfaces:** `RAG_EVALUATION_SPEC.md` experiment/result contracts.
+
+**Implementation tasks:** run four incremental retrieval configurations; implement exact/numeric and
+citation metrics; add versioned secondary LLM judge only where deterministic scoring is impossible;
+freeze and evaluate holdout.
+
+**Tests:** metric known vectors, unanswerable/abstention, numeric/citation failures, split leakage and
+manifest reproducibility.
+
+**Acceptance criteria:** stage deltas, sample sizes, denominators, latency and hardware are reported;
+no combined RAG score or unsupported accuracy claim is emitted.
+
+**Dependencies:** Next 5–7 and adjudicated QA/citation set.
+
+**Risks:** answer model variance obscures ingestion gains. Pin generator and prioritize deterministic
+retrieval/numeric/citation measures.
+
+## 3. Cross-phase Definition of Done
 
 For every phase:
 

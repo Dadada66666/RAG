@@ -1,49 +1,43 @@
-# Phase 1 Architecture Package
+# Architecture and Implementation Contracts
 
-This directory is the executable design contract for the Enterprise Document Parsing & RAG Ingestion Platform. Phase 1 contains no production parser implementation.
+This directory is the authoritative design contract for the Enterprise Document Parsing & RAG
+Ingestion Platform. The repository has completed the Phase 2.6 parsing-accuracy foundation, but the
+Quality Gate, selective fallback, structure-aware/parent-child chunking, retrieval and RAG evaluation
+runtime are not implemented.
 
 ## Reading order
 
 1. [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) — scope, users, requirements and targets.
-2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — system boundaries, diagrams, runtime/state/error design.
-3. [`DOCUMENT_IR_SPEC.md`](DOCUMENT_IR_SPEC.md) — authoritative canonical data contract.
-4. [`PARSER_ADAPTER_SPEC.md`](PARSER_ADAPTER_SPEC.md) — parser boundary, research and recommendation.
-5. [`QUALITY_VALIDATION_SPEC.md`](QUALITY_VALIDATION_SPEC.md) — quality rules, score and repair decision.
-6. [`FALLBACK_SPEC.md`](FALLBACK_SPEC.md) — selective target planning and transactional merge.
-7. [`RAG_CHUNK_SPEC.md`](RAG_CHUNK_SPEC.md) — retrieval unit construction/provenance.
-8. [`STORAGE_SPEC.md`](STORAGE_SPEC.md), [`API_SPEC.md`](API_SPEC.md), [`OBSERVABILITY_SPEC.md`](OBSERVABILITY_SPEC.md), [`SECURITY_SPEC.md`](SECURITY_SPEC.md) — platform contracts.
-9. [`EVALUATION_SPEC.md`](EVALUATION_SPEC.md), [`TEST_STRATEGY.md`](TEST_STRATEGY.md) — evidence and gates.
-10. [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md) — adversarial review and corrections.
-11. [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — independently verifiable Phase 2 increments.
-12. [`adr/`](adr/) — durable architecture decisions.
+2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — boundaries, diagrams, runtime, state and errors.
+3. [`DOCUMENT_IR_SPEC.md`](DOCUMENT_IR_SPEC.md) — authoritative Canonical Document IR.
+4. [`PARSER_ADAPTER_SPEC.md`](PARSER_ADAPTER_SPEC.md) — neutral parser boundary and capabilities.
+5. [`QUALITY_VALIDATION_SPEC.md`](QUALITY_VALIDATION_SPEC.md) — calibrated risk gate.
+6. [`EVALUATION_SPEC.md`](EVALUATION_SPEC.md) — parsing benchmark, ParseBench and metric integrity.
+7. [`FALLBACK_SPEC.md`](FALLBACK_SPEC.md) — selective planning, comparison and transactional merge.
+8. [`RAG_CHUNK_SPEC.md`](RAG_CHUNK_SPEC.md) — derived parent-child/table retrieval units.
+9. [`RAG_RETRIEVAL_SPEC.md`](RAG_RETRIEVAL_SPEC.md) — dense/sparse/RRF/rerank/context/citation.
+10. [`RAG_EVALUATION_SPEC.md`](RAG_EVALUATION_SPEC.md) — parsing/retrieval/answer evaluation layers.
+11. [`STORAGE_SPEC.md`](STORAGE_SPEC.md), [`API_SPEC.md`](API_SPEC.md), [`OBSERVABILITY_SPEC.md`](OBSERVABILITY_SPEC.md), [`SECURITY_SPEC.md`](SECURITY_SPEC.md) — platform contracts.
+12. [`TEST_STRATEGY.md`](TEST_STRATEGY.md) — contract and regression test policy.
+13. [`ARCHITECTURE_REVIEW.md`](ARCHITECTURE_REVIEW.md) and [`NEXT_PHASE_ARCHITECTURE_REVIEW.md`](NEXT_PHASE_ARCHITECTURE_REVIEW.md) — adversarial reviews and implementation-state audit.
+14. [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — historical phases and prioritized quality track.
+15. [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) and [`adr/`](adr/) — decision deadlines and durable decisions.
 
-## Key decisions
+## Current decisions
 
-- Strict Pydantic v2 models author Canonical IR; generated committed JSON Schema is the wire contract.
-- Canonical page coordinates are top-left, post-rotation CropBox points with reversible affine transforms.
-- Parser execution success and quality acceptance are separate states/reports.
-- Normal path runs one primary; fallback is issue-scoped, bounded and applied only after positive revalidation.
-- MVP candidate pair is Docling primary plus PaddleOCR-VL 1.6 fallback, pending local benchmark/legal/security promotion.
-- MVP uses local immutable artifacts + SQLite WAL and long-lived isolated workers; PostgreSQL/S3/distributed workers are measured V1 migrations.
-- Core parsing/validation/chunking has no external LLM dependency.
+- Strict Pydantic v2 models author the versioned Canonical IR; generated JSON Schema is the wire contract.
+- Canonical coordinates are top-left, post-rotation CropBox points with reversible transforms.
+- Parser success and Quality Gate acceptance are separate; the gate is a risk gate, not a correctness oracle.
+- Docling and PaddleOCR-VL 1.6 are candidates; neither is permanently promoted without corrected local evidence.
+- Native PDF text is evidence, not ground truth.
+- Official ParseBench, ParseBench-derived subset and Project Golden Dataset metrics are never mixed.
+- Parent-child and structure-aware chunking are planned experiments, not implemented capabilities.
+- Retrieval is evaluated incrementally: fixed/dense → structure-aware/dense → hybrid RRF → reranker/context.
+- Core parsing, validation and chunking do not depend on an external LLM.
 
-## Phase 1 Definition of Done
+## Current implementation boundary
 
-- [x] Canonical Document IR, coordinates, IDs, provenance and migrations defined.
-- [x] Parser adapter/capability/error contracts and current candidate research defined.
-- [x] Primary/quality/selective fallback/merge strategy defined.
-- [x] RAG chunk schema and structure-aware algorithm defined.
-- [x] Storage abstraction, local/S3 path and database decision defined.
-- [x] Job state machine, retry, checkpoint/resume, cancellation and idempotency defined.
-- [x] API/CLI, observability, security and error taxonomy defined.
-- [x] Golden Dataset, benchmark metrics/regression gates and test strategy defined.
-- [x] Context/container/component/pipeline Mermaid diagrams completed.
-- [x] Six required ADRs completed.
-- [x] Incremental implementation phases, tests, dependencies, risks and acceptance criteria defined.
-- [x] Contrarian architecture review contains at least five risks in every required category and corrections were applied.
-- [x] Phase boundary preserved: no business pipeline code implemented.
-
-## Approval boundary
-
-Do not implement `IMPLEMENTATION_PLAN.md` until the user explicitly authorizes `PHASE 2 — IMPLEMENTATION`. Parser/model production promotion additionally requires Phase 15 Golden Dataset, license, security and reference-hardware gates.
+Runtime implementation is complete through Phase 2.6 parsing/evaluation foundations. The prioritized
+Next 1–8 track in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) needs separate coding authorization,
+one increment at a time. No accuracy claim is valid until a real adjudicated benchmark corpus is run.
 

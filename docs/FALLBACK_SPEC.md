@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed |
+| Status | Authoritative design; implementation blocked on calibrated Quality Gate |
 | Merge algorithm version | `1.0.0` |
 | Core property | Scope-minimal, quality-improving, transactional, provenance-preserving |
 
@@ -17,6 +17,30 @@ Fallback is not:
 - selection by parser confidence alone;
 - destructive mutation of the baseline revision;
 - unlimited retry/repair iteration.
+
+### 1.1 Activation prerequisites
+
+Automatic fallback is prohibited until all of the following are true:
+
+1. the corrected benchmark protocol has frozen baseline results for the applicable document slice;
+2. Quality Gate signals have measured detection precision/recall and a frozen calibration profile;
+3. the defective scope can be identified with adequate target precision;
+4. the alternate adapter truthfully supports that executable scope;
+5. candidate-vs-baseline comparison and full revalidation are available.
+
+Current Docling and Paddle adapters execute `DOCUMENT` scope. They are parser candidates, not yet
+selective page/table fallback executors. The planner must never advertise a scope the adapter cannot
+execute. No profile rule such as “Paddle always wins tables” or “Docling wins born-digital” is valid
+without fixed-corpus evidence.
+
+The authoritative control flow is:
+
+```text
+baseline parser -> Canonical IR -> calibrated Quality Gate
+  -> minimal reliable target -> alternate candidate
+  -> candidate-vs-baseline comparison -> full revalidation
+  -> transactional commit only when demonstrably improved
+```
 
 ## 2. Inputs and outputs
 
@@ -80,15 +104,15 @@ Table/figure atomic groups cannot be split merely to reduce pixels when doing so
 
 ### 3.3 Budgets and loop prevention
 
-Default plan limits:
+Illustrative plan limits (all **PROVISIONAL** until workload/calibration evidence exists):
 
 ```yaml
 max_fallback_rounds: 1
 max_fallback_pages: min(50, ceil(page_count * 0.20))
 max_fallback_area_ratio: 0.30
 max_target_attempts: 2
-minimum_expected_gain: 0.05
-minimum_applied_score_delta: 0.02
+    minimum_expected_gain: null
+    minimum_applied_score_delta: null
 ```
 
 An attempt fingerprint covers target, adapter/model, render/config and baseline revision. The same fingerprint cannot run twice. A second adapter attempt is permitted only after a typed first-attempt failure or candidate rejection and within budget.
@@ -103,7 +127,10 @@ Selection filters, then ranks:
 4. The adapter/model did not produce the failing primary evidence for that scope, unless only a changed deterministic mode is explicitly justified.
 5. Candidate passed minimum benchmark thresholds for the issue/document slice.
 
-Rank by expected issue-specific gain, reliability, warm availability, cost/latency and complementarity. Parser name is configuration data; selection logic operates on descriptors and benchmark profiles.
+Rank only among eligible candidates using frozen, issue-specific benchmark evidence, reliability,
+cost/latency and complementarity. Parser name is configuration data; selection logic operates on
+descriptors and benchmark profiles. Raw parser confidence is evidence at most; it cannot select a
+candidate or authorize replacement.
 
 If no parser is capable, emit `FALLBACK.NO_CAPABLE_PARSER`; do not broaden to document scope automatically.
 
@@ -188,9 +215,12 @@ Matching says which entities correspond; it does not decide that fallback is bet
 For each atomic replacement group:
 
 1. Validate baseline group and candidate group with the same applicable local rules.
-2. Compare hard invariants, dimension score, issue resolution, content coverage and boundary consistency.
-3. Apply only if candidate has no new hard gate, resolves the triggering issue, and reaches `minimum_applied_score_delta`, unless a CRITICAL invariant changes from fail to pass (which is sufficient).
-4. When scores are within uncertainty/tie margin, preserve primary and record `REJECTED_NO_CLEAR_GAIN`.
+2. Compare hard invariants, the frozen issue-specific acceptance predicate, content coverage and boundary consistency.
+3. Apply only if the candidate has no new hard failure, resolves the triggering issue, and changes
+   the target from non-acceptable to acceptable (or produces a predeclared material metric
+   improvement when both remain non-acceptable for a manual-review workflow).
+4. When evidence cannot demonstrate material improvement, preserve primary and record
+   `REJECTED_NO_CLEAR_GAIN`.
 5. A parser confidence increase alone cannot authorize replacement.
 
 Confidence is calibrated by adapter/model/slice before comparison. Merged confidence is a versioned derived value from accepted candidate confidence, source evidence, validator improvement and agreement. It is never a raw maximum or average across incomparable parsers.
@@ -327,5 +357,6 @@ It still runs quality validation and candidate-vs-baseline comparison. Unaffecte
 - Adversarial duplicates: bilingual columns, repeated headers, same-value table cells.
 - Cross-page table, figure-caption, footnote and section-boundary golden fixtures.
 - Candidate-quality no-regression tests and rejected-candidate immutability.
-- Metrics: fallback target/page/area rate, attempts, applied/rejected/conflict, score delta, repair success by issue/adapter, merge latency and whole-document fallback rate.
-
+- Metrics: fallback target/page/area rate, attempts, applied/rejected/conflict, acceptance transition,
+  issue-specific metric delta, repair success by issue/adapter, merge latency and whole-document
+  fallback rate. A continuous score delta is recorded only when a calibrated score model exists.
