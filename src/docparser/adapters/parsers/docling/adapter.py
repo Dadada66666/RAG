@@ -236,9 +236,7 @@ class DoclingParserAdapter:
     def _page_numbers(payload: JsonObject) -> tuple[int, ...]:
         pages = payload.get("pages")
         if not isinstance(pages, dict):
-            raise DoclingRuntimeError(
-                "Docling output has no page registry", code="INVALID_OUTPUT"
-            )
+            raise DoclingRuntimeError("Docling output has no page registry", code="INVALID_OUTPUT")
         try:
             return tuple(sorted(int(page) for page in pages))
         except (TypeError, ValueError) as exc:
@@ -299,9 +297,7 @@ class DoclingParserAdapter:
             ],
             "pages": {
                 str(page_number): {
-                    key: value
-                    for key, value in page.items()
-                    if key in {"size", "rotation"}
+                    key: value for key, value in page.items() if key in {"size", "rotation"}
                 }
                 for page_number, page in payload.get("pages", {}).items()
                 if isinstance(page, dict)

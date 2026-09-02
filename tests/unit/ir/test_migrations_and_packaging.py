@@ -24,8 +24,8 @@ def test_noop_migration_is_pure_idempotent_and_digest_preserving() -> None:
     document = make_full_document()
     payload = json.loads(dump_canonical_json(document))
 
-    first = migrate_ir("1.1.0", "1.1.0", payload)
-    second = migrate_ir("1.1.0", "1.1.0", first)
+    first = migrate_ir("1.2.0", "1.2.0", payload)
+    second = migrate_ir("1.2.0", "1.2.0", first)
 
     assert first == second == payload
     assert first is not payload
@@ -48,7 +48,19 @@ def test_v1_0_quality_contract_migrates_to_v1_1() -> None:
     migrated = migrate_ir("1.0.0", "1.1.0", payload)
 
     assert migrated["schema_version"] == "1.1.0"
-    assert load_canonical_json(json.dumps(payload)).schema_version == "1.1.0"
+    assert load_canonical_json(json.dumps(payload)).schema_version == "1.2.0"
+
+
+def test_v1_1_migrates_deterministically_to_v1_2_without_rewriting_quality() -> None:
+    payload = json.loads(dump_canonical_json(make_document()))
+    payload["schema_version"] = "1.1.0"
+    quality = payload["quality_summary"].copy()
+
+    migrated = migrate_ir("1.1.0", "1.2.0", payload)
+
+    assert migrated["schema_version"] == "1.2.0"
+    assert migrated["quality_summary"] == quality
+    assert payload["schema_version"] == "1.1.0"
 
 
 def test_semantic_fingerprint_is_derived_and_checked() -> None:

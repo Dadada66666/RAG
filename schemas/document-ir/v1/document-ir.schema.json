@@ -2500,9 +2500,9 @@
       "type": "integer"
     },
     "schema_version": {
-      "const": "1.1.0",
+      "const": "1.2.0",
       "enum": [
-        "1.1.0"
+        "1.2.0"
       ],
       "title": "Schema Version",
       "type": "string"

@@ -146,12 +146,8 @@ def test_missing_parser_page_cannot_publish_partial_ir() -> None:
                 namespace=TEST_NAMESPACE,
                 tenant_scope="test",
                 document_id=generate_document_id(TEST_NAMESPACE, "test", SOURCE_DIGEST),
-                revision_id=RevisionId(
-                    "rev_018bcfe5-6800-7000-8000-000000000012"
-                ),
-                source_artifact_id=ArtifactId(
-                    "art_018bcfe5-6800-7000-8000-000000000013"
-                ),
+                revision_id=RevisionId("rev_018bcfe5-6800-7000-8000-000000000012"),
+                source_artifact_id=ArtifactId("art_018bcfe5-6800-7000-8000-000000000013"),
                 source_digest=SOURCE_DIGEST,
                 source_size_bytes=1,
                 original_filename_safe="missing.pdf",

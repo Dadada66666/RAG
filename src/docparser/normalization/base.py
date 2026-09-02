@@ -28,4 +28,3 @@ class NormalizationContext:
     created_at: UtcTimestamp
     config_digest: Sha256Digest
     profile: DocumentProfile
-

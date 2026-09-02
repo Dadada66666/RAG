@@ -1,5 +1,6 @@
 """Project command-line interface."""
 
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -12,6 +13,7 @@ from docparser.application.parsing import (
     parse_document_with_diagnostics,
     write_parse_outputs,
 )
+from docparser.application.robust import robust_parse_document, write_robust_outputs
 from docparser.config import load_config
 from docparser.domain.parser_contract import RuntimeDevice
 from docparser.evaluation import load_manifest, run_parsing_benchmark, write_benchmark_report
@@ -27,11 +29,13 @@ from docparser.evaluation.schema import (
     write_evaluation_schema,
     write_parsebench_subset_schema,
 )
+from docparser.fallback import FallbackProfile
 from docparser.ir.schema import (
     DEFAULT_SCHEMA_PATH,
     schema_is_current,
     write_document_ir_schema,
 )
+from docparser.quality import CalibrationProfile
 from docparser.version import __version__
 
 app = typer.Typer(
@@ -132,6 +136,84 @@ def parse_local(
     )
 
 
+@app.command("parse-robust")
+def parse_robust(
+    input_pdf: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="Local PDF to parse through the calibrated risk gate.",
+        ),
+    ],
+    parser: Annotated[
+        str,
+        typer.Option("--parser", help="Primary parser profile."),
+    ] = "docling-standard",
+    device: Annotated[
+        RuntimeDevice,
+        typer.Option("--device", help="auto, cpu, or cuda."),
+    ] = RuntimeDevice.AUTO,
+    output: Annotated[
+        Path,
+        typer.Option("--output", file_okay=False, resolve_path=True),
+    ] = Path("./robust-output"),
+    calibration_profile: Annotated[
+        Path | None,
+        typer.Option(
+            "--calibration-profile",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+        ),
+    ] = None,
+    fallback_profile: Annotated[
+        Path | None,
+        typer.Option(
+            "--fallback-profile",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+        ),
+    ] = None,
+) -> None:
+    """Parse, validate, optionally fall back, and emit the final evaluated IR."""
+
+    try:
+        calibration = (
+            CalibrationProfile.model_validate_json(calibration_profile.read_bytes())
+            if calibration_profile
+            else None
+        )
+        fallback = (
+            FallbackProfile.model_validate_json(fallback_profile.read_bytes())
+            if fallback_profile
+            else None
+        )
+        outcome = robust_parse_document(
+            input_pdf,
+            ParsingConfig(parser=parser, device=device),
+            calibration=calibration,
+            fallback_profile=fallback,
+        )
+        write_robust_outputs(outcome, output)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError, ValidationError) as exc:
+        typer.echo(f"robust parse failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    mode = outcome.final_quality_report.mode.value
+    suffix = " / CALIBRATION_REQUIRED" if outcome.final_quality_report.calibration_required else ""
+    typer.echo(
+        f"robust parse decision={outcome.final_decision.value} mode={mode}{suffix}; output={output}"
+    )
+
+
 @app.command("benchmark-parsing")
 def benchmark_parsing(
     manifest: Annotated[
@@ -193,15 +275,9 @@ def prepare_parsebench_manifests(
     """Freeze deterministic development/holdout IDs from a local candidate catalog."""
 
     try:
-        development, holdout = prepare_subset_manifests(
-            load_candidate_catalog(candidate_catalog)
-        )
-        write_subset_manifest(
-            development, output / "parsebench-complex-v1-dev.json"
-        )
-        write_subset_manifest(
-            holdout, output / "parsebench-complex-v1-holdout.json"
-        )
+        development, holdout = prepare_subset_manifests(load_candidate_catalog(candidate_catalog))
+        write_subset_manifest(development, output / "parsebench-complex-v1-dev.json")
+        write_subset_manifest(holdout, output / "parsebench-complex-v1-holdout.json")
     except (OSError, ValueError, ValidationError) as exc:
         typer.echo(f"ParseBench manifest preparation failed: {exc}", err=True)
         raise typer.Exit(code=2) from exc
@@ -240,9 +316,7 @@ def schema_check(
         typer.echo(f"schema drift detected: {schema_path.as_posix()}", err=True)
         raise typer.Exit(code=1)
     if schema_path == DEFAULT_SCHEMA_PATH and not evaluation_schema_is_current():
-        typer.echo(
-            f"schema drift detected: {DEFAULT_EVALUATION_SCHEMA.as_posix()}", err=True
-        )
+        typer.echo(f"schema drift detected: {DEFAULT_EVALUATION_SCHEMA.as_posix()}", err=True)
         raise typer.Exit(code=1)
     if schema_path == DEFAULT_SCHEMA_PATH and not parsebench_subset_schema_is_current():
         typer.echo("schema drift detected: ParseBench subset schema", err=True)

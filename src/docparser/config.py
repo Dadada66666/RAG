@@ -65,4 +65,3 @@ def load_config(path: Path) -> BootstrapConfig:
 
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     return BootstrapConfig.model_validate(payload)
-

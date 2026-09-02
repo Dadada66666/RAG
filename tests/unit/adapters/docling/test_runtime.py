@@ -61,9 +61,7 @@ def test_raw_snapshot_omits_host_paths_and_image_payloads(tmp_path: Path) -> Non
         tmp_path,
     )
 
-    snapshot = json.loads(
-        (tmp_path / "docling-document.json").read_text(encoding="utf-8")
-    )
+    snapshot = json.loads((tmp_path / "docling-document.json").read_text(encoding="utf-8"))
     assert "origin" not in snapshot
     assert "image" not in snapshot["pictures"][0]
     assert snapshot["pages"]["1"] == {"size": {"height": 200.0, "width": 100.0}}

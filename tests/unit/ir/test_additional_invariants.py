@@ -16,9 +16,7 @@ def _payload() -> dict[str, Any]:
 
 def test_relationship_ids_are_unique_document_wide() -> None:
     payload = _payload()
-    payload["relationships"][1]["relationship_id"] = payload["relationships"][0][
-        "relationship_id"
-    ]
+    payload["relationships"][1]["relationship_id"] = payload["relationships"][0]["relationship_id"]
 
     with pytest.raises(ValidationError, match="relationship IDs must be unique"):
         load_canonical_json(json.dumps(payload))
@@ -56,9 +54,7 @@ def test_block_parent_graph_cycle_is_rejected() -> None:
 
 def test_figure_asset_must_be_in_processing_manifest() -> None:
     payload = _payload()
-    payload["figures"][0]["asset_artifact_ids"] = [
-        "art_018bcfe5-6800-7000-8000-000000000099"
-    ]
+    payload["figures"][0]["asset_artifact_ids"] = ["art_018bcfe5-6800-7000-8000-000000000099"]
 
     with pytest.raises(ValidationError, match="figure asset_artifact_id"):
         load_canonical_json(json.dumps(payload))
@@ -66,9 +62,7 @@ def test_figure_asset_must_be_in_processing_manifest() -> None:
 
 def test_reference_source_block_must_resolve() -> None:
     payload = _payload()
-    payload["references"][0]["source_block_ids"] = [
-        "blk_bb632dca-dfb7-5650-80dc-26ab96643e2b"
-    ]
+    payload["references"][0]["source_block_ids"] = ["blk_bb632dca-dfb7-5650-80dc-26ab96643e2b"]
 
     with pytest.raises(ValidationError, match="reference source_block_id"):
         load_canonical_json(json.dumps(payload))

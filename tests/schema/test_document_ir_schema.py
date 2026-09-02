@@ -9,6 +9,7 @@ import pytest
 from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
+from docparser.ir.migrations import migrate_ir
 from docparser.ir.schema import (
     DEFAULT_SCHEMA_PATH,
     document_ir_schema,
@@ -33,6 +34,11 @@ def _set_path(payload: Any, path: list[str | int], value: Any) -> None:
     target[path[-1]] = value
 
 
+def _current_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    version = str(payload["schema_version"])
+    return migrate_ir(version, "1.2.0", payload) if version != "1.2.0" else payload
+
+
 def test_generated_schema_is_valid_draft_2020_12() -> None:
     schema = document_ir_schema()
 
@@ -48,7 +54,7 @@ def test_committed_schema_has_no_drift() -> None:
 @pytest.mark.parametrize("fixture_path", POSITIVE_FIXTURES, ids=lambda path: path.stem)
 def test_positive_fixture_passes_runtime_and_json_schema(fixture_path: Path) -> None:
     fixture_bytes = fixture_path.read_bytes()
-    payload = json.loads(fixture_bytes)
+    payload = _current_payload(json.loads(fixture_bytes))
     validator = Draft202012Validator(document_ir_schema())
 
     assert list(validator.iter_errors(payload)) == []
@@ -61,7 +67,9 @@ def test_positive_fixture_passes_runtime_and_json_schema(fixture_path: Path) -> 
     ids=lambda case: str(case["name"]),
 )
 def test_negative_wire_fixture_fails_runtime_and_json_schema(case: dict[str, Any]) -> None:
-    payload = json.loads(POSITIVE_FIXTURES[0].read_text(encoding="utf-8"))
+    payload = _current_payload(
+        json.loads(POSITIVE_FIXTURES[0].read_text(encoding="utf-8"))
+    )
     invalid = copy.deepcopy(payload)
     _set_path(invalid, case["path"], case["value"])
     validator = Draft202012Validator(document_ir_schema())
@@ -77,7 +85,9 @@ def test_negative_wire_fixture_fails_runtime_and_json_schema(case: dict[str, Any
     ids=lambda case: str(case["name"]),
 )
 def test_negative_graph_fixture_passes_schema_but_fails_domain(case: dict[str, Any]) -> None:
-    payload = json.loads(POSITIVE_FIXTURES[1].read_text(encoding="utf-8"))
+    payload = _current_payload(
+        json.loads(POSITIVE_FIXTURES[1].read_text(encoding="utf-8"))
+    )
     invalid = copy.deepcopy(payload)
     for mutation in case["mutations"]:
         _set_path(invalid, mutation["path"], mutation["value"])

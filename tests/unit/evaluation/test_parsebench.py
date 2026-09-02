@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 from tests.parser_fixture import normalize_contract_fixture
@@ -42,9 +43,7 @@ def test_official_runner_only_wraps_pinned_external_evaluator_output(
     result_path = tmp_path / "official-result.json"
     calls: list[tuple[str, ...]] = []
 
-    def execute(
-        command: tuple[str, ...] | list[str], cwd: Path
-    ) -> subprocess.CompletedProcess[str]:
+    def execute(command: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:
         del cwd
         call = tuple(command)
         calls.append(call)
@@ -80,7 +79,15 @@ def test_official_runner_only_wraps_pinned_external_evaluator_output(
 
 
 def _candidates(count: int = 90) -> tuple[ParseBenchCandidate, ...]:
-    strata = tuple(ParseBenchStratum)
+    strata: tuple[ParseBenchStratum, ...] = (
+        ParseBenchStratum.HARD_TABLE,
+        ParseBenchStratum.MERGED_CELLS,
+        ParseBenchStratum.OCR_SCAN,
+        ParseBenchStratum.MULTICOLUMN,
+        ParseBenchStratum.DIFFICULT_LAYOUT,
+        ParseBenchStratum.NUMERIC_FINANCIAL,
+        ParseBenchStratum.BILINGUAL_MULTILINGUAL,
+    )
     return tuple(
         ParseBenchCandidate(
             item_id=f"item-{index:03d}",
@@ -105,12 +112,8 @@ def test_complex_subset_selection_is_deterministic_and_holdout_is_disjoint() -> 
     assert development.selection_status is SubsetSelectionStatus.FROZEN
     assert len(development.selected_items) == 60
     assert len(holdout.selected_items) == 20
-    development_documents = {
-        item.source_document_id for item in development.selected_items
-    }
+    development_documents = {item.source_document_id for item in development.selected_items}
     holdout_documents = {item.source_document_id for item in holdout.selected_items}
     assert development_documents.isdisjoint(holdout_documents)
-    selected_strata = {
-        stratum for item in development.selected_items for stratum in item.strata
-    }
+    selected_strata = {stratum for item in development.selected_items for stratum in item.strata}
     assert all(stratum in selected_strata for stratum in ParseBenchStratum)

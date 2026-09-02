@@ -9,9 +9,7 @@ from docparser.evaluation.models import GoldenDatasetManifest
 from docparser.evaluation.parsebench.models import ParseBenchSubsetManifest
 
 DEFAULT_EVALUATION_SCHEMA = Path("schemas/evaluation/parsing-golden.schema.json")
-DEFAULT_PARSEBENCH_SUBSET_SCHEMA = Path(
-    "schemas/evaluation/parsebench-subset.schema.json"
-)
+DEFAULT_PARSEBENCH_SUBSET_SCHEMA = Path("schemas/evaluation/parsebench-subset.schema.json")
 
 
 def evaluation_schema_bytes() -> bytes:

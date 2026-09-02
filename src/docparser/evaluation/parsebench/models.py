@@ -165,9 +165,7 @@ class ParseBenchSubsetManifest(StrictIRModel):
         item_ids = [item.item_id for item in self.selected_items]
         if len(set(item_ids)) != len(item_ids):
             raise ValueError("ParseBench subset item IDs must be unique")
-        source_pages = [
-            (item.source_document_id, item.page_number) for item in self.selected_items
-        ]
+        source_pages = [(item.source_document_id, item.page_number) for item in self.selected_items]
         if len(set(source_pages)) != len(source_pages):
             raise ValueError("ParseBench subset source pages must be unique")
         if self.selection_status is SubsetSelectionStatus.FROZEN:

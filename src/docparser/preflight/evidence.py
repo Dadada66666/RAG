@@ -74,4 +74,3 @@ def extract_numeric_tokens(text: str) -> tuple[NativeNumericToken, ...]:
             )
         )
     return tuple(tokens)
-

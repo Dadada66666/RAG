@@ -55,13 +55,9 @@ def test_html_table_preserves_rowspan_and_colspan_without_fake_bbox() -> None:
 
 def test_structured_paddle_fixture_maps_without_markdown_contract() -> None:
     fixture = json.loads(
-        Path("tests/fixtures/paddleocr_vl/synthetic-structured.json").read_text(
-            encoding="utf-8"
-        )
+        Path("tests/fixtures/paddleocr_vl/synthetic-structured.json").read_text(encoding="utf-8")
     )
-    result = map_paddleocr_vl_pages(
-        fixture["pages"], descriptor=_descriptor(), run=_run()
-    )
+    result = map_paddleocr_vl_pages(fixture["pages"], descriptor=_descriptor(), run=_run())
 
     assert result.pages_requested == (1,)
     assert result.pages[0].elements[0].reading_order == 0

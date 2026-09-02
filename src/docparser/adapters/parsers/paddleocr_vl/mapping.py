@@ -168,7 +168,8 @@ def _element(page_number: int, raw: JsonObject, index: int) -> ExtractedElement:
         extraction_method=method,
         parent_source_object_id=(
             f"paddle:{page_number}:{raw['parent_block_id']}"
-            if raw.get("parent_block_id") is not None else None
+            if raw.get("parent_block_id") is not None
+            else None
         ),
         caption_for_source_object_id=None,
         metadata={"org.paddleocr.label": label},

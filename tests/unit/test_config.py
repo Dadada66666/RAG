@@ -29,4 +29,3 @@ def test_missing_config_field_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError, match="version"):
         load_config(config_path)
-

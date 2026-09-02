@@ -188,19 +188,14 @@ def _block_compatibility(
 def match_truth_blocks(document: DocumentIR, annotation: PageAnnotation) -> dict[str, Block]:
     """Match annotation blocks one-to-one without relying on parser order."""
     available = {
-        str(block.block_id): block
-        for block in _blocks_for_page(document, annotation.page_number)
+        str(block.block_id): block for block in _blocks_for_page(document, annotation.page_number)
     }
     matched: dict[str, Block] = {}
     for truth in sorted(annotation.layout_blocks, key=lambda item: str(item.truth_id)):
         candidates = [
             (score, block_id, block)
             for block_id, block in available.items()
-            if (
-                score := _block_compatibility(
-                    truth.block_type, truth.text, truth.bbox, block
-                )
-            )
+            if (score := _block_compatibility(truth.block_type, truth.text, truth.bbox, block))
             is not None
         ]
         if not candidates:
@@ -216,9 +211,7 @@ def match_truth_blocks(document: DocumentIR, annotation: PageAnnotation) -> dict
 
 def _table_text_counter(table: TableTruth | Table) -> Counter[str]:
     return Counter(
-        normalized
-        for cell in table.cells
-        if (normalized := _normalized_text(cell.text))
+        normalized for cell in table.cells if (normalized := _normalized_text(cell.text))
     )
 
 
@@ -287,8 +280,7 @@ def _deterministic_table_matches(
                 key=lambda item: (-item[0], item[1]),
             )
             if candidates and not (
-                len(candidates) > 1
-                and abs(candidates[0][0] - candidates[1][0]) <= _TIE_EPSILON
+                len(candidates) > 1 and abs(candidates[0][0] - candidates[1][0]) <= _TIE_EPSILON
             ):
                 truth_choice[truth_id] = candidates[0][1]
         prediction_choice: dict[str, str] = {}
@@ -302,8 +294,7 @@ def _deterministic_table_matches(
                 key=lambda item: (-item[0], item[1]),
             )
             if candidates and not (
-                len(candidates) > 1
-                and abs(candidates[0][0] - candidates[1][0]) <= _TIE_EPSILON
+                len(candidates) > 1 and abs(candidates[0][0] - candidates[1][0]) <= _TIE_EPSILON
             ):
                 prediction_choice[prediction_id] = candidates[0][1]
         mutual = sorted(
@@ -375,9 +366,7 @@ def score_table_predictions(
         logical_rows_correct += int(truth.logical_rows == prediction.logical_row_count)
         logical_columns_correct += int(truth.logical_columns == prediction.logical_column_count)
         occupied_grids_valid += int(_occupied_grid_is_valid(prediction))
-        expected_by_anchor = {
-            (cell.row_index, cell.column_index): cell for cell in truth.cells
-        }
+        expected_by_anchor = {(cell.row_index, cell.column_index): cell for cell in truth.cells}
         predicted_by_anchor = {
             (cell.row_index, cell.column_index): cell for cell in prediction.cells
         }
@@ -521,13 +510,9 @@ def evaluation_denominators(annotations: tuple[PageAnnotation, ...]) -> Evaluati
     return EvaluationDenominators(
         pages=len(annotations),
         text_pages=sum(annotation.text is not None for annotation in annotations),
-        reading_order_pairs=sum(
-            len(annotation.reading_order_pairs) for annotation in annotations
-        ),
+        reading_order_pairs=sum(len(annotation.reading_order_pairs) for annotation in annotations),
         tables=sum(len(annotation.tables) for annotation in annotations),
-        cells=sum(
-            len(table.cells) for annotation in annotations for table in annotation.tables
-        ),
+        cells=sum(len(table.cells) for annotation in annotations for table in annotation.tables),
         numeric_annotations=sum(
             numeric.multiplicity
             for annotation in annotations
@@ -594,9 +579,8 @@ def score_numeric_predictions(
             key = (str(prediction.table_id), actual.row_index, actual.column_index, normalized)
             available = max(0, actual_counter[normalized] - consumed[key])
             metadata_matches = (
-                (numeric.currency is None or str(numeric.currency) in actual.text)
-                and (numeric.unit is None or str(numeric.unit) in actual.text)
-            )
+                numeric.currency is None or str(numeric.currency) in actual.text
+            ) and (numeric.unit is None or str(numeric.unit) in actual.text)
             hits = min(numeric.multiplicity, available) if metadata_matches else 0
             structural_correct += hits
             consumed[key] += hits
@@ -735,9 +719,7 @@ def score_outcome(outcome: ParseOutcome, annotations: tuple[PageAnnotation, ...]
         cells_text_correct=table_score.cells_text_correct,
         cells_expected=table_score.cells_expected,
         unexpected_cells=table_score.unexpected_cells,
-        cell_exact_text_accuracy=_ratio(
-            table_score.cells_text_correct, table_score.cells_expected
-        ),
+        cell_exact_text_accuracy=_ratio(table_score.cells_text_correct, table_score.cells_expected),
         rowspans_correct=table_score.rowspans_correct,
         rowspans_expected=table_score.cells_expected,
         rowspan_accuracy=_ratio(table_score.rowspans_correct, table_score.cells_expected),
@@ -751,9 +733,7 @@ def score_outcome(outcome: ParseOutcome, annotations: tuple[PageAnnotation, ...]
         ),
         table_segments_covered=table_score.segments_covered,
         table_segments_expected=table_score.segments_expected,
-        table_segment_coverage=_ratio(
-            table_score.segments_covered, table_score.segments_expected
-        ),
+        table_segment_coverage=_ratio(table_score.segments_covered, table_score.segments_expected),
         continuations_correct=table_score.continuations_correct,
         continuations_expected=table_score.continuations_expected,
         continuation_identity_accuracy=_ratio(
@@ -764,9 +744,7 @@ def score_outcome(outcome: ParseOutcome, annotations: tuple[PageAnnotation, ...]
         page_numeric_presence_accuracy=_ratio(page_numeric_correct, page_numeric_expected),
         structural_numerics_correct=structural_correct,
         structural_numerics_expected=structural_expected,
-        critical_numeric_structural_exact_accuracy=_ratio(
-            structural_correct, structural_expected
-        ),
+        critical_numeric_structural_exact_accuracy=_ratio(structural_correct, structural_expected),
         resolvable_block_provenance=(
             diagnostics.provenance_complete_blocks / max(diagnostics.generated_blocks, 1)
         ),

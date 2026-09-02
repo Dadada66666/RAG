@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Authoritative design; implementation blocked on calibrated Quality Gate |
+| Status | PAGE/TABLE MVP implemented; automatic routing requires frozen evidence profiles |
 | Merge algorithm version | `1.0.0` |
 | Core property | Scope-minimal, quality-improving, transactional, provenance-preserving |
 
@@ -25,7 +25,7 @@ Automatic fallback is prohibited until all of the following are true:
 1. the corrected benchmark protocol has frozen baseline results for the applicable document slice;
 2. Quality Gate signals have measured detection precision/recall and a frozen calibration profile;
 3. the defective scope can be identified with adequate target precision;
-4. the alternate adapter truthfully supports that executable scope;
+4. the alternate adapter can truthfully parse the bounded materialized input;
 5. candidate-vs-baseline comparison and full revalidation are available.
 
 ### 1.2 First fallback MVP boundary
@@ -47,10 +47,12 @@ Generic block/region reconciliation, one-to-many or many-to-one matching, sparse
 assignment and general entity graph repair remain future capabilities. They are not MVP acceptance
 criteria unless an observed Golden failure case proves they are necessary.
 
-Current Docling and Paddle adapters execute `DOCUMENT` scope. They are parser candidates, not yet
-selective page/table fallback executors. The planner must never advertise a scope the adapter cannot
-execute. No profile rule such as “Paddle always wins tables” or “Docling wins born-digital” is valid
-without fixed-corpus evidence.
+Current Docling and Paddle adapters continue to execute truthful `DOCUMENT` scope. Selective PAGE
+execution is achieved by materializing exactly one source page as a temporary one-page PDF; the
+adapter still receives `DOCUMENT` scope over that bounded artifact. TABLE replacement reparses the
+containing page, selects one uniquely compatible candidate, and atomically replaces the complete
+single-page logical table. The temporary PDF is never canonical source truth. No profile rule such
+as “Paddle always wins tables” is valid without frozen corpus evidence.
 
 The authoritative control flow is:
 

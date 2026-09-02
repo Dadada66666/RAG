@@ -33,9 +33,7 @@ def validate_document_invariants(document: DocumentIR) -> None:
     """Validate cross-entity invariants that require the complete IR graph."""
 
     pages = {page.page_number: page for page in document.pages}
-    blocks = {
-        str(block.block_id): block for page in document.pages for block in page.blocks
-    }
+    blocks = {str(block.block_id): block for page in document.pages for block in page.blocks}
     sections = _unique_by_id(document.sections, "section_id", "section")
     tables = _unique_by_id(document.tables, "table_id", "table")
     figures = _unique_by_id(document.figures, "figure_id", "figure")
@@ -401,6 +399,7 @@ def _validate_content(
                 raise ValueError("reference source_block_id does not resolve")
         _require_provenance(reference.provenance_ids, provenance)
 
+
 _RELATIONSHIP_COMPATIBILITY: dict[RelationshipType, set[tuple[str, str]]] = {
     RelationshipType.CONTAINS: {
         ("DOCUMENT", "SECTION"),
@@ -510,6 +509,8 @@ def _validate_structural_relationship(
             raise ValueError("CONTINUES_ON disagrees with table segment linkage")
         if segments[target].continued_from_segment_id != relationship.source_id:
             raise ValueError("CONTINUES_ON target disagrees with table segment linkage")
+
+
 def _validate_relationship_compatibility(
     relationship_type: RelationshipType,
     source_kind: str,
@@ -539,9 +540,7 @@ def _validate_reading_next(source: Block, target: Block, pages: dict[int, Page])
         raise ValueError("cross-page READING_NEXT must connect adjacent page flow boundaries")
     source_page = pages[source.page_number]
     max_order = max(
-        block.reading_order
-        for block in source_page.blocks
-        if block.reading_order is not None
+        block.reading_order for block in source_page.blocks if block.reading_order is not None
     )
     if source.reading_order != max_order:
         raise ValueError("cross-page READING_NEXT source must be the final page flow block")
@@ -646,7 +645,5 @@ def resolve_heading_path(document: DocumentIR, section_id: SectionId) -> tuple[s
     """Resolve root-to-leaf section heading text without persisting competing truth."""
 
     sections = {str(section.section_id): section for section in document.sections}
-    blocks = {
-        str(block.block_id): block for page in document.pages for block in page.blocks
-    }
+    blocks = {str(block.block_id): block for page in document.pages for block in page.blocks}
     return _resolve_heading_paths(sections, blocks)[str(section_id)]

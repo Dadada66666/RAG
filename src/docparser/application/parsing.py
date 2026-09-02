@@ -87,9 +87,7 @@ class ParseDiagnostics(StrictIRModel):
     unresolved_hierarchy_count: int = Field(strict=True, ge=0)
     eligible_retrieval_blocks: int = Field(strict=True, ge=0)
     section_assigned_blocks: int = Field(strict=True, ge=0)
-    section_assignment_coverage: float | None = Field(
-        default=None, strict=True, ge=0.0, le=1.0
-    )
+    section_assignment_coverage: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
     reading_order_eligible_pages: int = Field(strict=True, ge=0)
     reading_order_resolved_pages: int = Field(strict=True, ge=0)
     resolved_reading_order_page_rate: float | None = Field(
@@ -149,10 +147,7 @@ def _diagnostics(
     unresolved = tuple(
         page.page_number
         for page in document.pages
-        if any(
-            block.reading_order_status is ReadingOrderStatus.UNRESOLVED
-            for block in page.blocks
-        )
+        if any(block.reading_order_status is ReadingOrderStatus.UNRESOLVED for block in page.blocks)
     )
     provenance_ids = {record.provenance_id for record in document.provenance}
     provenance_complete = sum(
@@ -161,26 +156,23 @@ def _diagnostics(
         for block in blocks
     )
     independent_table_pages = {
-        table.segments[0].page_number
-        for table in document.tables
-        if len(table.segments) == 1
+        table.segments[0].page_number for table in document.tables if len(table.segments) == 1
     }
     normalization_warnings = (
         (
-            "adjacent pages contain independent table candidates; "
-            "cross-page continuity was not inferred"
-        ),
-    ) if any(
-        page_number + 1 in independent_table_pages
-        for page_number in independent_table_pages
-    ) else ()
-    cell_provenance = {
-        record.provenance_id: record
-        for record in document.provenance
-    }
+            (
+                "adjacent pages contain independent table candidates; "
+                "cross-page continuity was not inferred"
+            ),
+        )
+        if any(
+            page_number + 1 in independent_table_pages for page_number in independent_table_pages
+        )
+        else ()
+    )
+    cell_provenance = {record.provenance_id: record for record in document.provenance}
     extraction_counts = Counter(
-        cell_provenance[block.provenance_ids[0]].extraction_method.value
-        for block in blocks
+        cell_provenance[block.provenance_ids[0]].extraction_method.value for block in blocks
     )
     cells = [cell for table in document.tables for cell in table.cells]
     exact_cells = sum(
@@ -196,9 +188,7 @@ def _diagnostics(
     parser_by_page: dict[int, Counter[str]] = {}
     for page in document.pages:
         text_parts = [
-            block.text or ""
-            for block in page.blocks
-            if block.block_type.value != "TABLE"
+            block.text or "" for block in page.blocks if block.block_type.value != "TABLE"
         ]
         text_parts.extend(
             cell.text
@@ -242,7 +232,8 @@ def _diagnostics(
                 profile.pages[page.page_number - 1].width
                 / profile.pages[page.page_number - 1].height
             )
-        ) > 0.02
+        )
+        > 0.02
     )
     unresolved_hierarchy = sum(
         element.parent_source_object_id is not None
@@ -269,9 +260,7 @@ def _diagnostics(
         "QUOTE",
         "FOOTNOTE",
     }
-    eligible_blocks = [
-        block for block in blocks if block.block_type.value in retrieval_types
-    ]
+    eligible_blocks = [block for block in blocks if block.block_type.value in retrieval_types]
     section_block_ids = {
         block_id
         for section in document.sections
@@ -280,9 +269,7 @@ def _diagnostics(
             *section.content_block_ids,
         )
     }
-    section_assigned = sum(
-        block.block_id in section_block_ids for block in eligible_blocks
-    )
+    section_assigned = sum(block.block_id in section_block_ids for block in eligible_blocks)
     order_eligible_pages = [
         page
         for page in document.pages
@@ -333,9 +320,7 @@ def _diagnostics(
         reading_order_eligible_pages=len(order_eligible_pages),
         reading_order_resolved_pages=order_resolved_pages,
         resolved_reading_order_page_rate=(
-            order_resolved_pages / len(order_eligible_pages)
-            if order_eligible_pages
-            else None
+            order_resolved_pages / len(order_eligible_pages) if order_eligible_pages else None
         ),
         cross_page_table_candidates=explicit_continuations,
         native_numeric_tokens=sum(sum(values.values()) for values in native_by_page.values()),
@@ -394,9 +379,7 @@ def parse_document_with_diagnostics(
     started = perf_counter()
     profile = profile_provider(path)
     digest = _source_digest(path)
-    document_id: DocumentId = generate_document_id(
-        config.namespace, config.tenant_scope, digest
-    )
+    document_id: DocumentId = generate_document_id(config.namespace, config.tenant_scope, digest)
     result = parser.parse(
         ParseRequest(
             source_path=path,
@@ -422,9 +405,7 @@ def parse_document_with_diagnostics(
         profile=profile,
     )
     document = normalize_neutral_result(result, context)
-    diagnostics = _diagnostics(
-        document, result, profile, elapsed_seconds=perf_counter() - started
-    )
+    diagnostics = _diagnostics(document, result, profile, elapsed_seconds=perf_counter() - started)
     return ParseOutcome(
         document=document,
         parse_result=result,

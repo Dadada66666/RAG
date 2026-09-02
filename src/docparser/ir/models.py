@@ -323,7 +323,7 @@ class ProvenanceRecord(StrictIRModel):
 
 
 class DocumentIR(StrictIRModel):
-    schema_version: Literal["1.1.0"]
+    schema_version: Literal["1.2.0"]
     document_id: DocumentId
     revision_id: RevisionId
     revision_number: NonNegativeInt

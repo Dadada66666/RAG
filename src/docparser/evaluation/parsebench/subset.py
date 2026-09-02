@@ -124,9 +124,7 @@ def prepare_subset_manifests(
         seed=DEVELOPMENT_SEED,
         excluded_documents=set(),
     )
-    development_documents = {
-        str(candidate.source_document_id) for candidate in development_items
-    }
+    development_documents = {str(candidate.source_document_id) for candidate in development_items}
     holdout_items = _select(
         candidates,
         count=HOLDOUT_TARGET,

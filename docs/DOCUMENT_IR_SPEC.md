@@ -4,7 +4,7 @@
 |---|---|
 | Status | Proposed — highest-priority Phase 1 contract |
 | Schema family | `com.acme.docparser.document-ir` |
-| Initial schema version | `1.0.0`; current writer version `1.1.0` |
+| Initial schema version | `1.0.0`; current writer version `1.2.0` |
 | Serialization | Canonical UTF-8 JSON; generated JSON Schema Draft 2020-12 |
 | Last updated | 2026-09-01 |
 
@@ -108,7 +108,9 @@ No secret, hostname, raw command line or user text belongs in this structure.
 `QualitySummary` describes the validator lifecycle, not whether parser execution returned without an exception. Its status is one of `NOT_EVALUATED`, `PASS`, `DEGRADED`, or `FAIL`.
 
 - Before the Quality Validator runs, the only valid representation is `status=NOT_EVALUATED`, `publishable=false`, `score=null`, and `quality_report_id=null`.
-- Evaluated statuses require a resolvable `quality_report_id` and a score in `[0,1]`; publication policy decides `publishable`.
+- Evaluated statuses require a resolvable `quality_report_id`. `score` is either `null` when the
+  validator uses the discrete `score_model=NONE` policy, or a calibrated value in `[0,1]` when a
+  separately versioned score model exists; publication policy decides `publishable`.
 - Normalizers and parser adapters must never emit `PASS` or `score=1.0` merely to make an IR validate.
 - `issue_counts` may be zero in `NOT_EVALUATED`; this means no quality rules have executed, not that the document has no defects.
 
@@ -368,7 +370,11 @@ Compatibility rules:
 5. Original revisions remain immutable. Migrated IR is a new artifact/revision linked to the source revision.
 6. CI runs backward-read, forward-preserve-extension, round-trip and schema-diff tests.
 
-Current compatibility note (2026-09-01): V1.1 adds `QualityStatus.NOT_EVALUATED`, permits `quality_report_id` and `score` to be null only in that state, and adds the table-fragment spatial invariant. Writers emit `1.1.0`. Readers deterministically migrate V1.0 payloads to V1.1 without inventing quality evidence; evaluated V1.0 summaries retain their values. The schema remains in the V1 family path.
+Current compatibility note (2026-09-02): V1.2 permits evaluated summaries to retain
+`score=null` for the discrete Quality Gate while still requiring `quality_report_id`. V1.1
+semantics remain unchanged as a historical contract. Writers emit `1.2.0`; readers
+deterministically migrate supported V1.0/V1.1 payloads to V1.2 without inventing or deleting
+quality evidence. The schema remains in the V1 family path.
 
 ## 15. Complete JSON example
 
@@ -376,7 +382,7 @@ This example is intentionally small but contains every top-level entity family a
 
 ```json
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "document_id": "doc_6f5030ec-48ab-5b86-8729-7a4f59ace022",
   "revision_id": "rev_019d4020-0f42-7cc8-a37d-3f13e915d955",
   "revision_number": 1,

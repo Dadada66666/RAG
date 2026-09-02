@@ -6,9 +6,7 @@ from docparser.normalization.base import NormalizationContext
 from docparser.normalization.neutral import normalize_neutral_result
 
 
-def normalize_docling_result(
-    result: ParseResult, context: NormalizationContext
-) -> DocumentIR:
+def normalize_docling_result(result: ParseResult, context: NormalizationContext) -> DocumentIR:
     """Normalize Docling's parser-neutral envelope without parser SDK coupling."""
 
     return normalize_neutral_result(result, context)

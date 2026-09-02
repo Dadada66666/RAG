@@ -114,6 +114,6 @@ class QualitySummary(StrictIRModel):
                 raise ValueError("NOT_EVALUATED quality must not declare a report or score")
             if self.publishable:
                 raise ValueError("NOT_EVALUATED quality cannot be publishable")
-        elif self.quality_report_id is None or self.score is None:
-            raise ValueError("evaluated quality requires a report ID and score")
+        elif self.quality_report_id is None:
+            raise ValueError("evaluated quality requires a report ID")
         return self

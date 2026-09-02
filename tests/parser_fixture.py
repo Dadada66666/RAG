@@ -37,9 +37,7 @@ SOURCE_DIGEST = Sha256Digest(f"sha256:{'c' * 64}")
 
 
 def load_contract_result(name: str) -> ParseResult:
-    payload = json.loads(
-        Path(f"tests/fixtures/docling/{name}.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads(Path(f"tests/fixtures/docling/{name}.json").read_text(encoding="utf-8"))
     pages_requested = tuple(sorted(int(value) for value in payload["pages"]))
     return map_docling_document(
         payload,
@@ -134,9 +132,7 @@ def normalization_context(
         tenant_scope="test",
         document_id=document_id,
         revision_id=RevisionId("rev_018bcfe5-6800-7000-8000-000000000012"),
-        source_artifact_id=ArtifactId(
-            "art_018bcfe5-6800-7000-8000-000000000013"
-        ),
+        source_artifact_id=ArtifactId("art_018bcfe5-6800-7000-8000-000000000013"),
         source_digest=SOURCE_DIGEST,
         source_size_bytes=1024,
         original_filename_safe=f"{name}.pdf",

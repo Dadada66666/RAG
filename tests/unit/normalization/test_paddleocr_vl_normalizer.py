@@ -37,13 +37,9 @@ class _StaticPaddleParser:
 
 def _result() -> ParseResult:
     fixture = json.loads(
-        Path("tests/fixtures/paddleocr_vl/synthetic-structured.json").read_text(
-            encoding="utf-8"
-        )
+        Path("tests/fixtures/paddleocr_vl/synthetic-structured.json").read_text(encoding="utf-8")
     )
-    return map_paddleocr_vl_pages(
-        fixture["pages"], descriptor=_descriptor(), run=_run()
-    )
+    return map_paddleocr_vl_pages(fixture["pages"], descriptor=_descriptor(), run=_run())
 
 
 def test_pixels_scale_to_cropbox_points_and_bboxless_cells_keep_cell_provenance(
@@ -69,12 +65,9 @@ def test_pixels_scale_to_cropbox_points_and_bboxless_cells_keep_cell_provenance(
     assert all(provenance[cell.provenance_ids[0]].bbox is None for cell in table.cells)
     assert outcome.diagnostics.table_cells_without_bbox == len(table.cells)
     assert outcome.diagnostics.numeric_disagreement_count > 0
-    assert outcome.diagnostics.numeric_disagreements[0].code == (
-        "NUMERIC_TEXT_DISAGREEMENT"
-    )
+    assert outcome.diagnostics.numeric_disagreements[0].code == ("NUMERIC_TEXT_DISAGREEMENT")
     assert any(
-        record.extraction_method is ExtractionMethod.VLM
-        for record in outcome.document.provenance
+        record.extraction_method is ExtractionMethod.VLM for record in outcome.document.provenance
     )
 
 

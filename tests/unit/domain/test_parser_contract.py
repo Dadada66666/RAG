@@ -41,4 +41,3 @@ def test_source_bbox_rejects_non_finite_coordinates(value: float) -> None:
             y1=10.0,
             origin=CoordinateOrigin.TOP_LEFT,
         )
-

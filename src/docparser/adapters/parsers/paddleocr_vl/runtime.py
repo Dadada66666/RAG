@@ -37,7 +37,8 @@ def runtime_is_compatible() -> bool:
     return (
         importlib.util.find_spec("paddleocr") is not None
         and importlib.util.find_spec("paddle") is not None
-        and installed == {
+        and installed
+        == {
             "paddleocr": PADDLEOCR_VERSION,
             "paddlex": PADDLEX_VERSION,
             "paddlepaddle": PADDLEPADDLE_VERSION,

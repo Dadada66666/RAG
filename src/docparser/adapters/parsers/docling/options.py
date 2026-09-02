@@ -23,4 +23,3 @@ class DoclingOptions(StrictIRModel):
     code_enrichment: bool = True
     page_batch_size: int = Field(default=1, strict=True, ge=1, le=8)
     cpu_threads: int = Field(default=4, strict=True, ge=1, le=64)
-

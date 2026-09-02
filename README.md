@@ -63,9 +63,16 @@ vertical slice:
   PaddlePaddle `3.3.0`) using PP-DocLayoutV3 plus the 1.6 VLM.
 - Mapping of Docling text/layout, reading order, tables/cells/spans, figures/captions and basic
   equations into existing Canonical IR entities without flattening tables.
-- Fact-only parsing diagnostics plus `parse-local` and `benchmark-parsing` commands. Benchmark
+- Fact-only parsing diagnostics plus `parse-local`, `parse-robust`, and `benchmark-parsing`
+  commands. Benchmark
   output keeps text, tables, reading order, numerics, provenance and latency independent; it
   deliberately has no global parser score.
+- A discrete Quality Gate (`ACCEPT`, `FALLBACK_REQUIRED`, `REJECT`) with hard-integrity reuse,
+  completeness, numeric-multiset, reading-order, and table-degeneracy evidence rules.
+- Versioned calibration profiles and DOCUMENT/PAGE/TABLE calibration reports; without a frozen
+  real-corpus profile the runtime is explicitly `OBSERVE_ONLY` and non-publishable.
+- One-round selective fallback using one-page PDF materialization, atomic PAGE or single-page
+  TABLE replacement, copy-on-write revisions, fallback provenance, and full revalidation.
 
 The real-document development flow is:
 
@@ -88,9 +95,11 @@ The following remain architecture contracts and implementation-plan items, not w
 
 - Local/S3 artifact storage and SQLite/PostgreSQL job persistence.
 - Parser workers, GPU scheduling, checkpoint/resume, queues, and distributed execution.
-- Quality scoring engine, fallback planning, fallback execution, and merge pipeline.
-- MinerU, Marker, or Surya adapters, and selective fallback execution. Paddle is integrated only
-  as an evaluation candidate, not as an automatic primary or fallback.
+- A calibrated production Quality Gate profile: no approved calibration corpus has been supplied,
+  so no reliability or 95% claim is valid and automatic routing stays disabled by default.
+- Cross-page table fallback, region/block fallback, and general graph reconciliation.
+- MinerU, Marker, or Surya adapters. Paddle remains an evidence-gated alternate candidate, not an
+  unconditional primary or fallback.
 - Semantic chunk construction, token packing, embedding, retrieval, and reranking.
 - FastAPI service, upload endpoints, Prometheus, OpenTelemetry, and Grafana integration.
 
@@ -144,7 +153,8 @@ DocumentIR
 
 Important wire guarantees include:
 
-- Current writer Schema version `1.1.0`; deterministic readers migrate supported `1.0.0` payloads.
+- Current writer Schema version `1.2.0`; deterministic readers migrate supported `1.0.0` and
+  `1.1.0` payloads.
 - Before quality validation, `quality_summary` is explicitly `NOT_EVALUATED` with no fabricated
   score or report ID and is not publishable.
 - UTF-8 and Unicode NFC without destructive retrieval normalization.
@@ -228,6 +238,7 @@ fails when the pinned GPU runtime is unavailable; the core domain contains no CU
 .\.venv\Scripts\docparser.exe doctor --config configs/default.yaml
 .\.venv\Scripts\docparser.exe schema check
 .\.venv\Scripts\docparser.exe parse-local --help
+.\.venv\Scripts\docparser.exe parse-robust --help
 .\.venv\Scripts\docparser.exe benchmark-parsing --help
 .\.venv\Scripts\docparser.exe prepare-parsebench-manifests --help
 ```
@@ -239,6 +250,9 @@ Expected command responsibilities:
   loading a parser, or using the network.
 - `schema check` fails if the committed JSON Schema differs from the Pydantic-generated contract.
 - `parse-local` exposes the optional local-PDF development path.
+- `parse-robust` runs parse, Quality Gate, optional evidence-gated PAGE/TABLE fallback, full
+  revalidation, and final IR emission. Without frozen profiles it reports
+  `OBSERVE_ONLY / CALIBRATION_REQUIRED` and does not execute automatic fallback.
 - `prepare-parsebench-manifests` reads a user-provisioned local JSONL candidate catalog and freezes
   deterministic, document-family-disjoint development/holdout IDs. It never downloads ParseBench
   files. Until that catalog is supplied, committed manifests remain `UNPROVISIONED` and no accuracy
@@ -389,7 +403,8 @@ runnable and all tests passing.
 | Complete | 2.6 | Native PDF evidence, PaddleOCR-VL candidate, accuracy metrics and benchmark foundation |
 | Complete | Next 1 offline preparation | Correct project evaluator, pinned Official ParseBench boundary, deterministic unprovisioned development/holdout manifests |
 | Awaiting local corpus | Next 1 baselines | User-provisioned approved ParseBench data; no dataset is downloaded by default |
-| Recommended after baselines | Next 2 | Calibrated Quality Gate from observed benchmark failures |
+| Complete, observe-only by default | Next 2 | Discrete Quality Gate, IR 1.2 lifecycle, calibration metrics/profile freeze contract |
+| Complete, evidence-gated MVP | Next 3 | Single-page materialization, atomic PAGE/TABLE fallback, copy-on-write revalidation |
 | Planned | 3–5 | Immutable local artifacts, SQLite job state, durable parser orchestration |
 | Planned | 6–8 | Secure PDF admission and production multipage normalization hardening |
 | Planned | 9–11 | Quality engine, selective fallback, transactional merge and revalidation |

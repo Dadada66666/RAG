@@ -60,10 +60,7 @@ def test_vertical_slice_returns_metric_ready_valid_ir(tmp_path: Path) -> None:
 
     assert outcome.document.page_count == 1
     assert outcome.diagnostics.ir_validation_passed
-    assert (
-        outcome.diagnostics.provenance_complete_blocks
-        == outcome.diagnostics.generated_blocks
-    )
+    assert outcome.diagnostics.provenance_complete_blocks == outcome.diagnostics.generated_blocks
     assert outcome.diagnostics.device is RuntimeDevice.CPU
     assert outcome.diagnostics.eligible_retrieval_blocks == 2
     assert outcome.diagnostics.section_assigned_blocks == 0
@@ -105,11 +102,7 @@ def test_diagnostics_disclose_unmerged_adjacent_table_candidates() -> None:
     normalized = normalize_contract_fixture("simple-table")
     first = normalized.tables[0]
     second = first.model_copy(
-        update={
-            "segments": (
-                first.segments[0].model_copy(update={"page_number": 2}),
-            )
-        }
+        update={"segments": (first.segments[0].model_copy(update={"page_number": 2}),)}
     )
     diagnostic = _diagnostics(
         normalized.model_copy(update={"tables": (first, second)}),

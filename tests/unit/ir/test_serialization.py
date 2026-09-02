@@ -73,7 +73,7 @@ def test_semantic_digest_excludes_created_at_only() -> None:
 
 def test_semantic_digest_golden_vector() -> None:
     assert semantic_digest(make_document()) == (
-        "sha256:ba94d7e80e632eb5672c35129372f968bc90afd4a7c9eabbbf96b48b37cb23c6"
+        "sha256:a006f45d2342ab45d24f623279fc36ffe76ddc0f073cd057deb2cf2f750266e7"
     )
 
 

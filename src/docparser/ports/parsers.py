@@ -16,6 +16,7 @@ class DocumentParser(Protocol):
     PARTIAL results carry page-local ParserError values. An adapter must not return
     FAILED without a usable neutral envelope.
     """
+
     def descriptor(self) -> ParserDescriptor: ...
 
     def health(self) -> ParserHealth: ...

@@ -17,9 +17,7 @@ def test_native_text_and_numeric_evidence_are_preserved(tmp_path: Path) -> None:
 
     assert evidence.extraction_status is TextExtractionStatus.EXTRACTED
     assert "184,392.17" in evidence.text
-    assert [token.normalized for token in evidence.normalized_numeric_tokens] == [
-        "184392.17"
-    ]
+    assert [token.normalized for token in evidence.normalized_numeric_tokens] == ["184392.17"]
 
 
 def test_cropbox_and_mediabox_are_preserved_independently(tmp_path: Path) -> None:
@@ -50,9 +48,7 @@ def test_known_pdf_rectangle_maps_to_rotated_crop_space(
 
 def test_rotated_preflight_uses_effective_crop_dimensions(tmp_path: Path) -> None:
     page_90 = inspect_pdf(write_tiny_pdf(tmp_path / "r90.pdf", layout="rotated")).pages[0]
-    page_270 = inspect_pdf(
-        write_tiny_pdf(tmp_path / "r270.pdf", layout="rotated-270")
-    ).pages[0]
+    page_270 = inspect_pdf(write_tiny_pdf(tmp_path / "r270.pdf", layout="rotated-270")).pages[0]
 
     assert (page_90.rotation, page_90.width, page_90.height) == (90, 792.0, 612.0)
     assert (page_270.rotation, page_270.width, page_270.height) == (270, 792.0, 612.0)

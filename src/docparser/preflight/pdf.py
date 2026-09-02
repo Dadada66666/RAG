@@ -175,9 +175,7 @@ def inspect_pdf(path: Path) -> DocumentProfile:
             warnings.append(f"page {page_number}: text layer inspection failed: {exc}")
         char_count = len(text.strip())
         image_count = _count_images(page)
-        text_coverage, image_coverage = _coverage_estimates(
-            char_count, image_count, width * height
-        )
+        text_coverage, image_coverage = _coverage_estimates(char_count, image_count, width * height)
         profiles.append(
             PageProfile(
                 page_number=page_number,

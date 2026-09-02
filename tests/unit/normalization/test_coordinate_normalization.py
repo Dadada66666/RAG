@@ -27,11 +27,7 @@ def test_rotated_parser_bbox_is_inside_effective_page_and_keeps_reference_positi
 ) -> None:
     result = load_contract_result("rotated")
     result = result.model_copy(
-        update={
-            "pages": (
-                result.pages[0].model_copy(update={"rotation": rotation}),
-            )
-        }
+        update={"pages": (result.pages[0].model_copy(update={"rotation": rotation}),)}
     )
     outcome = parse_document_with_diagnostics(
         write_tiny_pdf(tmp_path / f"{layout}.pdf", layout=layout),

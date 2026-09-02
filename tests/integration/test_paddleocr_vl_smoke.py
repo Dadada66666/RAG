@@ -40,7 +40,4 @@ def test_real_paddle_merged_table_has_actual_cell_structure(tmp_path: Path) -> N
         ParsingConfig(parser="paddleocr-vl-1.6", device=RuntimeDevice.CUDA),
     )
     assert document.tables
-    assert any(
-        cell.row_span > 1 or cell.column_span > 1
-        for cell in document.tables[0].cells
-    )
+    assert any(cell.row_span > 1 or cell.column_span > 1 for cell in document.tables[0].cells)

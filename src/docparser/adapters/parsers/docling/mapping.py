@@ -64,11 +64,7 @@ def _first_provenance(item: JsonObject) -> JsonObject | None:
 def _source_bbox(value: object) -> SourceBBox:
     bbox = _object(value)
     origin_value = str(bbox.get("coord_origin", "TOPLEFT")).upper()
-    origin = (
-        CoordinateOrigin.BOTTOM_LEFT
-        if "BOTTOM" in origin_value
-        else CoordinateOrigin.TOP_LEFT
-    )
+    origin = CoordinateOrigin.BOTTOM_LEFT if "BOTTOM" in origin_value else CoordinateOrigin.TOP_LEFT
     left = float(bbox["l"])
     right = float(bbox["r"])
     first_y = float(bbox["t"])
@@ -133,9 +129,7 @@ def _caption_targets(payload: JsonObject) -> dict[str, str]:
     return targets
 
 
-def _reading_order(
-    body_refs: list[str], indexed: dict[str, JsonObject]
-) -> dict[str, int]:
+def _reading_order(body_refs: list[str], indexed: dict[str, JsonObject]) -> dict[str, int]:
     page_counters: dict[int, int] = {}
     resolved: dict[str, int] = {}
     for ref in body_refs:
@@ -205,12 +199,7 @@ def _table(item: JsonObject) -> ExtractedTable | None:
     bbox = _item_bbox(item)
     data = _object(item.get("data"))
     raw_cells = _objects(data.get("table_cells"))
-    if (
-        not isinstance(source_id, str)
-        or page_number is None
-        or bbox is None
-        or not raw_cells
-    ):
+    if not isinstance(source_id, str) or page_number is None or bbox is None or not raw_cells:
         return None
     cells: list[ExtractedTableCell] = []
     for index, cell in enumerate(raw_cells):
@@ -238,9 +227,7 @@ def _table(item: JsonObject) -> ExtractedTable | None:
             )
         )
     captions = tuple(
-        ref
-        for caption in _objects(item.get("captions"))
-        if (ref := _ref(caption)) is not None
+        ref for caption in _objects(item.get("captions")) if (ref := _ref(caption)) is not None
     )
     return ExtractedTable(
         source_object_id=source_id,
@@ -271,9 +258,7 @@ def map_docling_document(
         + _objects(payload.get("groups"))
     )
     indexed = {
-        str(item["self_ref"]): item
-        for item in collections
-        if isinstance(item.get("self_ref"), str)
+        str(item["self_ref"]): item for item in collections if isinstance(item.get("self_ref"), str)
     }
     body_refs = _expand_refs(_object(payload.get("body")), indexed)
     order = _reading_order(body_refs, indexed)
@@ -285,13 +270,10 @@ def map_docling_document(
             + _objects(payload.get("pictures"))
             + _objects(payload.get("tables"))
         )
-        if (element := _element(item, order=order, caption_targets=caption_targets))
-        is not None
+        if (element := _element(item, order=order, caption_targets=caption_targets)) is not None
     ]
     tables = [
-        table
-        for item in _objects(payload.get("tables"))
-        if (table := _table(item)) is not None
+        table for item in _objects(payload.get("tables")) if (table := _table(item)) is not None
     ]
 
     raw_pages = payload.get("pages")

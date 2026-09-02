@@ -42,9 +42,7 @@ def test_language_tag_validation() -> None:
 
 def test_extensions_are_namespaced_bounded_json_and_nfc() -> None:
     adapter = TypeAdapter(Extensions)
-    result = adapter.validate_python(
-        {"org.example.label": {"value": "Cafe\u0301", "score": 0.5}}
-    )
+    result = adapter.validate_python({"org.example.label": {"value": "Cafe\u0301", "score": 0.5}})
 
     extension = result["org.example.label"]
     assert isinstance(extension, dict)

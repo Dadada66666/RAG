@@ -71,19 +71,20 @@ def _bbox_and_transform(
     if source.origin is CoordinateOrigin.TOP_LEFT:
         transform = AffineTransform((x_scale, 0.0, 0.0, y_scale, 0.0, 0.0))
     else:
-        transform = AffineTransform(
-            (x_scale, 0.0, 0.0, -y_scale, 0.0, canonical_height)
-        )
-    points = tuple(transform.apply(point) for point in BBox(
-        (source.x0, source.y0, source.x1, source.y1)
-    ).corners())
+        transform = AffineTransform((x_scale, 0.0, 0.0, -y_scale, 0.0, canonical_height))
+    points = tuple(
+        transform.apply(point)
+        for point in BBox((source.x0, source.y0, source.x1, source.y1)).corners()
+    )
     return (
-        BBox((
-            min(point.x for point in points),
-            min(point.y for point in points),
-            max(point.x for point in points),
-            max(point.y for point in points),
-        )),
+        BBox(
+            (
+                min(point.x for point in points),
+                min(point.y for point in points),
+                max(point.x for point in points),
+                max(point.y for point in points),
+            )
+        ),
         transform,
     )
 
@@ -173,7 +174,9 @@ def _make_entity_provenance(
         bbox=bbox,
         source_coordinate_space=(
             f"{result.descriptor.parser_name.upper()}_{page.coordinate_unit.value}_"
-            f"{source_bbox.origin.value}" if source_bbox is not None else None
+            f"{source_bbox.origin.value}"
+            if source_bbox is not None
+            else None
         ),
         source_bbox=raw_bbox,
         to_canonical_transform=transform,
@@ -239,9 +242,7 @@ def _normalize_blocks(
             element.source_object_id,
         ),
     )
-    canonical_orders = {
-        element.source_object_id: index for index, element in enumerate(ordered)
-    }
+    canonical_orders = {element.source_object_id: index for index, element in enumerate(ordered)}
     blocks: list[Block] = []
     for element in page.elements:
         provenance = provenance_by_source[element.source_object_id]
@@ -378,9 +379,7 @@ def _normalize_tables(
     return tuple(result)
 
 
-def normalize_neutral_result(
-    result: ParseResult, context: NormalizationContext
-) -> DocumentIR:
+def normalize_neutral_result(result: ParseResult, context: NormalizationContext) -> DocumentIR:
     """Build a valid, unpublished Canonical IR from parser-neutral evidence."""
 
     expected = tuple(range(1, context.profile.page_count + 1))
@@ -448,8 +447,7 @@ def normalize_neutral_result(
             width=context.profile.pages[page.page_number - 1].width,
             height=context.profile.pages[page.page_number - 1].height,
             rotation_applied=Rotation(
-                page.rotation
-                or context.profile.pages[page.page_number - 1].rotation
+                page.rotation or context.profile.pages[page.page_number - 1].rotation
             ),
             media_box_original=context.profile.pages[page.page_number - 1].media_box,
             crop_box_original=context.profile.pages[page.page_number - 1].crop_box,
@@ -492,9 +490,7 @@ def normalize_neutral_result(
             ),
             page_numbers=(element.page_number,),
             asset_artifact_ids=(),
-            provenance_ids=(
-                provenance_by_source[element.source_object_id].provenance_id,
-            ),
+            provenance_ids=(provenance_by_source[element.source_object_id].provenance_id,),
             confidence=element.confidence,
             extensions={},
         )
@@ -509,9 +505,7 @@ def normalize_neutral_result(
             text=element.text or "",
             format=EquationFormat.PLAIN,
             label=None,
-            provenance_ids=(
-                provenance_by_source[element.source_object_id].provenance_id,
-            ),
+            provenance_ids=(provenance_by_source[element.source_object_id].provenance_id,),
             confidence=element.confidence,
             extensions={},
         )
@@ -552,7 +546,7 @@ def normalize_neutral_result(
         runtime=result.run.runtime,
     )
     return DocumentIR(
-        schema_version="1.1.0",
+        schema_version="1.2.0",
         document_id=context.document_id,
         revision_id=context.revision_id,
         revision_number=0,

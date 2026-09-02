@@ -255,3 +255,9 @@ def generate_artifact_id() -> ArtifactId:
     """Generate a time-ordered artifact identity at the centralized ID boundary."""
 
     return ArtifactId.from_uuid(build_uuid7(_system_unix_time_ms(), secrets.randbits(74)))
+
+
+def generate_quality_report_id() -> QualityReportId:
+    """Generate a time-ordered quality-report identity at the ID boundary."""
+
+    return QualityReportId.from_uuid(build_uuid7(_system_unix_time_ms(), secrets.randbits(74)))

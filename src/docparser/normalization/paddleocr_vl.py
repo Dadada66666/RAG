@@ -6,7 +6,5 @@ from docparser.normalization.base import NormalizationContext
 from docparser.normalization.neutral import normalize_neutral_result
 
 
-def normalize_paddleocr_vl_result(
-    result: ParseResult, context: NormalizationContext
-) -> DocumentIR:
+def normalize_paddleocr_vl_result(result: ParseResult, context: NormalizationContext) -> DocumentIR:
     return normalize_neutral_result(result, context)

@@ -59,18 +59,17 @@ def summarize_cases(
     tables = sum(case.denominators.tables for case in cases)
     cells = sum(case.denominators.cells for case in cases)
     numerics = sum(case.denominators.numeric_annotations for case in cases)
-    page_macro = sum(
-        case.metrics.page_completeness if case.metrics is not None else 0.0
-        for case in cases
-    ) / case_count
+    page_macro = (
+        sum(case.metrics.page_completeness if case.metrics is not None else 0.0 for case in cases)
+        / case_count
+    )
     pages_present = sum(
         case.metrics.pages_present for case in successful if case.metrics is not None
     )
 
     text_applicable = [case for case in cases if case.denominators.text_pages > 0]
     text_incomplete = any(
-        case.metrics is not None
-        and case.metrics.text_metric_status is MetricStatus.INCOMPLETE
+        case.metrics is not None and case.metrics.text_metric_status is MetricStatus.INCOMPLETE
         for case in text_applicable
     )
     text_macro: float | None
@@ -84,9 +83,7 @@ def summarize_cases(
             for case in text_applicable
         ) / len(text_applicable)
     text_pages_scored = sum(
-        case.metrics.text_pages_scored
-        for case in text_applicable
-        if case.metrics is not None
+        case.metrics.text_pages_scored for case in text_applicable if case.metrics is not None
     )
     text_page_macro = (
         None
@@ -100,9 +97,7 @@ def summarize_cases(
     )
 
     reading_correct = sum(
-        case.metrics.reading_order_pairs_correct
-        for case in successful
-        if case.metrics is not None
+        case.metrics.reading_order_pairs_correct for case in successful if case.metrics is not None
     )
     reading_expected = sum(case.denominators.reading_order_pairs for case in cases)
     detection_tp = sum(
@@ -120,9 +115,7 @@ def summarize_cases(
         if case.metrics is not None
     )
     structural_numeric_correct = sum(
-        case.metrics.structural_numerics_correct
-        for case in successful
-        if case.metrics is not None
+        case.metrics.structural_numerics_correct for case in successful if case.metrics is not None
     )
     structural_numeric_expected = sum(
         case.denominators.structural_numeric_annotations for case in cases
@@ -331,8 +324,10 @@ def run_parsing_benchmark(
                         message=message,
                     )
                 )
-    complete = bool(manifest.documents) and not failures and (
-        evaluated_pages >= manifest.target_page_count_min
+    complete = (
+        bool(manifest.documents)
+        and not failures
+        and (evaluated_pages >= manifest.target_page_count_min)
     )
     accuracy_claim_status = (
         f"{_metric_family_label(manifest)} — development evidence only"
@@ -403,11 +398,16 @@ def write_benchmark_report(report: ParsingBenchmarkReport, output: Path) -> None
             f"{display(metric.text_edit_similarity if metric else None)} | "
             f"{display(metric.cell_exact_text_accuracy if metric else None)} | "
             f"{display(metric.critical_numeric_structural_exact_accuracy if metric else None)} | "
-            f"{metric.elapsed_seconds:.3f} |" if metric is not None else
-            f"| {result.document_id} | {result.parser_profile} | {result.output_status.value} | "
-            f"{result.denominators.pages} | {result.denominators.tables} | "
-            f"{result.denominators.cells} | {result.denominators.numeric_annotations} | "
-            "N/A | N/A | N/A | N/A |"
+            f"{metric.elapsed_seconds:.3f} |"
+            if metric is not None
+            else (
+                f"| {result.document_id} | {result.parser_profile} | "
+                f"{result.output_status.value} | "
+                f"{result.denominators.pages} | {result.denominators.tables} | "
+                f"{result.denominators.cells} | "
+                f"{result.denominators.numeric_annotations} | "
+                "N/A | N/A | N/A | N/A |"
+            )
         )
     lines.extend(["", f"Recommendation: **{report.recommendation}**", ""])
     lines.extend(

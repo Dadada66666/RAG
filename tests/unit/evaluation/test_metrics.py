@@ -57,9 +57,7 @@ def _truth(table: Table, truth_id: str) -> TableTruth:
 
 
 def _with_table_id(table: Table, name: str) -> Table:
-    return table.model_copy(
-        update={"table_id": generate_uuid5_id(TableId, _NAMESPACE, name)}
-    )
+    return table.model_copy(update={"table_id": generate_uuid5_id(TableId, _NAMESPACE, name)})
 
 
 def test_text_metric_is_exact_for_nfc_equivalent_text() -> None:
@@ -185,11 +183,7 @@ def test_cross_page_segment_coverage_and_continuation_are_independent() -> None:
     )
     resolved = base.model_copy(update={"segments": (first, second)})
     unresolved = base.model_copy(
-        update={
-            "segments": (
-                first.model_copy(update={"continues_to_segment_id": None}),
-            )
-        }
+        update={"segments": (first.model_copy(update={"continues_to_segment_id": None}),)}
     )
     truth = _truth(resolved, "truth-cross-page")
 

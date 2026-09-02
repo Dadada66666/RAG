@@ -20,9 +20,7 @@ from pydantic import (
 from pydantic_core import CoreSchema, core_schema
 
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-_UTC_TIMESTAMP_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$"
-)
+_UTC_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$")
 _LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$")
 _EXTENSION_KEY_RE = re.compile(r"^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_-]*){2,}$")
 
@@ -124,8 +122,7 @@ def _normalize_json_value(value: object, *, depth: int, key_counter: list[int]) 
         return 0.0 if value == 0.0 else value
     if isinstance(value, list):
         return [
-            _normalize_json_value(item, depth=depth + 1, key_counter=key_counter)
-            for item in value
+            _normalize_json_value(item, depth=depth + 1, key_counter=key_counter) for item in value
         ]
     if isinstance(value, dict):
         normalized: dict[str, JsonValue] = {}

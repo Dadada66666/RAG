@@ -97,15 +97,11 @@ def test_text_span_uses_unicode_code_point_offsets() -> None:
             "pattern",
         ),
         (
-            lambda data: data["pages"][0]["blocks"][0].update(
-                {"bbox": [50.0, 60.0, 50.0, 100.0]}
-            ),
+            lambda data: data["pages"][0]["blocks"][0].update({"bbox": [50.0, 60.0, 50.0, 100.0]}),
             "positive width",
         ),
         (
-            lambda data: data["pages"][0]["blocks"][0].update(
-                {"bbox": [50.0, 60.0, 700.0, 100.0]}
-            ),
+            lambda data: data["pages"][0]["blocks"][0].update({"bbox": [50.0, 60.0, 700.0, 100.0]}),
             "outside canonical page",
         ),
         (

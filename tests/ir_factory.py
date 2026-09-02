@@ -151,7 +151,7 @@ def make_document(
         ),
     )
     return DocumentIR(
-        schema_version="1.1.0",
+        schema_version="1.2.0",
         document_id=document_id,
         revision_id=REVISION_ID,
         revision_number=0,

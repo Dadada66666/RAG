@@ -15,4 +15,3 @@ __all__ = [
     "parse_document",
     "parse_document_with_diagnostics",
 ]
-

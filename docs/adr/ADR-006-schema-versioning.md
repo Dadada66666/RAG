@@ -51,3 +51,13 @@ Support current major plus agreed prior minors, provide deterministic migration 
 ## Compatibility note — 2026-09-01
 
 The current V1 writer is `1.1.0`. This minor release adds `QualityStatus.NOT_EVALUATED` and allows `QualitySummary.score` and `quality_report_id` to be null only before validator execution. It also enforces that table-cell fragments spatially overlap their referenced segment with a `0.25 pt` tolerance. The reader migrates `1.0.0` payloads to `1.1.0` deterministically; existing evaluated summaries are preserved and no missing quality evidence is invented. The committed schema remains under the stable `schemas/document-ir/v1/` family.
+
+## Compatibility note — 2026-09-02
+
+The current V1 writer is `1.2.0`. This additive lifecycle amendment allows evaluated
+`PASS/DEGRADED/FAIL` summaries to use `score=null` when the validator uses discrete decisions
+rather than a calibrated continuous score. An evaluated summary still requires a
+`quality_report_id`; `NOT_EVALUATED` still forbids both report ID and score and remains
+non-publishable. The deterministic registry migrates `1.1.0 -> 1.2.0` by changing only
+`schema_version`; existing quality values are preserved. Historical V1.1 semantics are not
+reinterpreted.

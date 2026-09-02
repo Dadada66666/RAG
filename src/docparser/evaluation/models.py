@@ -238,9 +238,7 @@ class MetricValues(StrictIRModel):
     text_incomplete_reason: NfcString | None = None
     reading_order_pairs_correct: NonNegativeInt
     reading_order_pairs_expected: NonNegativeInt
-    reading_order_pair_accuracy: float | None = Field(
-        default=None, strict=True, ge=0.0, le=1.0
-    )
+    reading_order_pair_accuracy: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
     table_detection_tp: NonNegativeInt
     table_detection_fp: NonNegativeInt
     table_detection_fn: NonNegativeInt
@@ -271,14 +269,10 @@ class MetricValues(StrictIRModel):
     table_segment_coverage: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
     continuations_correct: NonNegativeInt
     continuations_expected: NonNegativeInt
-    continuation_identity_accuracy: float | None = Field(
-        default=None, strict=True, ge=0.0, le=1.0
-    )
+    continuation_identity_accuracy: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
     page_numeric_presence_correct: NonNegativeInt
     page_numeric_presence_expected: NonNegativeInt
-    page_numeric_presence_accuracy: float | None = Field(
-        default=None, strict=True, ge=0.0, le=1.0
-    )
+    page_numeric_presence_accuracy: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
     structural_numerics_correct: NonNegativeInt
     structural_numerics_expected: NonNegativeInt
     critical_numeric_structural_exact_accuracy: float | None = Field(
@@ -360,21 +354,13 @@ class SliceParserSummary(StrictIRModel):
     text_edit_similarity_document_macro: float | None = Field(
         default=None, strict=True, ge=0.0, le=1.0
     )
-    text_edit_similarity_page_macro: float | None = Field(
-        default=None, strict=True, ge=0.0, le=1.0
-    )
+    text_edit_similarity_page_macro: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
     reading_order_pair_accuracy_micro: float | None = Field(
         default=None, strict=True, ge=0.0, le=1.0
     )
-    table_detection_precision_micro: float | None = Field(
-        default=None, strict=True, ge=0.0, le=1.0
-    )
-    table_detection_recall_micro: float | None = Field(
-        default=None, strict=True, ge=0.0, le=1.0
-    )
-    cell_exact_text_accuracy_micro: float | None = Field(
-        default=None, strict=True, ge=0.0, le=1.0
-    )
+    table_detection_precision_micro: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
+    table_detection_recall_micro: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
+    cell_exact_text_accuracy_micro: float | None = Field(default=None, strict=True, ge=0.0, le=1.0)
     page_numeric_presence_accuracy_micro: float | None = Field(
         default=None, strict=True, ge=0.0, le=1.0
     )

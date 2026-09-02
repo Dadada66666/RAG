@@ -191,10 +191,7 @@ class PageGeometry(RootModel[tuple[PositiveDimension, PositiveDimension, Rotatio
         return 0.0 <= point.x <= self.width and 0.0 <= point.y <= self.height
 
     def contains_bbox(self, bbox: BBox) -> bool:
-        return (
-            0.0 <= bbox.x0 < bbox.x1 <= self.width
-            and 0.0 <= bbox.y0 < bbox.y1 <= self.height
-        )
+        return 0.0 <= bbox.x0 < bbox.x1 <= self.width and 0.0 <= bbox.y0 < bbox.y1 <= self.height
 
 
 def polygon_is_simple(points: tuple[Point, ...]) -> bool:
@@ -207,10 +204,7 @@ def polygon_is_simple(points: tuple[Point, ...]) -> bool:
         return (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y)
 
     def on_segment(a: Point, b: Point, c: Point) -> bool:
-        return (
-            min(a.x, c.x) <= b.x <= max(a.x, c.x)
-            and min(a.y, c.y) <= b.y <= max(a.y, c.y)
-        )
+        return min(a.x, c.x) <= b.x <= max(a.x, c.x) and min(a.y, c.y) <= b.y <= max(a.y, c.y)
 
     def intersects(a1: Point, a2: Point, b1: Point, b2: Point) -> bool:
         o1 = orientation(a1, a2, b1)

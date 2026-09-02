@@ -26,9 +26,7 @@ def _font() -> DictionaryObject:
     )
 
 
-def _text_page(
-    writer: PdfWriter, lines: tuple[tuple[float, float, str], ...]
-) -> PageObject:
+def _text_page(writer: PdfWriter, lines: tuple[tuple[float, float, str], ...]) -> PageObject:
     page = writer.add_blank_page(width=612, height=792)
     font = writer._add_object(_font())
     page[NameObject("/Resources")] = DictionaryObject(
@@ -63,11 +61,7 @@ def _image_page(writer: PdfWriter) -> PageObject:
     )
     image_ref = writer._add_object(image)
     page[NameObject("/Resources")] = DictionaryObject(
-        {
-            NameObject("/XObject"): DictionaryObject(
-                {NameObject("/Im0"): image_ref}
-            )
-        }
+        {NameObject("/XObject"): DictionaryObject({NameObject("/Im0"): image_ref})}
     )
     content = DecodedStreamObject()
     content.set_data(b"q 500 0 0 700 50 40 cm /Im0 Do Q")

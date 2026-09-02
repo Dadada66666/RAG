@@ -51,6 +51,7 @@ from docparser.ir.ids import (
     TableSegmentId,
     generate_document_id,
     generate_page_id,
+    generate_quality_report_id,
     generate_uuid5_id,
 )
 from docparser.ir.invariants import resolve_heading_path, validate_document_invariants
@@ -134,6 +135,7 @@ __all__ = [
     "dump_canonical_json",
     "generate_document_id",
     "generate_page_id",
+    "generate_quality_report_id",
     "generate_uuid5_id",
     "load_canonical_json",
     "migrate_ir",

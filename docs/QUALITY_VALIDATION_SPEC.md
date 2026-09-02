@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Authoritative next-phase contract; not implemented |
-| Contract version | `quality-gate/1.1.0` |
+| Status | Implemented MVP; calibration evidence not provisioned |
+| Contract version | `quality-gate/1.2.0` |
 | Decision policy | Evidence sufficiency and risk gating, not proof of correctness |
 | Core policy | Deterministic/statistical first; no LLM required |
 
@@ -53,12 +53,13 @@ A continuous `quality_score` may be introduced only when protected-set evidence 
 decision value beyond the discrete rules. Its calibration target, reliability curve and decision
 threshold must then be versioned and reported.
 
-Current IR 1.1 requires a non-null score for evaluated statuses. Before implementing this MVP,
-make one backward-compatible V1 minor amendment: evaluated `PASS/DEGRADED/FAIL` may carry
-`score=null` when the ruleset declares `score_model=NONE`; `quality_report_id` remains mandatory.
-This requires an ADR-006 compatibility note, generated schema/migration updates and runtime/schema
-tests. Until that amendment ships, the gate must not fabricate `1.0`, `0.5` or `0.0`; IR remains
-`NOT_EVALUATED` and non-publishable.
+IR 1.2 implements the backward-compatible lifecycle amendment: evaluated
+`PASS/DEGRADED/FAIL` may carry `score=null` for the discrete gate, while
+`quality_report_id` remains mandatory. No synthetic `1.0`, `0.5`, or `0.0` is emitted.
+
+The implemented automatic policy remains disabled unless a frozen `CalibrationProfile` covers
+the requested slice. Without one, rules emit observable facts in `OBSERVE_ONLY` mode, the result
+is non-publishable, and the decision cannot be treated as a production acceptance.
 
 ## 3. Evidence and rule contracts
 
