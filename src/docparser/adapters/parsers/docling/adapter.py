@@ -42,6 +42,14 @@ def _utc_now() -> UtcTimestamp:
     return UtcTimestamp(datetime.now(UTC).isoformat().replace("+00:00", "Z"))
 
 
+# Compatibility workaround for Docling 2.123.0 + Pydantic 2.8.2: pipeline cache
+# model_dump_json(serialize_as_any=True) can report a circular reference.
+# Remove after dependency upgrades confirm the upstream fix.
+def _compat_docling_pipeline_options_hash(pipeline_options: Any) -> str:
+    payload = type(pipeline_options).__qualname__ + str(pipeline_options.model_dump())
+    return hashlib.md5(payload.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+
 class DoclingParserAdapter:
     """Optional primary parser; importing this class does not import Docling."""
 
@@ -171,6 +179,7 @@ class DoclingParserAdapter:
 
     def _convert(self, source: Path, device: RuntimeDevice) -> Any:
         # All optional SDK imports remain behind this adapter boundary.
+        from docling import document_converter as docling_document_converter
         from docling.datamodel.accelerator_options import AcceleratorOptions
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import (
@@ -216,7 +225,14 @@ class DoclingParserAdapter:
             allowed_formats=[InputFormat.PDF],
             format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline)},
         )
-        return converter.convert(source, raises_on_error=True)
+        original_hash = docling_document_converter.create_pipeline_options_hash
+        docling_document_converter.create_pipeline_options_hash = (
+            _compat_docling_pipeline_options_hash
+        )
+        try:
+            return converter.convert(source, raises_on_error=True)
+        finally:
+            docling_document_converter.create_pipeline_options_hash = original_hash
 
     @staticmethod
     def _document_payload(conversion: Any) -> JsonObject:
