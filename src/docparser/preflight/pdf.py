@@ -17,6 +17,7 @@ from docparser.ir.types import NfcString
 from docparser.preflight.evidence import (
     NativeTextEvidence,
     TextExtractionStatus,
+    assess_native_text_reliability,
     extract_numeric_tokens,
 )
 
@@ -62,7 +63,7 @@ class DocumentProfile(StrictIRModel):
     encrypted: bool
     readable: bool
     warnings: tuple[NfcString, ...]
-    heuristic_version: str = "pdf-preflight@1.1.0"
+    heuristic_version: str = "pdf-preflight@1.2.0"
 
     @model_validator(mode="after")
     def _validate_cardinality(self) -> Self:
@@ -174,6 +175,10 @@ def inspect_pdf(path: Path) -> DocumentProfile:
             extraction_status = TextExtractionStatus.FAILED
             warnings.append(f"page {page_number}: text layer inspection failed: {exc}")
         char_count = len(text.strip())
+        reliability, control_count, control_ratio = assess_native_text_reliability(
+            text,
+            extraction_status,
+        )
         image_count = _count_images(page)
         text_coverage, image_coverage = _coverage_estimates(char_count, image_count, width * height)
         profiles.append(
@@ -197,6 +202,9 @@ def inspect_pdf(path: Path) -> DocumentProfile:
                     text=text,
                     normalized_numeric_tokens=extract_numeric_tokens(text),
                     extraction_status=extraction_status,
+                    reliability=reliability,
+                    control_character_count=control_count,
+                    control_character_ratio=control_ratio,
                 ),
             )
         )

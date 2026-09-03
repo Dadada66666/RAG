@@ -30,6 +30,7 @@ from docparser.preflight import (
     DocumentProfile,
     DocumentType,
     NativeTextEvidence,
+    NativeTextReliability,
     PageProfile,
     TextExtractionStatus,
 )
@@ -140,6 +141,9 @@ def test_missing_parser_page_cannot_publish_partial_ir() -> None:
                         text="x",
                         normalized_numeric_tokens=(),
                         extraction_status=TextExtractionStatus.EXTRACTED,
+                        reliability=NativeTextReliability.RELIABLE,
+                        control_character_count=0,
+                        control_character_ratio=0.0,
                     ),
                 )
                 for number in (1, 2)

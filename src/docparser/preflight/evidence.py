@@ -16,12 +16,19 @@ _NUMERIC_RE = re.compile(
     r"(?P<number>[+-]?(?:\d{1,3}(?:[,\u00a0 ]\d{3})+|\d+)(?:[.,]\d+)?)"
     r"(?![\w])"
 )
+MAX_RELIABLE_CONTROL_CHARACTER_RATIO = 0.05
 
 
 class TextExtractionStatus(StrEnum):
     EXTRACTED = "EXTRACTED"
     EMPTY = "EMPTY"
     FAILED = "FAILED"
+
+
+class NativeTextReliability(StrEnum):
+    RELIABLE = "RELIABLE"
+    UNRELIABLE = "UNRELIABLE"
+    UNKNOWN = "UNKNOWN"
 
 
 class NativeNumericToken(StrictIRModel):
@@ -35,7 +42,29 @@ class NativeTextEvidence(StrictIRModel):
     text: NfcString
     normalized_numeric_tokens: tuple[NativeNumericToken, ...]
     extraction_status: TextExtractionStatus
+    reliability: NativeTextReliability
+    control_character_count: int = Field(strict=True, ge=0)
+    control_character_ratio: float = Field(strict=True, ge=0.0, le=1.0)
     source: str = Field(default="PDF_TEXT", frozen=True)
+
+
+def assess_native_text_reliability(
+    text: str,
+    extraction_status: TextExtractionStatus,
+) -> tuple[NativeTextReliability, int, float]:
+    control_count = sum(
+        unicodedata.category(character) == "Cc" and character not in {"\n", "\r", "\t"}
+        for character in text
+    )
+    ratio = control_count / len(text) if text else 0.0
+    if extraction_status is not TextExtractionStatus.EXTRACTED or not text:
+        return NativeTextReliability.UNKNOWN, control_count, ratio
+    reliability = (
+        NativeTextReliability.UNRELIABLE
+        if ratio > MAX_RELIABLE_CONTROL_CHARACTER_RATIO
+        else NativeTextReliability.RELIABLE
+    )
+    return reliability, control_count, ratio
 
 
 def _normalize_number(number: str) -> str:

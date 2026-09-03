@@ -11,6 +11,7 @@ from docparser.preflight import (
     NativeTextEvidence,
     PageProfile,
     TextExtractionStatus,
+    assess_native_text_reliability,
     extract_numeric_tokens,
 )
 from docparser.quality import (
@@ -34,6 +35,10 @@ def quality_profile(
     extracted = not image_only
     evidence_text = text if extracted else ""
     status = TextExtractionStatus.EXTRACTED if extracted else TextExtractionStatus.EMPTY
+    reliability, control_count, control_ratio = assess_native_text_reliability(
+        evidence_text,
+        status,
+    )
     return DocumentProfile(
         document_type=DocumentType.SCANNED if image_only else DocumentType.BORN_DIGITAL,
         page_count=1,
@@ -58,6 +63,9 @@ def quality_profile(
                     text=evidence_text,
                     normalized_numeric_tokens=extract_numeric_tokens(evidence_text),
                     extraction_status=status,
+                    reliability=reliability,
+                    control_character_count=control_count,
+                    control_character_ratio=control_ratio,
                 ),
             ),
         ),

@@ -118,6 +118,44 @@ def test_numeric_rule_is_not_applicable_to_image_only_page() -> None:
     assert signal.outcome is SignalOutcome.NOT_APPLICABLE
 
 
+def test_numeric_rule_is_not_applicable_to_unreliable_native_text() -> None:
+    corrupted = "Native value 10 and 20. " * 20 + "\x00" * 120
+    report = _gate().evaluate(
+        ValidationRequest(
+            quality_document("Parser value 999"),
+            quality_profile(corrupted),
+            calibration_profile(),
+            "test",
+        )
+    )
+    signal = next(
+        signal
+        for signal in report.signals
+        if signal.rule_id == "NUMERIC.NATIVE_PARSER_DISAGREEMENT"
+    )
+
+    assert signal.outcome is SignalOutcome.NOT_APPLICABLE
+
+
+def test_completeness_rule_is_not_applicable_to_unreliable_native_text() -> None:
+    corrupted = "Substantial native source text. " * 30 + "\x00" * 180
+    report = _gate().evaluate(
+        ValidationRequest(
+            quality_document("short"),
+            quality_profile(corrupted),
+            calibration_profile(),
+            "test",
+        )
+    )
+    signal = next(
+        signal
+        for signal in report.signals
+        if signal.rule_id == "COMPLETENESS.SOURCE_RICH_PARSE_SPARSE"
+    )
+
+    assert signal.outcome is SignalOutcome.NOT_APPLICABLE
+
+
 def test_unresolved_order_targets_the_page_without_guessing() -> None:
     unresolved = make_block().model_copy(
         update={

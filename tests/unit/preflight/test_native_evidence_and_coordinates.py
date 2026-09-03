@@ -5,7 +5,10 @@ from tests.pdf_factory import write_tiny_pdf
 
 from docparser.ir.geometry import BBox
 from docparser.preflight import (
+    MAX_RELIABLE_CONTROL_CHARACTER_RATIO,
+    NativeTextReliability,
     TextExtractionStatus,
+    assess_native_text_reliability,
     inspect_pdf,
     pdf_user_bbox_to_canonical,
 )
@@ -16,8 +19,50 @@ def test_native_text_and_numeric_evidence_are_preserved(tmp_path: Path) -> None:
     evidence = profile.pages[0].native_text_evidence
 
     assert evidence.extraction_status is TextExtractionStatus.EXTRACTED
+    assert evidence.reliability is NativeTextReliability.RELIABLE
+    assert evidence.control_character_count == 0
+    assert evidence.control_character_ratio == 0.0
     assert "184,392.17" in evidence.text
     assert [token.normalized for token in evidence.normalized_numeric_tokens] == ["184392.17"]
+
+
+def test_ordinary_whitespace_controls_remain_reliable() -> None:
+    text = "Apple reported net sales of $416,161 in 2025.\n\r\t"
+
+    reliability, control_count, ratio = assess_native_text_reliability(
+        text,
+        TextExtractionStatus.EXTRACTED,
+    )
+
+    assert reliability is NativeTextReliability.RELIABLE
+    assert control_count == 0
+    assert ratio == 0.0
+
+
+def test_disallowed_control_character_ratio_marks_native_text_unreliable() -> None:
+    text = "Ordinary visible English financial text. " * 10 + "\x00" * 60
+
+    reliability, control_count, ratio = assess_native_text_reliability(
+        text,
+        TextExtractionStatus.EXTRACTED,
+    )
+
+    assert reliability is NativeTextReliability.UNRELIABLE
+    assert control_count == 60
+    assert ratio == pytest.approx(60 / len(text))
+    assert ratio > MAX_RELIABLE_CONTROL_CHARACTER_RATIO
+
+
+@pytest.mark.parametrize(
+    "status",
+    [TextExtractionStatus.EMPTY, TextExtractionStatus.FAILED],
+)
+def test_missing_native_text_has_unknown_reliability(status: TextExtractionStatus) -> None:
+    reliability, control_count, ratio = assess_native_text_reliability("", status)
+
+    assert reliability is NativeTextReliability.UNKNOWN
+    assert control_count == 0
+    assert ratio == 0.0
 
 
 def test_cropbox_and_mediabox_are_preserved_independently(tmp_path: Path) -> None:

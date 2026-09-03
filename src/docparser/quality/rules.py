@@ -9,7 +9,7 @@ from pydantic import JsonValue
 
 from docparser.ir.enums import BlockType, ReadingOrderStatus
 from docparser.ir.tables import Table
-from docparser.preflight import TextExtractionStatus, extract_numeric_tokens
+from docparser.preflight import NativeTextReliability, extract_numeric_tokens
 from docparser.quality.models import (
     QualityMode,
     QualityScope,
@@ -68,12 +68,12 @@ class SourceRichParseSparseRule:
         for source_page in context.profile.pages:
             native_chars = source_page.text_char_count
             parsed_chars = len(_page_text(context, source_page.page_number).strip())
-            ratio = parsed_chars / native_chars if native_chars else None
             applicable = (
-                source_page.text_extraction_status is TextExtractionStatus.EXTRACTED
-                and not source_page.likely_image_only
+                source_page.native_text_evidence.reliability
+                is NativeTextReliability.RELIABLE
                 and native_chars > 0
             )
+            ratio = parsed_chars / native_chars if applicable else None
             if not applicable:
                 outcome = SignalOutcome.NOT_APPLICABLE
             elif thresholds is None:
@@ -120,16 +120,26 @@ class NumericDisagreementRule:
         signals: list[QualitySignal] = []
         for source_page in context.profile.pages:
             applicable = (
-                source_page.text_extraction_status is TextExtractionStatus.EXTRACTED
-                and not source_page.likely_image_only
+                source_page.native_text_evidence.reliability
+                is NativeTextReliability.RELIABLE
             )
-            native = Counter(
-                token.normalized
-                for token in source_page.native_text_evidence.normalized_numeric_tokens
+            native = (
+                Counter(
+                    token.normalized
+                    for token in source_page.native_text_evidence.normalized_numeric_tokens
+                )
+                if applicable
+                else Counter()
             )
-            parser = Counter(
-                token.normalized
-                for token in extract_numeric_tokens(_page_text(context, source_page.page_number))
+            parser = (
+                Counter(
+                    token.normalized
+                    for token in extract_numeric_tokens(
+                        _page_text(context, source_page.page_number)
+                    )
+                )
+                if applicable
+                else Counter()
             )
             missing = native - parser
             extra = parser - native

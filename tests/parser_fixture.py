@@ -30,10 +30,28 @@ from docparser.preflight import (
     NativeTextEvidence,
     PageProfile,
     TextExtractionStatus,
+    assess_native_text_reliability,
 )
 
 TEST_NAMESPACE = UUID("bc1afef4-67df-5ace-a635-30cf89a29fc3")
 SOURCE_DIGEST = Sha256Digest(f"sha256:{'c' * 64}")
+
+
+def _native_text_evidence(
+    page_number: int,
+    text: str,
+    status: TextExtractionStatus,
+) -> NativeTextEvidence:
+    reliability, control_count, control_ratio = assess_native_text_reliability(text, status)
+    return NativeTextEvidence(
+        page_number=page_number,
+        text=text,
+        normalized_numeric_tokens=(),
+        extraction_status=status,
+        reliability=reliability,
+        control_character_count=control_count,
+        control_character_ratio=control_ratio,
+    )
 
 
 def load_contract_result(name: str) -> ParseResult:
@@ -92,13 +110,10 @@ def profile_for_result(result: ParseResult, *, scanned: bool = False) -> Documen
             estimated_image_coverage=1.0 if scanned else 0.0,
             likely_scanned=scanned,
             likely_image_only=scanned,
-            native_text_evidence=NativeTextEvidence(
-                page_number=page.page_number,
-                text="" if scanned else "fixture 184,392.17",
-                normalized_numeric_tokens=(),
-                extraction_status=(
-                    TextExtractionStatus.EMPTY if scanned else TextExtractionStatus.EXTRACTED
-                ),
+            native_text_evidence=_native_text_evidence(
+                page.page_number,
+                "" if scanned else "fixture 184,392.17",
+                TextExtractionStatus.EMPTY if scanned else TextExtractionStatus.EXTRACTED,
             ),
         )
         for page in result.pages

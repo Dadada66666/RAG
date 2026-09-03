@@ -1,9 +1,12 @@
 """Deterministic PDF preflight."""
 
 from docparser.preflight.evidence import (
+    MAX_RELIABLE_CONTROL_CHARACTER_RATIO,
     NativeNumericToken,
     NativeTextEvidence,
+    NativeTextReliability,
     TextExtractionStatus,
+    assess_native_text_reliability,
     extract_numeric_tokens,
 )
 from docparser.preflight.pdf import (
@@ -21,9 +24,12 @@ __all__ = [
     "DocumentType",
     "PageProfile",
     "PreflightError",
+    "MAX_RELIABLE_CONTROL_CHARACTER_RATIO",
     "NativeNumericToken",
     "NativeTextEvidence",
+    "NativeTextReliability",
     "TextExtractionStatus",
+    "assess_native_text_reliability",
     "extract_numeric_tokens",
     "inspect_pdf",
     "pdf_user_bbox_to_canonical",
