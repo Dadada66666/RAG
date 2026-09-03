@@ -8,6 +8,7 @@ from tests.pdf_factory import write_tiny_pdf
 
 from docparser.application import ParsingConfig, parse_document
 from docparser.domain.parser_contract import RuntimeDevice
+from docparser.ir.enums import ReadingOrderStatus
 
 
 @pytest.mark.integration
@@ -23,6 +24,14 @@ def test_real_docling_cpu_smoke(tmp_path: Path) -> None:
 
     assert document.page_count == 1
     assert all(block.provenance_ids for page in document.pages for block in page.blocks)
+    in_flow = [
+        block
+        for page in document.pages
+        for block in page.blocks
+        if block.reading_order_status is ReadingOrderStatus.IN_FLOW
+    ]
+    assert in_flow
+    assert [block.reading_order for block in in_flow] == list(range(len(in_flow)))
 
 
 @pytest.mark.integration

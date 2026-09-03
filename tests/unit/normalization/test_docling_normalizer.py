@@ -73,6 +73,17 @@ def test_two_column_order_uses_upstream_evidence() -> None:
     )
 
 
+def test_real_wire_resolved_order_becomes_contiguous_canonical_flow() -> None:
+    document = normalize_contract_fixture("real-wire-refs")
+    in_flow = [
+        block
+        for block in document.pages[0].blocks
+        if block.reading_order_status is ReadingOrderStatus.IN_FLOW
+    ]
+
+    assert [block.reading_order for block in in_flow] == [0, 1, 2]
+
+
 def test_explicit_docling_parent_maps_to_canonical_block_parent() -> None:
     page = normalize_contract_fixture("born-digital").pages[0]
 

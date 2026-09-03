@@ -32,6 +32,33 @@ def test_docling_body_order_is_preserved_for_two_columns() -> None:
     assert [element.reading_order for element in result.pages[0].elements] == [0, 1, 2, 3]
 
 
+def test_real_wire_refs_expand_groups_and_preserve_body_order() -> None:
+    page = load_contract_result("real-wire-refs").pages[0]
+    elements = {element.source_object_id: element for element in page.elements}
+
+    assert elements["#/texts/0"].reading_order == 0
+    assert elements["#/texts/1"].reading_order == 1
+    assert elements["#/tables/0"].reading_order == 2
+    assert elements["#/texts/4"].reading_order is None
+    assert not elements["#/texts/4"].reading_order_resolved
+
+
+def test_real_wire_parent_ref_is_preserved() -> None:
+    page = load_contract_result("real-wire-refs").pages[0]
+    elements = {element.source_object_id: element for element in page.elements}
+
+    assert elements["#/texts/1"].parent_source_object_id == "#/texts/0"
+
+
+def test_real_wire_table_and_picture_caption_refs_are_preserved() -> None:
+    page = load_contract_result("real-wire-refs").pages[0]
+    elements = {element.source_object_id: element for element in page.elements}
+
+    assert page.tables[0].caption_source_object_ids == ("#/texts/2",)
+    assert elements["#/texts/2"].caption_for_source_object_id == "#/tables/0"
+    assert elements["#/texts/3"].caption_for_source_object_id == "#/pictures/0"
+
+
 def test_table_is_structured_not_flattened() -> None:
     page = load_contract_result("merged-table").pages[0]
 

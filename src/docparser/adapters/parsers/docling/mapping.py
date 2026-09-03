@@ -52,7 +52,7 @@ def _objects(value: object) -> list[JsonObject]:
 
 
 def _ref(value: object) -> str | None:
-    ref = _object(value).get("cref")
+    ref = _object(value).get("$ref")
     return ref if isinstance(ref, str) else None
 
 

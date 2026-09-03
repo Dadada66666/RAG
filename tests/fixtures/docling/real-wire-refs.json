@@ -1,0 +1,58 @@
+{
+  "schema_name": "DoclingDocument",
+  "version": "1.8.0",
+  "name": "real-wire-refs",
+  "pages": {
+    "1": {"page_no": 1, "size": {"width": 612.0, "height": 792.0}, "rotation": 0}
+  },
+  "body": {
+    "children": [
+      {"$ref": "#/groups/0"},
+      {"$ref": "#/tables/0"}
+    ]
+  },
+  "furniture": {"children": [{"$ref": "#/texts/4"}]},
+  "groups": [
+    {
+      "self_ref": "#/groups/0",
+      "name": "section",
+      "label": "section",
+      "children": [
+        {"$ref": "#/texts/0"},
+        {"$ref": "#/texts/1"}
+      ]
+    }
+  ],
+  "texts": [
+    {"self_ref": "#/texts/0", "label": "section_header", "content_layer": "body", "text": "Results", "prov": [{"page_no": 1, "bbox": {"l": 60.0, "t": 742.0, "r": 552.0, "b": 712.0, "coord_origin": "BOTTOMLEFT"}}]},
+    {"self_ref": "#/texts/1", "parent": {"$ref": "#/texts/0"}, "label": "paragraph", "content_layer": "body", "text": "Revenue details.", "prov": [{"page_no": 1, "bbox": {"l": 60.0, "t": 702.0, "r": 552.0, "b": 672.0, "coord_origin": "BOTTOMLEFT"}}]},
+    {"self_ref": "#/texts/2", "label": "caption", "content_layer": "body", "text": "Table 1", "prov": [{"page_no": 1, "bbox": {"l": 80.0, "t": 632.0, "r": 240.0, "b": 612.0, "coord_origin": "BOTTOMLEFT"}}]},
+    {"self_ref": "#/texts/3", "label": "caption", "content_layer": "body", "text": "Figure 1", "prov": [{"page_no": 1, "bbox": {"l": 80.0, "t": 362.0, "r": 240.0, "b": 342.0, "coord_origin": "BOTTOMLEFT"}}]},
+    {"self_ref": "#/texts/4", "label": "page_header", "content_layer": "furniture", "text": "Annual Report", "prov": [{"page_no": 1, "bbox": {"l": 60.0, "t": 782.0, "r": 552.0, "b": 762.0, "coord_origin": "BOTTOMLEFT"}}]}
+  ],
+  "pictures": [
+    {
+      "self_ref": "#/pictures/0",
+      "label": "picture",
+      "content_layer": "body",
+      "captions": [{"$ref": "#/texts/3"}],
+      "prov": [{"page_no": 1, "bbox": {"l": 80.0, "t": 332.0, "r": 532.0, "b": 182.0, "coord_origin": "BOTTOMLEFT"}}]
+    }
+  ],
+  "tables": [
+    {
+      "self_ref": "#/tables/0",
+      "label": "table",
+      "content_layer": "body",
+      "captions": [{"$ref": "#/texts/2"}],
+      "prov": [{"page_no": 1, "bbox": {"l": 80.0, "t": 602.0, "r": 532.0, "b": 402.0, "coord_origin": "BOTTOMLEFT"}}],
+      "data": {
+        "num_rows": 1,
+        "num_cols": 1,
+        "table_cells": [
+          {"start_row_offset_idx": 0, "end_row_offset_idx": 1, "start_col_offset_idx": 0, "end_col_offset_idx": 1, "text": "120", "column_header": false, "row_header": false, "bbox": {"l": 80.0, "t": 602.0, "r": 532.0, "b": 402.0, "coord_origin": "BOTTOMLEFT"}}
+        ]
+      }
+    }
+  ]
+}

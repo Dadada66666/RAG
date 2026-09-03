@@ -5,7 +5,7 @@
   "pages": {
     "1": {"page_no": 1, "size": {"width": 612.0, "height": 792.0}, "rotation": 0}
   },
-  "body": {"children": [{"cref": "#/texts/0"}]},
+  "body": {"children": [{"$ref": "#/texts/0"}]},
   "furniture": {"children": []},
   "groups": [],
   "texts": [
