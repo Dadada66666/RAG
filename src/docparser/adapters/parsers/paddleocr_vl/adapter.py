@@ -166,12 +166,19 @@ class PaddleOCRVLParserAdapter:
 
     @classmethod
     def _sanitize_result(cls, value: Any, fallback_index: int) -> JsonObject:
-        raw = value.get("res", value) if isinstance(value, Mapping) else getattr(value, "json", {})
-        if callable(raw):
-            raw = raw()
+        serialized = value.json
+        if not isinstance(serialized, Mapping):
+            raise PaddleOCRVLRuntimeError(
+                "Paddle result.json is not a structured mapping", code="INVALID_OUTPUT"
+            )
+        if "res" not in serialized:
+            raise PaddleOCRVLRuntimeError(
+                "Paddle result.json omitted 'res'", code="INVALID_OUTPUT"
+            )
+        raw = serialized["res"]
         if not isinstance(raw, Mapping):
             raise PaddleOCRVLRuntimeError(
-                "Paddle result is not a structured mapping", code="INVALID_OUTPUT"
+                "Paddle result.json['res'] is not a structured mapping", code="INVALID_OUTPUT"
             )
         payload = cls._json_safe(raw)
         if not isinstance(payload, dict):
@@ -179,17 +186,20 @@ class PaddleOCRVLParserAdapter:
                 "Paddle result could not be sanitized", code="INVALID_OUTPUT"
             )
         payload.pop("input_path", None)
-        payload["page_index"] = int(payload.get("page_index", fallback_index) or fallback_index)
-        layout = raw.get("layout_det_res")
-        input_image = layout.get("input_img") if isinstance(layout, Mapping) else None
-        shape = getattr(input_image, "shape", None)
-        if isinstance(shape, tuple) and len(shape) >= 2:
-            payload["source_height"] = int(shape[0])
-            payload["source_width"] = int(shape[1])
-        if "source_width" not in payload or "source_height" not in payload:
+        page_index = payload.get("page_index", fallback_index)
+        if not isinstance(page_index, int):
+            raise PaddleOCRVLRuntimeError(
+                "Paddle output has an invalid page index", code="INVALID_OUTPUT"
+            )
+        payload["page_index"] = page_index
+        width = raw.get("width")
+        height = raw.get("height")
+        if not isinstance(width, int) or not isinstance(height, int):
             raise PaddleOCRVLRuntimeError(
                 "Paddle output omitted source image dimensions", code="INVALID_OUTPUT"
             )
+        payload["source_width"] = width
+        payload["source_height"] = height
         return payload
 
     @classmethod
@@ -197,17 +207,20 @@ class PaddleOCRVLParserAdapter:
         if value is None or isinstance(value, (str, int, float, bool)):
             return value
         if isinstance(value, Mapping):
+            if not all(isinstance(key, str) for key in value):
+                raise PaddleOCRVLRuntimeError(
+                    "Paddle result.json contains a non-string key", code="INVALID_OUTPUT"
+                )
             return {
-                str(key): cls._json_safe(item)
+                key: cls._json_safe(item)
                 for key, item in value.items()
                 if key not in {"input_img", "output_img", "input_path"}
             }
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list):
             return [cls._json_safe(item) for item in value]
-        tolist = getattr(value, "tolist", None)
-        if callable(tolist):
-            return cls._json_safe(tolist())
-        return str(value)
+        raise PaddleOCRVLRuntimeError(
+            "Paddle result.json contains a non-JSON-safe value", code="INVALID_OUTPUT"
+        )
 
     @staticmethod
     def _write_raw_snapshot(payloads: list[JsonObject], output_dir: Path | None) -> None:

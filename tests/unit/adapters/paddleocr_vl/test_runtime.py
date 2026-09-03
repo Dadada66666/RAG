@@ -1,6 +1,8 @@
 import pytest
+from pydantic import ValidationError
 
 from docparser.adapters.parsers.paddleocr_vl import runtime
+from docparser.adapters.parsers.paddleocr_vl.options import PaddleOCRVLOptions
 from docparser.domain.parser_contract import ParserExecutionError, RuntimeDevice
 
 
@@ -21,3 +23,10 @@ def test_explicit_cuda_unavailable_is_a_clear_runtime_error(
 def test_auto_falls_back_to_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runtime, "cuda_is_available", lambda: False)
     assert runtime.resolve_device(RuntimeDevice.AUTO) is RuntimeDevice.CPU
+
+
+def test_pinned_profile_requires_queues() -> None:
+    assert PaddleOCRVLOptions().use_queues is True
+
+    with pytest.raises(ValidationError):
+        PaddleOCRVLOptions.model_validate({"use_queues": False})
