@@ -1,11 +1,11 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: parsing hardening complete; run the real benchmark and freeze the
-> parsing stage before Next 4**
+> **CURRENT EXECUTION POINTER: official ParseBench execution is wired; provision the frozen corpus,
+> run Docling/Paddle baselines, and freeze the parsing stage before Next 4**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
-> Next 1 offline contracts and the hardened Next 2/3 runtime are implemented. Real benchmark/calibration
+> Next 1 export/execution contracts and the hardened Next 2/3 runtime are implemented. Real benchmark/calibration
 > corpora remain unprovisioned, so automatic production routing and reliability claims remain
 > disabled. Historical storage/API ordering remains superseded by the quality track.
 

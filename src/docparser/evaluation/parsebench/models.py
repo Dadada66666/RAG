@@ -6,7 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, JsonValue, model_validator
 
 from docparser.ir.base import NonNegativeInt, PositiveInt, StrictIRModel
 from docparser.ir.types import BoundedJsonObject, NfcString, NonEmptyNfcString, Sha256Digest
@@ -92,10 +92,10 @@ class ParseBenchRunRequest(StrictIRModel):
     subset_id: NonEmptyNfcString
     subset_manifest_digest: Sha256Digest
     checkout_path: Path
-    evaluator_command: tuple[NonEmptyNfcString, ...] = Field(min_length=1)
-    official_result_path: Path
+    parsebench_python: Path
     dataset_root: Path
     export_root: Path
+    report_root: Path
     environment_digest: Sha256Digest
     hardware_description: NonEmptyNfcString
     evaluator_version: NonEmptyNfcString = PARSEBENCH_EVALUATOR_VERSION
@@ -118,7 +118,7 @@ class OfficialParseBenchResult(StrictIRModel):
     environment_digest: Sha256Digest
     hardware_description: NonEmptyNfcString
     official_result_digest: Sha256Digest
-    official_metrics: BoundedJsonObject
+    official_metrics: dict[str, JsonValue]
 
 
 class ParseBenchStratum(StrEnum):

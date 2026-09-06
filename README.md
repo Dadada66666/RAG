@@ -241,6 +241,7 @@ fails when the pinned GPU runtime is unavailable; the core domain contains no CU
 .\.venv\Scripts\docparser.exe parse-robust --help
 .\.venv\Scripts\docparser.exe benchmark-parsing --help
 .\.venv\Scripts\docparser.exe prepare-parsebench-manifests --help
+.\.venv\Scripts\docparser.exe benchmark-parsebench-official --help
 ```
 
 Expected command responsibilities:
@@ -257,6 +258,9 @@ Expected command responsibilities:
   deterministic, document-family-disjoint development/holdout IDs. It never downloads ParseBench
   files. Until that catalog is supplied, committed manifests remain `UNPROVISIONED` and no accuracy
   claim is valid.
+- `benchmark-parsebench-official` parses one frozen, locally provisioned subset, preserves each
+  sample's Canonical IR/diagnostics, writes official `*.result.json` predictions, and invokes the
+  evaluator from the pinned ParseBench checkout. It does not download the corpus or evaluator.
 
 After installing the optional parser, run:
 

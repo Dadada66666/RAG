@@ -8,7 +8,7 @@ import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from pydantic import TypeAdapter
+from pydantic import JsonValue, TypeAdapter
 
 from docparser.evaluation.parsebench.models import (
     PARSEBENCH_ADAPTER_VERSION,
@@ -16,10 +16,10 @@ from docparser.evaluation.parsebench.models import (
     OfficialParseBenchResult,
     ParseBenchRunRequest,
 )
-from docparser.ir.types import BoundedJsonObject, Sha256Digest
+from docparser.ir.types import Sha256Digest
 
 CommandExecutor = Callable[[Sequence[str], Path], subprocess.CompletedProcess[str]]
-_JSON_OBJECT_ADAPTER = TypeAdapter(BoundedJsonObject)
+_JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, JsonValue])
 
 
 def _execute(command: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -37,11 +37,32 @@ def _digest(path: Path) -> Sha256Digest:
     return Sha256Digest(f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}")
 
 
-def _validated_json_object(path: Path) -> BoundedJsonObject:
+def _validated_json_object(path: Path) -> dict[str, JsonValue]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("official ParseBench result artifact must contain a JSON object")
     return _JSON_OBJECT_ADAPTER.validate_python(payload)
+
+
+def official_evaluator_command(request: ParseBenchRunRequest) -> tuple[str, ...]:
+    """Build the pinned ParseBench 0.2.0 evaluation-only command."""
+
+    return (
+        str(request.parsebench_python),
+        "-m",
+        "parse_bench.cli",
+        "evaluation",
+        "run",
+        "--output_dir",
+        str(request.export_root),
+        "--test_cases_dir",
+        str(request.dataset_root),
+        "--product_type",
+        "parse",
+        "--report_dir",
+        str(request.report_root),
+        "--force=True",
+    )
 
 
 def run_official_parsebench(
@@ -61,12 +82,14 @@ def run_official_parsebench(
         raise RuntimeError(f"cannot inspect ParseBench checkout: {revision.stderr.strip()}")
     if revision.stdout.strip() != PARSEBENCH_COMMIT:
         raise ValueError("ParseBench checkout HEAD does not match the pinned commit")
-    completed = executor(request.evaluator_command, request.checkout_path)
+    command = official_evaluator_command(request)
+    completed = executor(command, request.checkout_path)
     if completed.returncode != 0:
         raise RuntimeError(f"official ParseBench evaluator failed: {completed.stderr.strip()}")
-    if not request.official_result_path.is_file():
+    official_result_path = request.report_root / "_evaluation_report.json"
+    if not official_result_path.is_file():
         raise RuntimeError("official ParseBench evaluator did not produce the declared result")
-    metrics = _validated_json_object(request.official_result_path)
+    metrics = _validated_json_object(official_result_path)
     return OfficialParseBenchResult(
         repository_commit=request.repository_commit,
         dataset_revision=request.dataset_revision,
@@ -74,10 +97,10 @@ def run_official_parsebench(
         subset_id=request.subset_id,
         subset_manifest_digest=request.subset_manifest_digest,
         evaluator_version=request.evaluator_version,
-        evaluator_command=request.evaluator_command,
+        evaluator_command=command,
         adapter_version=PARSEBENCH_ADAPTER_VERSION,
         environment_digest=request.environment_digest,
         hardware_description=request.hardware_description,
-        official_result_digest=_digest(request.official_result_path),
+        official_result_digest=_digest(official_result_path),
         official_metrics=metrics,
     )

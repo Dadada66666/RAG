@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import html
+import json
+from pathlib import Path
 
 from docparser.evaluation.parsebench.models import (
     PARSEBENCH_ADAPTER_VERSION,
@@ -150,3 +152,22 @@ def export_document_to_parsebench(
         completed_at=completed_at,
         latency_in_ms=latency_in_ms,
     )
+
+
+def write_parsebench_prediction(
+    prediction: ParseBenchInferenceResult,
+    export_root: Path,
+) -> Path:
+    """Write the exact ``<example_id>.result.json`` artifact consumed by ParseBench."""
+
+    path = export_root / f"{prediction.request.example_id}.result.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(
+        prediction.model_dump(mode="json"),
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    path.write_text(payload, encoding="utf-8")
+    return path

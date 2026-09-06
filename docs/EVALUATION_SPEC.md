@@ -115,6 +115,13 @@ container/environment digest, export adapter version and unsupported mappings. G
 fixtures validate export shape; a small upstream-compatible smoke validates the adapter. Upstream
 metric names, including table metrics such as GTRM, are copied only from the official result.
 
+The executable contract writes `<example_id>.result.json` below a parser-isolated prediction root
+and invokes the pinned `parse-bench evaluation run` command with explicit `output_dir`,
+`test_cases_dir`, `product_type=parse`, and `report_dir`. `benchmark-parsebench-official` also keeps
+the corresponding Canonical IR, neutral result, preflight and diagnostics per example. The checkout,
+its installed Python runtime and dataset root are supplied locally; this repository never downloads
+the ParseBench corpus in the evaluation command.
+
 Project-native evaluation remains responsible for requirements ParseBench does not cover:
 Canonical provenance, cross-page logical table identity, structural critical financial numerics,
 Quality Gate detection, accepted-output precision/coverage and downstream RAG evaluation.

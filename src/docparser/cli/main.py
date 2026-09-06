@@ -17,6 +17,16 @@ from docparser.application.robust import robust_parse_document, write_robust_out
 from docparser.config import load_config
 from docparser.domain.parser_contract import RuntimeDevice
 from docparser.evaluation import load_manifest, run_parsing_benchmark, write_benchmark_report
+from docparser.evaluation.parsebench import (
+    load_subset_manifest,
+    manifest_digest,
+    prepare_parsebench_predictions,
+    run_official_parsebench,
+)
+from docparser.evaluation.parsebench.models import (
+    OfficialParseBenchResult,
+    ParseBenchRunRequest,
+)
 from docparser.evaluation.parsebench.subset import (
     load_candidate_catalog,
     prepare_subset_manifests,
@@ -35,6 +45,7 @@ from docparser.ir.schema import (
     schema_is_current,
     write_document_ir_schema,
 )
+from docparser.ir.types import Sha256Digest
 from docparser.quality import CalibrationProfile
 from docparser.version import __version__
 
@@ -292,6 +303,82 @@ def prepare_parsebench_manifests(
     typer.echo(
         f"prepared {len(development.selected_items)} development and "
         f"{len(holdout.selected_items)} protected-holdout IDs"
+    )
+
+
+@app.command("benchmark-parsebench-official")
+def benchmark_parsebench_official(
+    manifest: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=True, dir_okay=False, readable=True),
+    ],
+    dataset_root: Annotated[
+        Path,
+        typer.Option("--dataset-root", exists=True, file_okay=False, readable=True),
+    ],
+    checkout: Annotated[
+        Path,
+        typer.Option("--checkout", exists=True, file_okay=False, readable=True),
+    ],
+    parsebench_python: Annotated[
+        Path,
+        typer.Option("--parsebench-python", exists=True, file_okay=True),
+    ],
+    environment_digest: Annotated[str, typer.Option("--environment-digest")],
+    hardware_description: Annotated[str, typer.Option("--hardware-description")],
+    output: Annotated[
+        Path,
+        typer.Option("--output", file_okay=False),
+    ] = Path("./parsebench-output"),
+    parser: Annotated[str, typer.Option("--parser")] = "docling-standard",
+    device: Annotated[RuntimeDevice, typer.Option("--device")] = RuntimeDevice.AUTO,
+) -> None:
+    """Parse a frozen local subset and invoke the pinned official ParseBench evaluator."""
+
+    try:
+        subset = load_subset_manifest(manifest)
+        run_root = output / parser
+        predictions = prepare_parsebench_predictions(
+            subset,
+            dataset_root=dataset_root,
+            export_root=run_root / "predictions",
+            cases_root=run_root / "cases",
+            config=ParsingConfig(parser=parser, device=device),
+        )
+        request = ParseBenchRunRequest(
+            benchmark_id=f"official-{subset.dataset_id}-{parser}",
+            subset_id=subset.dataset_id,
+            subset_manifest_digest=manifest_digest(manifest),
+            checkout_path=checkout,
+            parsebench_python=parsebench_python,
+            dataset_root=dataset_root,
+            export_root=run_root / "predictions",
+            report_root=run_root / "official-report",
+            environment_digest=Sha256Digest(environment_digest),
+            hardware_description=hardware_description,
+        )
+        result = run_official_parsebench(request)
+        _write_official_parsebench_result(result, run_root / "official-result.json")
+    except (OSError, RuntimeError, ValueError, ValidationError) as exc:
+        typer.echo(f"official ParseBench benchmark failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"official ParseBench predictions={len(predictions)} parser={parser}; output={run_root}"
+    )
+
+
+def _write_official_parsebench_result(result: OfficialParseBenchResult, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            result.model_dump(mode="json"),
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
     )
 
 
