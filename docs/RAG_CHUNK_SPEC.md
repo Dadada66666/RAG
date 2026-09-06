@@ -103,6 +103,11 @@ Atomic units:
 
 Header/footer/page number blocks are excluded from normal retrieval text but remain available in IR. Inclusion is a versioned policy flag for use cases that require them.
 
+The retrieval semantic stream is a dedicated derived view over Canonical IR. ParseBench/evaluation
+renderers are interoperability views and must never be reused as the RAG semantic renderer. Only
+`IN_FLOW` blocks with types in the canonical retrieval-flow allowlist enter normal ordered units;
+decorative evidence is retained but excluded, and `UNRESOLVED` blocks remain explicitly separate.
+
 ### 3.3 Protected boundaries
 
 Packing cannot cross:
@@ -153,7 +158,7 @@ evaluation set; stable source-block order remains the tie-break.
 Logical table atomicity means the structure is never flattened and arbitrarily cut mid-cell.
 
 - If table rendering fits hard max: one `TABLE` chunk with caption, headers and complete table.
-- If oversized: create a non-embedding parent table chunk and row-group child chunks. Every child repeats deterministic column/multi-row headers, contains complete logical rows/cells, records `row_start/row_end`, and points to the same table entity.
+- If oversized: create a non-embedding parent table chunk and row-group child chunks. Every child repeats only rows identified by `COLUMN_HEADER`/`BOTH` cell roles, contains complete logical rows/cells, records `row_start/row_end`, and points to the same table entity. `ROW_HEADER` cells remain row stubs and `UNKNOWN` header roles are not promoted to column headers.
 - A merged cell crossing row-group boundary is carried as contextual header/stub metadata or forces the boundary to move; it is never split into contradictory values.
 - Cross-page segments do not force chunk breaks. Page/bbox lists retain all segment citations.
 - Markdown and compact text serializers are both derived views; selected serializer/version is in metadata.

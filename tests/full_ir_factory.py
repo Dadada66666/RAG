@@ -12,6 +12,7 @@ from docparser.ir.enums import (
     EquationFormat,
     ExtractionMethod,
     RelationshipType,
+    TableCellHeaderRole,
 )
 from docparser.ir.geometry import AffineTransform, BBox, Rotation
 from docparser.ir.ids import (
@@ -99,6 +100,7 @@ def _cell(
     provenance_id: ProvenanceId,
     *,
     is_header: bool = False,
+    header_role: TableCellHeaderRole | None = None,
 ) -> TableCell:
     return TableCell(
         cell_id=generate_uuid5_id(TableCellId, TEST_NAMESPACE, name),
@@ -108,6 +110,9 @@ def _cell(
         column_span=1,
         text=text,
         is_header=is_header,
+        header_role=header_role or (
+            TableCellHeaderRole.COLUMN_HEADER if is_header else TableCellHeaderRole.NONE
+        ),
         page_number=page_number,
         bbox=bbox,
         source_block_ids=(),
@@ -257,6 +262,7 @@ def make_full_document() -> DocumentIR:
         column_span=1,
         text="收入 / Revenue",
         is_header=False,
+        header_role=TableCellHeaderRole.NONE,
         page_number=1,
         bbox=BBox((40.0, 410.0, 290.0, 760.0)),
         source_block_ids=(),
@@ -462,7 +468,7 @@ def make_full_document() -> DocumentIR:
     )
 
     return DocumentIR(
-        schema_version="1.2.0",
+        schema_version="1.3.0",
         document_id=DOCUMENT_ID,
         revision_id=REVISION_ID,
         revision_number=0,

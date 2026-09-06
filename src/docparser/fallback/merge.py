@@ -16,6 +16,7 @@ from docparser.ir.ids import (
     TableCellId,
     generate_uuid5_id,
 )
+from docparser.ir.migrations import CURRENT_SCHEMA_VERSION
 from docparser.ir.models import (
     Block,
     DocumentIR,
@@ -209,7 +210,7 @@ def _new_revision(
     payload = baseline.model_dump(mode="python")
     payload.update(
         {
-            "schema_version": "1.2.0",
+            "schema_version": CURRENT_SCHEMA_VERSION,
             "revision_id": revision_id_factory(),
             "revision_number": baseline.revision_number + 1,
             "previous_revision_id": baseline.revision_id,

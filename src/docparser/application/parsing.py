@@ -23,7 +23,7 @@ from docparser.domain.parser_contract import (
     RuntimeDevice,
 )
 from docparser.ir.base import StrictIRModel
-from docparser.ir.enums import ReadingOrderStatus
+from docparser.ir.enums import RETRIEVAL_FLOW_BLOCK_TYPES, ReadingOrderStatus
 from docparser.ir.ids import (
     ArtifactId,
     DocumentId,
@@ -246,21 +246,9 @@ def _diagnostics(
         for page in result.pages
         for element in page.elements
     )
-    retrieval_types = {
-        "TITLE",
-        "HEADING",
-        "PARAGRAPH",
-        "LIST",
-        "LIST_ITEM",
-        "TABLE",
-        "FIGURE",
-        "FIGURE_CAPTION",
-        "EQUATION",
-        "CODE",
-        "QUOTE",
-        "FOOTNOTE",
-    }
-    eligible_blocks = [block for block in blocks if block.block_type.value in retrieval_types]
+    eligible_blocks = [
+        block for block in blocks if block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES
+    ]
     section_block_ids = {
         block_id
         for section in document.sections
@@ -273,13 +261,13 @@ def _diagnostics(
     order_eligible_pages = [
         page
         for page in document.pages
-        if any(block.block_type.value in retrieval_types for block in page.blocks)
+        if any(block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES for block in page.blocks)
     ]
     order_resolved_pages = sum(
         all(
             block.reading_order_status is ReadingOrderStatus.IN_FLOW
             for block in page.blocks
-            if block.block_type.value in retrieval_types
+            if block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES
         )
         for page in order_eligible_pages
     )

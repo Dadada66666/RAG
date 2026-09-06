@@ -57,6 +57,7 @@ def test_pixels_scale_to_cropbox_points_and_bboxless_cells_keep_cell_provenance(
 
     assert page.width == 612.0
     assert table.segments[0].bbox.root == (60.0, 120.0, 550.0, 380.0)
+    assert table.header_row_indices == ()
     assert all(cell.bbox is None for cell in table.cells)
     for index, cell in enumerate(table.cells):
         original_id = provenance[cell.provenance_ids[0]].original_object_id

@@ -8,7 +8,7 @@ from docparser.domain.parser_contract import RuntimeDevice
 from docparser.ir.base import StrictIRModel
 
 DOCLING_VERSION = "2.123.0"
-ADAPTER_VERSION = "0.1.0"
+ADAPTER_VERSION = "0.1.1"
 PROFILE_NAME = "docling-standard"
 
 

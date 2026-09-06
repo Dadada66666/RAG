@@ -22,10 +22,36 @@ class BlockType(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+RETRIEVAL_FLOW_BLOCK_TYPES = frozenset(
+    {
+        BlockType.TITLE,
+        BlockType.HEADING,
+        BlockType.PARAGRAPH,
+        BlockType.LIST,
+        BlockType.LIST_ITEM,
+        BlockType.TABLE,
+        BlockType.FIGURE,
+        BlockType.FIGURE_CAPTION,
+        BlockType.EQUATION,
+        BlockType.CODE,
+        BlockType.QUOTE,
+        BlockType.FOOTNOTE,
+    }
+)
+
+
 class ReadingOrderStatus(StrEnum):
     IN_FLOW = "IN_FLOW"
     DECORATIVE = "DECORATIVE"
     UNRESOLVED = "UNRESOLVED"
+
+
+class TableCellHeaderRole(StrEnum):
+    NONE = "NONE"
+    COLUMN_HEADER = "COLUMN_HEADER"
+    ROW_HEADER = "ROW_HEADER"
+    BOTH = "BOTH"
+    UNKNOWN = "UNKNOWN"
 
 
 class TextDirection(StrEnum):

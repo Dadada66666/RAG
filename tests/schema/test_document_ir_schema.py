@@ -36,7 +36,7 @@ def _set_path(payload: Any, path: list[str | int], value: Any) -> None:
 
 def _current_payload(payload: dict[str, Any]) -> dict[str, Any]:
     version = str(payload["schema_version"])
-    return migrate_ir(version, "1.2.0", payload) if version != "1.2.0" else payload
+    return migrate_ir(version, "1.3.0", payload) if version != "1.3.0" else payload
 
 
 def test_generated_schema_is_valid_draft_2020_12() -> None:

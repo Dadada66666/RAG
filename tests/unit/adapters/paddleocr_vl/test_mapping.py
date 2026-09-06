@@ -13,6 +13,7 @@ from docparser.domain.parser_contract import (
     ParserRun,
     RuntimeDevice,
 )
+from docparser.ir.enums import TableCellHeaderRole
 from docparser.ir.ids import ParserRunId
 from docparser.ir.types import UtcTimestamp
 
@@ -22,7 +23,7 @@ def _descriptor() -> ParserDescriptor:
         parser_name="paddleocr-vl",
         parser_version="3.7.0",
         adapter_id="org.docparser.adapter.paddleocr-vl",
-        adapter_version="0.1.0",
+        adapter_version="0.1.2",
         profile="paddleocr-vl-1.6",
         capabilities=tuple(ParserCapability),
         model_identifiers=("PP-DocLayoutV3", "PaddleOCR-VL-1.6-0.9B"),
@@ -51,6 +52,8 @@ def test_html_table_preserves_rowspan_and_colspan_without_fake_bbox() -> None:
     assert (rows, columns) == (2, 3)
     assert (cells[0].row_span, cells[1].column_span) == (2, 2)
     assert all(cell.bbox is None for cell in cells)
+    assert cells[0].header_role is TableCellHeaderRole.UNKNOWN
+    assert cells[1].header_role is TableCellHeaderRole.UNKNOWN
 
 
 def test_structured_paddle_fixture_maps_without_markdown_contract() -> None:

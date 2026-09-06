@@ -19,6 +19,7 @@ from docparser.domain.parser_contract import (
     ParseStatus,
     SourceBBox,
 )
+from docparser.ir.enums import TableCellHeaderRole
 
 JsonObject = dict[str, Any]
 
@@ -98,11 +99,13 @@ def _item_bbox(item: JsonObject) -> SourceBBox | None:
 
 def _expand_refs(root: JsonObject, indexed: dict[str, JsonObject]) -> list[str]:
     ordered: list[str] = []
+    visited: set[str] = set()
 
     def visit(ref_value: object) -> None:
         cref = _ref(ref_value)
-        if cref is None:
+        if cref is None or cref in visited:
             return
+        visited.add(cref)
         item = indexed.get(cref)
         if item is None:
             return
@@ -213,6 +216,16 @@ def _table(item: JsonObject) -> ExtractedTable | None:
                 cell_bbox = _source_bbox(cell["bbox"])
             except (KeyError, TypeError, ValueError):
                 cell_bbox = None
+        column_header = cell.get("column_header") is True
+        row_header = cell.get("row_header") is True
+        if column_header and row_header:
+            header_role = TableCellHeaderRole.BOTH
+        elif column_header:
+            header_role = TableCellHeaderRole.COLUMN_HEADER
+        elif row_header:
+            header_role = TableCellHeaderRole.ROW_HEADER
+        else:
+            header_role = TableCellHeaderRole.NONE
         cells.append(
             ExtractedTableCell(
                 source_object_id=f"{source_id}/cell/{index}",
@@ -221,7 +234,8 @@ def _table(item: JsonObject) -> ExtractedTable | None:
                 row_span=max(1, row_end - row_start),
                 column_span=max(1, col_end - col_start),
                 text=str(cell.get("text", "")),
-                is_header=bool(cell.get("column_header") or cell.get("row_header")),
+                is_header=header_role is not TableCellHeaderRole.NONE,
+                header_role=header_role,
                 bbox=cell_bbox,
                 confidence=None,
             )

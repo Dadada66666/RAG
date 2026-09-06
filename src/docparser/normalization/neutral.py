@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import cast
 from uuid import UUID
 
 from docparser.domain.parser_contract import (
@@ -20,6 +21,7 @@ from docparser.ir.enums import (
     ExtractionMethod,
     QualityStatus,
     ReadingOrderStatus,
+    TableCellHeaderRole,
     TextDirection,
 )
 from docparser.ir.geometry import AffineTransform, BBox, Rotation
@@ -34,6 +36,7 @@ from docparser.ir.ids import (
     generate_page_id,
     generate_uuid5_id,
 )
+from docparser.ir.migrations import CURRENT_SCHEMA_VERSION
 from docparser.ir.models import (
     Block,
     DocumentIR,
@@ -49,7 +52,7 @@ from docparser.ir.models import (
 from docparser.ir.tables import Table, TableCell, TableSegment
 from docparser.normalization.base import NormalizationContext, NormalizationError
 
-NORMALIZER_VERSION = "neutral-normalizer@0.2.0"
+NORMALIZER_VERSION = "neutral-normalizer@0.3.0"
 
 _BLOCK_TYPES = {kind.value: BlockType(kind.value) for kind in ExtractedElementType}
 
@@ -231,16 +234,18 @@ def _normalize_blocks(
     equation_ids: dict[str, EquationId],
     block_ids: dict[str, BlockId],
 ) -> tuple[Block, ...]:
-    ordered = sorted(
-        (
-            element
-            for element in page.elements
-            if element.reading_order_resolved and not element.decorative
-        ),
-        key=lambda element: (
-            element.reading_order if element.reading_order is not None else 0,
-            element.source_object_id,
-        ),
+    resolved = [
+        element
+        for element in page.elements
+        if element.reading_order_resolved
+        and element.reading_order is not None
+        and not element.decorative
+    ]
+    ranks = [element.reading_order for element in resolved]
+    ordered = (
+        sorted(resolved, key=lambda element: cast(int, element.reading_order))
+        if len(ranks) == len(set(ranks))
+        else []
     )
     canonical_orders = {element.source_object_id: index for index, element in enumerate(ordered)}
     blocks: list[Block] = []
@@ -334,6 +339,7 @@ def _normalize_tables(
                         column_span=cell.column_span,
                         text=cell.text,
                         is_header=cell.is_header,
+                        header_role=cell.header_role,
                         page_number=page.page_number,
                         bbox=cell_bbox,
                         source_block_ids=(),
@@ -369,7 +375,17 @@ def _normalize_tables(
                         if caption in caption_block_ids
                     ),
                     header_row_indices=tuple(
-                        sorted({cell.row_index for cell in extracted.cells if cell.is_header})
+                        sorted(
+                            {
+                                cell.row_index
+                                for cell in extracted.cells
+                                if cell.header_role
+                                in {
+                                    TableCellHeaderRole.COLUMN_HEADER,
+                                    TableCellHeaderRole.BOTH,
+                                }
+                            }
+                        )
                     ),
                     provenance_ids=(table_provenance.provenance_id,),
                     confidence=extracted.confidence,
@@ -546,7 +562,7 @@ def normalize_neutral_result(result: ParseResult, context: NormalizationContext)
         runtime=result.run.runtime,
     )
     return DocumentIR(
-        schema_version="1.2.0",
+        schema_version=CURRENT_SCHEMA_VERSION,
         document_id=context.document_id,
         revision_id=context.revision_id,
         revision_number=0,

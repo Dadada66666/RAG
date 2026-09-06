@@ -14,7 +14,13 @@ from tests.parser_fixture import (
     profile_for_result,
 )
 
-from docparser.ir.enums import BlockType, QualityStatus, ReadingOrderStatus
+from docparser.ir.enums import (
+    RETRIEVAL_FLOW_BLOCK_TYPES,
+    BlockType,
+    QualityStatus,
+    ReadingOrderStatus,
+    TableCellHeaderRole,
+)
 from docparser.ir.geometry import BBox
 from docparser.ir.ids import ArtifactId, RevisionId, generate_document_id
 from docparser.ir.models import DocumentIR
@@ -97,7 +103,86 @@ def test_simple_and_merged_tables_remain_structured() -> None:
 
     assert simple.pages[0].blocks[0].block_type is BlockType.TABLE
     assert len(simple.tables[0].cells) == 4
+    assert simple.tables[0].header_row_indices == (0,)
+    assert simple.tables[0].cells[2].header_role is TableCellHeaderRole.ROW_HEADER
     assert merged.tables[0].cells[0].column_span == 2
+    assert merged.tables[0].cells[0].header_role is TableCellHeaderRole.COLUMN_HEADER
+    assert merged.tables[0].header_row_indices == (0,)
+
+
+def test_sparse_reading_order_is_canonicalized_without_changing_relative_order() -> None:
+    result = load_contract_result("two-column")
+    page = result.pages[0]
+    elements = tuple(
+        element.model_copy(update={"reading_order": (index + 1) * 10})
+        for index, element in enumerate(page.elements)
+    )
+    result = result.model_copy(update={"pages": (page.model_copy(update={"elements": elements}),)})
+
+    document = normalize_neutral_result(
+        result,
+        normalization_context(profile_for_result(result), "sparse-order"),
+    )
+
+    assert [block.reading_order for block in document.pages[0].blocks] == [0, 1, 2, 3]
+
+
+def test_duplicate_resolved_order_remains_unresolved() -> None:
+    result = load_contract_result("two-column")
+    page = result.pages[0]
+    elements = tuple(
+        element.model_copy(update={"reading_order": 0 if index < 2 else index})
+        for index, element in enumerate(page.elements)
+    )
+    result = result.model_copy(update={"pages": (page.model_copy(update={"elements": elements}),)})
+
+    document = normalize_neutral_result(
+        result,
+        normalization_context(profile_for_result(result), "duplicate-order"),
+    )
+
+    assert all(
+        block.reading_order_status is ReadingOrderStatus.UNRESOLVED
+        for block in document.pages[0].blocks
+    )
+
+
+def test_missing_order_cannot_become_in_flow() -> None:
+    result = load_contract_result("two-column")
+    page = result.pages[0]
+    first = page.elements[0].model_copy(update={"reading_order": None})
+    result = result.model_copy(
+        update={"pages": (page.model_copy(update={"elements": (first, *page.elements[1:])}),)}
+    )
+
+    document = normalize_neutral_result(
+        result,
+        normalization_context(profile_for_result(result), "missing-order"),
+    )
+
+    assert document.pages[0].blocks[0].reading_order_status is ReadingOrderStatus.UNRESOLVED
+
+
+def test_decorative_blocks_are_retained_but_not_retrieval_flow() -> None:
+    document = normalize_contract_fixture("real-wire-refs")
+    decorative = next(
+        block
+        for block in document.pages[0].blocks
+        if block.reading_order_status is ReadingOrderStatus.DECORATIVE
+    )
+
+    assert decorative.block_type is BlockType.HEADER
+    assert decorative.block_type not in RETRIEVAL_FLOW_BLOCK_TYPES
+
+
+def test_reading_order_normalization_is_deterministic() -> None:
+    result = load_contract_result("two-column")
+    context = normalization_context(profile_for_result(result), "deterministic-order")
+
+    first = normalize_neutral_result(result, context)
+    second = normalize_neutral_result(result, context)
+
+    assert dump_canonical_json(first) == dump_canonical_json(second)
 
 
 def test_every_generated_block_has_resolvable_parser_provenance() -> None:

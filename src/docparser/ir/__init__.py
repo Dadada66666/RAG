@@ -16,6 +16,7 @@ from docparser.ir.content import (
     Section,
 )
 from docparser.ir.enums import (
+    RETRIEVAL_FLOW_BLOCK_TYPES,
     BlockType,
     ChunkType,
     ConfidenceSource,
@@ -26,6 +27,7 @@ from docparser.ir.enums import (
     QualityStatus,
     ReadingOrderStatus,
     RelationshipType,
+    TableCellHeaderRole,
     TextDirection,
 )
 from docparser.ir.fingerprints import semantic_fingerprint
@@ -112,6 +114,7 @@ __all__ = [
     "QualityStatus",
     "QualitySummary",
     "ReadingOrderStatus",
+    "RETRIEVAL_FLOW_BLOCK_TYPES",
     "ReferenceEntry",
     "ReferenceId",
     "Relationship",
@@ -127,6 +130,7 @@ __all__ = [
     "TextSpan",
     "Table",
     "TableCell",
+    "TableCellHeaderRole",
     "TableCellFragment",
     "TableCellId",
     "TableId",

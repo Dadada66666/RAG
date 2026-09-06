@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from tests.full_ir_factory import make_full_document
 from tests.ir_factory import TEST_NAMESPACE
 
-from docparser.ir.enums import RelationshipType
+from docparser.ir.enums import RelationshipType, TableCellHeaderRole
 from docparser.ir.ids import RelationshipId, generate_uuid5_id
 from docparser.ir.serialization import dump_canonical_json, load_canonical_json
 from docparser.ir.tables import Table
@@ -48,6 +48,60 @@ def test_simple_table_with_header_row_validates() -> None:
     table = Table.model_validate_json(json.dumps(payload))
 
     assert table.header_row_indices == (0,)
+
+
+def test_row_header_does_not_create_a_column_header_row() -> None:
+    payload = _table_payload()
+    payload["cells"][2]["is_header"] = True
+    payload["cells"][2]["header_role"] = TableCellHeaderRole.ROW_HEADER.value
+
+    table = Table.model_validate_json(json.dumps(payload))
+
+    assert table.header_row_indices == (0,)
+
+
+def test_multiple_column_header_rows_are_derived_from_explicit_roles() -> None:
+    payload = _table_payload()
+    payload["cells"][2]["is_header"] = True
+    payload["cells"][2]["header_role"] = TableCellHeaderRole.COLUMN_HEADER.value
+    payload["header_row_indices"] = [0, 1]
+
+    table = Table.model_validate_json(json.dumps(payload))
+
+    assert table.header_row_indices == (0, 1)
+
+
+def test_unknown_header_role_does_not_create_a_header_row() -> None:
+    payload = _table_payload()
+    for cell in payload["cells"]:
+        cell["is_header"] = cell["row_index"] == 1 and cell["column_index"] == 0
+        cell["header_role"] = (
+            TableCellHeaderRole.UNKNOWN.value
+            if cell["is_header"]
+            else TableCellHeaderRole.NONE.value
+        )
+    payload["header_row_indices"] = []
+
+    table = Table.model_validate_json(json.dumps(payload))
+
+    assert table.header_row_indices == ()
+
+
+def test_row_stubs_alone_do_not_create_header_rows() -> None:
+    payload = _table_payload()
+    for cell in payload["cells"]:
+        is_stub = cell["column_index"] == 0
+        cell["is_header"] = is_stub
+        cell["header_role"] = (
+            TableCellHeaderRole.ROW_HEADER.value
+            if is_stub
+            else TableCellHeaderRole.NONE.value
+        )
+    payload["header_row_indices"] = []
+
+    table = Table.model_validate_json(json.dumps(payload))
+
+    assert table.header_row_indices == ()
 
 
 def test_overlapping_published_table_cells_are_rejected() -> None:
@@ -125,6 +179,8 @@ def test_table_span_property(
     cell["column_index"] = column
     cell["row_span"] = row_span
     cell["column_span"] = column_span
+    cell["is_header"] = False
+    cell["header_role"] = TableCellHeaderRole.NONE.value
     payload["cells"] = [cell]
     payload["header_row_indices"] = []
 

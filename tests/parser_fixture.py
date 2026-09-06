@@ -63,7 +63,7 @@ def load_contract_result(name: str) -> ParseResult:
             parser_name="docling",
             parser_version="2.123.0",
             adapter_id="org.docparser.adapter.docling",
-            adapter_version="0.1.0",
+            adapter_version="0.1.1",
             profile="docling-standard",
             capabilities=(
                 ParserCapability.OCR,

@@ -1,8 +1,8 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: Parsing stage frozen for RAG experiments**
+> **CURRENT EXECUTION POINTER: Pre-RAG structural handoff complete; parser expansion frozen**
 >
-> **NEXT: Structure-aware parent-child chunking (Next 4)**
+> **NEXT: Section materialization**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
@@ -12,6 +12,10 @@
 > Parsing v1 closeout hardens the official ParseBench label/serialization/group-routing bridge,
 > preserves unknown confidence and non-text layout objects, and reuses one lazily initialized
 > Paddle pipeline per serial benchmark run. It performs no parser-specific score repair.
+> The final structural handoff permits sibling sections to share physical pages while preserving
+> strict parent topology/direct ownership, retains table header-axis evidence in IR V1.3, rejects
+> conflicting parser reading-order evidence as unresolved, and keeps decorative blocks outside the
+> normal retrieval-flow contract. Multi-fragment provenance remains a declared limitation.
 
 | Field | Value |
 |---|---|

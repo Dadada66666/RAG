@@ -237,6 +237,7 @@ def _validate_sections(
     blocks: dict[str, Block],
     provenance: dict[ProvenanceId, ProvenanceRecord],
 ) -> None:
+    direct_owners: dict[str, SectionId] = {}
     for section in sections.values():
         if section.page_end > document.page_count:
             raise ValueError("section page range exceeds document pages")
@@ -255,6 +256,9 @@ def _validate_sections(
                 raise ValueError("section content_block_id does not resolve")
             if not section.page_start <= block.page_number <= section.page_end:
                 raise ValueError("section content block lies outside section page range")
+            owner = direct_owners.setdefault(str(block_id), section.section_id)
+            if owner != section.section_id:
+                raise ValueError("section content block cannot have multiple direct owners")
 
         if section.parent_section_id is not None:
             parent = sections.get(str(section.parent_section_id))
@@ -270,7 +274,6 @@ def _validate_sections(
                 raise ValueError("section child/parent references must be reciprocal")
 
     _validate_section_cycles(sections)
-    _validate_section_ranges(sections.values())
 
 
 def _validate_section_cycles(sections: dict[str, Section]) -> None:
@@ -287,17 +290,6 @@ def _validate_section_cycles(sections: dict[str, Section]) -> None:
                 break
             current = sections[str(current.parent_section_id)]
         visited.update(path)
-
-
-def _validate_section_ranges(sections: Iterable[Section]) -> None:
-    ordered = sorted(sections, key=lambda section: (section.page_start, -section.page_end))
-    open_ranges: list[Section] = []
-    for section in ordered:
-        while open_ranges and section.page_start > open_ranges[-1].page_end:
-            open_ranges.pop()
-        if open_ranges and section.page_end > open_ranges[-1].page_end:
-            raise ValueError("section page ranges must be nested or disjoint")
-        open_ranges.append(section)
 
 
 def _validate_tables(

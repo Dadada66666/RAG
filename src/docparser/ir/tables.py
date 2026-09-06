@@ -13,6 +13,7 @@ from docparser.ir.base import (
     PositiveInt,
     StrictIRModel,
 )
+from docparser.ir.enums import TableCellHeaderRole
 from docparser.ir.geometry import BBox
 from docparser.ir.ids import (
     BlockId,
@@ -39,6 +40,7 @@ class TableCell(StrictIRModel):
     column_span: PositiveInt
     text: NfcString
     is_header: bool
+    header_role: TableCellHeaderRole
     page_number: PageNumber
     bbox: BBox | None
     source_block_ids: tuple[BlockId, ...]
@@ -46,6 +48,12 @@ class TableCell(StrictIRModel):
     provenance_ids: Annotated[tuple[ProvenanceId, ...], Field(min_length=1)]
     fragments: tuple[TableCellFragment, ...] = ()
     extensions: Extensions = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_header_role(self) -> Self:
+        if self.is_header != (self.header_role is not TableCellHeaderRole.NONE):
+            raise ValueError("is_header must agree with header_role")
+        return self
 
 
 class TableSegment(StrictIRModel):
@@ -140,3 +148,15 @@ class Table(StrictIRModel):
             raise ValueError("header_row_indices must be ordered")
         if any(index >= self.logical_row_count for index in self.header_row_indices):
             raise ValueError("header row index exceeds logical_row_count")
+        expected = tuple(
+            sorted(
+                {
+                    cell.row_index
+                    for cell in self.cells
+                    if cell.header_role
+                    in {TableCellHeaderRole.COLUMN_HEADER, TableCellHeaderRole.BOTH}
+                }
+            )
+        )
+        if self.header_row_indices != expected:
+            raise ValueError("header_row_indices must match column-header cell roles")

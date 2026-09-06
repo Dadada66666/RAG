@@ -3,7 +3,9 @@ from __future__ import annotations
 import pytest
 from tests.parser_fixture import load_contract_result
 
+from docparser.adapters.parsers.docling.mapping import _expand_refs
 from docparser.domain.parser_contract import ExtractedElementType
+from docparser.ir.enums import TableCellHeaderRole
 
 
 @pytest.mark.parametrize(
@@ -71,3 +73,33 @@ def test_docling_parent_evidence_is_not_discarded() -> None:
 
     assert page.elements[1].parent_source_object_id == page.elements[0].source_object_id
     assert all(element.extraction_method == "IMPORTED" for element in page.elements)
+
+
+def test_group_traversal_deduplicates_refs_and_terminates_cycles() -> None:
+    indexed = {
+        "#/groups/0": {
+            "children": [
+                {"$ref": "#/texts/0"},
+                {"$ref": "#/groups/1"},
+            ]
+        },
+        "#/groups/1": {
+            "children": [
+                {"$ref": "#/groups/0"},
+                {"$ref": "#/texts/1"},
+            ]
+        },
+        "#/texts/0": {},
+        "#/texts/1": {},
+    }
+
+    assert _expand_refs(
+        {"children": [{"$ref": "#/groups/0"}, {"$ref": "#/texts/0"}]}, indexed
+    ) == ["#/texts/0", "#/texts/1"]
+
+
+def test_docling_preserves_distinct_row_and_column_header_roles() -> None:
+    table = load_contract_result("simple-table").pages[0].tables[0]
+
+    assert table.cells[0].header_role is TableCellHeaderRole.COLUMN_HEADER
+    assert table.cells[2].header_role is TableCellHeaderRole.ROW_HEADER

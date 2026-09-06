@@ -10,6 +10,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, model_validator
 
 from docparser.ir.base import Confidence, PageNumber, PositiveInt, StrictIRModel
+from docparser.ir.enums import TableCellHeaderRole
 from docparser.ir.ids import ParserRunId
 from docparser.ir.types import BoundedJsonObject, NfcString, NonEmptyNfcString, UtcTimestamp
 
@@ -198,6 +199,12 @@ class ExtractedElement(NeutralModel):
     caption_for_source_object_id: NfcString | None = None
     metadata: BoundedJsonObject = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def _validate_resolved_order(self) -> Self:
+        if self.reading_order_resolved and self.reading_order is None:
+            raise ValueError("resolved reading order requires an explicit rank")
+        return self
+
 
 class ExtractedTableCell(NeutralModel):
     source_object_id: NonEmptyNfcString
@@ -207,8 +214,15 @@ class ExtractedTableCell(NeutralModel):
     column_span: PositiveInt
     text: NfcString
     is_header: bool
+    header_role: TableCellHeaderRole
     bbox: SourceBBox | None
     confidence: Confidence | None = None
+
+    @model_validator(mode="after")
+    def _validate_header_role(self) -> Self:
+        if self.is_header != (self.header_role is not TableCellHeaderRole.NONE):
+            raise ValueError("is_header must agree with header_role")
+        return self
 
 
 class ExtractedTable(NeutralModel):

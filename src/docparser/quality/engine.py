@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from docparser.ir.content import IssueCounts, QualitySummary
 from docparser.ir.enums import QualityStatus
 from docparser.ir.ids import QualityReportId, generate_quality_report_id
+from docparser.ir.migrations import CURRENT_SCHEMA_VERSION
 from docparser.ir.models import DocumentIR
 from docparser.ir.types import UtcTimestamp
 from docparser.quality.models import (
@@ -141,7 +142,7 @@ def apply_quality_report(document: DocumentIR, report: QualityReport) -> Documen
         publishable = False
     return document.model_copy(
         update={
-            "schema_version": "1.2.0",
+            "schema_version": CURRENT_SCHEMA_VERSION,
             "processing": document.processing.model_copy(
                 update={"validator_ruleset_version": report.ruleset_version}
             ),

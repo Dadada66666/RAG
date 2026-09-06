@@ -4,9 +4,9 @@
 |---|---|
 | Status | Proposed — highest-priority Phase 1 contract |
 | Schema family | `com.acme.docparser.document-ir` |
-| Initial schema version | `1.0.0`; current writer version `1.2.0` |
+| Initial schema version | `1.0.0`; current writer version `1.3.0` |
 | Serialization | Canonical UTF-8 JSON; generated JSON Schema Draft 2020-12 |
-| Last updated | 2026-09-01 |
+| Last updated | 2026-09-06 |
 
 ## 1. Purpose and invariants
 
@@ -197,7 +197,7 @@ Raster crop/padding/DPI, PDF bottom-left coordinates and rotated page coordinate
 
 ### 6.1 `Section`
 
-Required: `section_id`, `level` (`1..12`), `heading_block_id` (nullable only for synthetic sections), `parent_section_id`, `child_section_ids`, `content_block_ids`, `page_start`, `page_end`, `provenance_ids`. `heading_path` is derived, not persisted as competing truth. Section ranges must be nested or disjoint; partial overlap is invalid.
+Required: `section_id`, `level` (`1..12`), `heading_block_id` (nullable only for synthetic sections), `parent_section_id`, `child_section_ids`, `content_block_ids`, `page_start`, `page_end`, `provenance_ids`. `heading_path` is derived, not persisted as competing truth. Parent ranges must contain their child ranges. Sibling ranges may share a physical page because page ranges are coarse bounds, not semantic ownership. Direct `content_block_ids` ownership is unique across sections, every owned/heading block must resolve inside the declared range, parent/child links are reciprocal, and the section graph is acyclic.
 
 ### 6.2 `Relationship`
 
@@ -243,7 +243,8 @@ Required: `segment_id`, `page_number`, `bbox`, `block_id`, `row_start`, `row_end
 | `row_index`, `column_index` | integer | Yes | Zero-based logical anchor |
 | `row_span`, `column_span` | integer | Yes | >= 1 and within table dimensions |
 | `text` | string | Yes | Empty allowed only when structurally intentional |
-| `is_header` | boolean | Yes | Semantic hint |
+| `is_header` | boolean | Yes | Backward-compatible indication that some header evidence exists |
+| `header_role` | enum | Yes | `NONE`, `COLUMN_HEADER`, `ROW_HEADER`, `BOTH`, or `UNKNOWN`; `UNKNOWN` preserves header evidence whose axis is not known |
 | `page_number` | integer | Yes | Anchor page |
 | `bbox` | bbox/null | Yes | Null only for inferred logical cells, with provenance |
 | `source_block_ids` | array[ID] | Yes | May include OCR/text blocks subsumed by table |
@@ -370,11 +371,18 @@ Compatibility rules:
 5. Original revisions remain immutable. Migrated IR is a new artifact/revision linked to the source revision.
 6. CI runs backward-read, forward-preserve-extension, round-trip and schema-diff tests.
 
-Current compatibility note (2026-09-02): V1.2 permits evaluated summaries to retain
+Compatibility note (2026-09-02): V1.2 permits evaluated summaries to retain
 `score=null` for the discrete Quality Gate while still requiring `quality_report_id`. V1.1
 semantics remain unchanged as a historical contract. Writers emit `1.2.0`; readers
 deterministically migrate supported V1.0/V1.1 payloads to V1.2 without inventing or deleting
 quality evidence. The schema remains in the V1 family path.
+
+Current compatibility note (2026-09-06): V1.3 adds the typed `TableCell.header_role` needed by
+table-aware retrieval. `header_row_indices` is derived only from `COLUMN_HEADER`/`BOTH`; row stubs
+no longer turn data rows into repeated column-header rows. The deterministic V1.2→V1.3 migration
+maps header cells in historical `header_row_indices` to `COLUMN_HEADER`, other historical
+`is_header=true` cells to `UNKNOWN`, and non-header cells to `NONE`. This preserves old public
+evidence without inventing row/column semantics that V1.2 could not express.
 
 ## 15. Complete JSON example
 
@@ -382,7 +390,7 @@ This example is intentionally small but contains every top-level entity family a
 
 ```json
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "document_id": "doc_6f5030ec-48ab-5b86-8729-7a4f59ace022",
   "revision_id": "rev_019d4020-0f42-7cc8-a37d-3f13e915d955",
   "revision_number": 1,
@@ -664,11 +672,11 @@ This example is intentionally small but contains every top-level entity family a
       "logical_column_count": 2,
       "segments": [{"segment_id": "tseg_e8063d9d-b43b-5ebd-b410-20a9b50afc7d", "page_number": 2, "bbox": [42.0, 180.0, 553.0, 410.0], "block_id": "blk_9d91b824-c9ef-5ea7-922d-58074423c88d", "row_start": 0, "row_end_exclusive": 3, "continued_from_segment_id": null, "continues_to_segment_id": null, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]}],
       "cells": [
-        {"cell_id": "cell_410f68e8-566e-5db4-9218-018f4ff34b4e", "row_index": 0, "column_index": 0, "row_span": 1, "column_span": 1, "text": "指标 / Metric", "is_header": true, "page_number": 2, "bbox": [42.0, 180.0, 290.0, 230.0], "source_block_ids": [], "confidence": 0.96, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]},
-        {"cell_id": "cell_e02c23f6-bc32-5395-909c-9ea1a78e105c", "row_index": 0, "column_index": 1, "row_span": 1, "column_span": 1, "text": "2025", "is_header": true, "page_number": 2, "bbox": [290.0, 180.0, 553.0, 230.0], "source_block_ids": [], "confidence": 0.97, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]},
-        {"cell_id": "cell_24d0aabb-d0d6-53fa-a5d6-f95acb4f64b7", "row_index": 1, "column_index": 0, "row_span": 2, "column_span": 1, "text": "收入 / Revenue", "is_header": false, "page_number": 2, "bbox": [42.0, 230.0, 290.0, 410.0], "source_block_ids": [], "confidence": 0.92, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]},
-        {"cell_id": "cell_b8e95272-cc77-5392-95c9-207060460eea", "row_index": 1, "column_index": 1, "row_span": 1, "column_span": 1, "text": "120", "is_header": false, "page_number": 2, "bbox": [290.0, 230.0, 553.0, 320.0], "source_block_ids": [], "confidence": 0.94, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]},
-        {"cell_id": "cell_8e434970-c605-5308-a892-34df11da07b2", "row_index": 2, "column_index": 1, "row_span": 1, "column_span": 1, "text": "128", "is_header": false, "page_number": 2, "bbox": [290.0, 320.0, 553.0, 410.0], "source_block_ids": [], "confidence": 0.93, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]}
+        {"cell_id": "cell_410f68e8-566e-5db4-9218-018f4ff34b4e", "row_index": 0, "column_index": 0, "row_span": 1, "column_span": 1, "text": "指标 / Metric", "is_header": true, "header_role": "COLUMN_HEADER", "page_number": 2, "bbox": [42.0, 180.0, 290.0, 230.0], "source_block_ids": [], "confidence": 0.96, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]},
+        {"cell_id": "cell_e02c23f6-bc32-5395-909c-9ea1a78e105c", "row_index": 0, "column_index": 1, "row_span": 1, "column_span": 1, "text": "2025", "is_header": true, "header_role": "COLUMN_HEADER", "page_number": 2, "bbox": [290.0, 180.0, 553.0, 230.0], "source_block_ids": [], "confidence": 0.97, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]},
+        {"cell_id": "cell_24d0aabb-d0d6-53fa-a5d6-f95acb4f64b7", "row_index": 1, "column_index": 0, "row_span": 2, "column_span": 1, "text": "收入 / Revenue", "is_header": false, "header_role": "NONE", "page_number": 2, "bbox": [42.0, 230.0, 290.0, 410.0], "source_block_ids": [], "confidence": 0.92, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]},
+        {"cell_id": "cell_b8e95272-cc77-5392-95c9-207060460eea", "row_index": 1, "column_index": 1, "row_span": 1, "column_span": 1, "text": "120", "is_header": false, "header_role": "NONE", "page_number": 2, "bbox": [290.0, 230.0, 553.0, 320.0], "source_block_ids": [], "confidence": 0.94, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]},
+        {"cell_id": "cell_8e434970-c605-5308-a892-34df11da07b2", "row_index": 2, "column_index": 1, "row_span": 1, "column_span": 1, "text": "128", "is_header": false, "header_role": "NONE", "page_number": 2, "bbox": [290.0, 320.0, 553.0, 410.0], "source_block_ids": [], "confidence": 0.93, "provenance_ids": ["prov_30d78852-df48-55f7-8245-84ab0e4d4951"]}
       ],
       "caption_block_ids": [],
       "header_row_indices": [0],

@@ -10,6 +10,8 @@ traceable, parser-independent representation suitable for downstream RAG ingesti
 > evidence and benchmark infrastructure make accuracy measurable once an approved benchmark
 > corpus is supplied. This is still
 > development/evaluation quality, not a production service or a 95% accuracy claim.
+> The pre-RAG structural handoff is hardened and parser expansion is frozen. Next implementation:
+> section materialization, then semantic units and controlled chunking/retrieval experiments.
 
 ## What this project is
 
@@ -153,8 +155,8 @@ DocumentIR
 
 Important wire guarantees include:
 
-- Current writer Schema version `1.2.0`; deterministic readers migrate supported `1.0.0` and
-  `1.1.0` payloads.
+- Current writer Schema version `1.3.0`; deterministic readers migrate supported `1.0.0`,
+  `1.1.0`, and `1.2.0` payloads.
 - Before quality validation, `quality_summary` is explicitly `NOT_EVALUATED` with no fabricated
   score or report ID and is not publishable.
 - UTF-8 and Unicode NFC without destructive retrieval normalization.
@@ -165,6 +167,9 @@ Important wire guarantees include:
 - Published content requires resolvable provenance.
 - Page cardinality, reading order, graph references, table grids, and section topology are hard
   domain invariants.
+- Sibling sections may share a physical page, table cells retain row/column header roles, invalid
+  parser ordering remains unresolved, and decorative blocks remain evidence outside normal
+  retrieval flow.
 - Namespaced and bounded extensions cannot replace canonical semantics or contain arbitrary raw
   parser output.
 

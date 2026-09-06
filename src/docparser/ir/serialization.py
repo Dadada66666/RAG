@@ -9,7 +9,7 @@ import unicodedata
 from collections.abc import Mapping
 from typing import Any
 
-from docparser.ir.migrations import migrate_ir
+from docparser.ir.migrations import CURRENT_SCHEMA_VERSION, migrate_ir
 from docparser.ir.models import DocumentIR
 from docparser.ir.types import Sha256Digest
 
@@ -84,8 +84,8 @@ def load_canonical_json(data: bytes | str) -> DocumentIR:
     if not isinstance(payload, dict):
         raise ValueError("Canonical IR JSON root must be an object")
     source_version = payload.get("schema_version")
-    if source_version in {"1.0.0", "1.1.0"}:
-        payload = migrate_ir(source_version, "1.2.0", payload)
+    if source_version in {"1.0.0", "1.1.0", "1.2.0"}:
+        payload = migrate_ir(source_version, CURRENT_SCHEMA_VERSION, payload)
     return DocumentIR.model_validate_json(_encode_canonical_json(payload))
 
 

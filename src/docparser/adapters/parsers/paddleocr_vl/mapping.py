@@ -20,6 +20,7 @@ from docparser.domain.parser_contract import (
     ParseStatus,
     SourceBBox,
 )
+from docparser.ir.enums import TableCellHeaderRole
 
 JsonObject = dict[str, Any]
 
@@ -121,6 +122,11 @@ def table_cells_from_html(
                     column_span=column_span,
                     text=text,
                     is_header=explicit_header,
+                    header_role=(
+                        TableCellHeaderRole.UNKNOWN
+                        if explicit_header
+                        else TableCellHeaderRole.NONE
+                    ),
                     bbox=None,
                     confidence=None,
                 )

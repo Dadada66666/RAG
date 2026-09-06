@@ -61,3 +61,11 @@ rather than a calibrated continuous score. An evaluated summary still requires a
 non-publishable. The deterministic registry migrates `1.1.0 -> 1.2.0` by changing only
 `schema_version`; existing quality values are preserved. Historical V1.1 semantics are not
 reinterpreted.
+
+## Compatibility note — 2026-09-06
+
+The current V1 writer is `1.3.0`. This additive structural handoff amendment introduces the
+typed `TableCell.header_role` enum while retaining `is_header`. V1.2 cells in declared
+`header_row_indices` migrate to `COLUMN_HEADER`; other `is_header=true` cells migrate to
+`UNKNOWN`; non-header cells migrate to `NONE`. The migration does not guess row-stub semantics
+that the older wire contract could not represent.

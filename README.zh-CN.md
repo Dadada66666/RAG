@@ -7,8 +7,10 @@
 
 > 当前状态：已完成 Phase 0–2.6。`docling-standard` 仍是基线，完整的 PaddleOCR-VL-1.6
 > 产线是可选的、GPU 优先的对比候选。系统已保留原生 PDF 证据，并提供本地 Golden Dataset
-> Benchmark（黄金数据集基准），使准确率可以被测量。这仍是开发/评估质量，不是生产服务，
+> Benchmark（黄金数据集基准）基础设施；提供获批语料后才能测量准确率。这仍是开发/评估质量，不是生产服务，
 > 也不代表已经达到 95% 准确率。
+> Pre-RAG 结构交接已完成加固，Parser 扩展已冻结。下一步只进入 Section Materialization，
+> 再构建 Semantic Units 和受控的分块/检索实验。
 
 ## 项目定位
 
@@ -136,7 +138,8 @@ DocumentIR
 
 重要 wire contract 包括：
 
-- 当前 Writer Schema 版本为 `1.1.0`；Reader 会确定性迁移受支持的 `1.0.0` Payload。
+- 当前 Writer Schema 版本为 `1.3.0`；Reader 会确定性迁移受支持的 `1.0.0`、`1.1.0`
+  和 `1.2.0` Payload。
 - Quality Validator 运行前，`quality_summary` 必须为 `NOT_EVALUATED`，Score 和 Report ID 均为
   `null`，且不可发布；Normalizer 不会伪造 `PASS` 或 `1.0` 分数。
 - 文本使用 UTF-8 和 Unicode NFC，不在 Canonical 层做破坏性的检索归一化。
@@ -146,6 +149,8 @@ DocumentIR
 - 页面坐标使用左上角原点、x 向右、y 向下，单位为 PDF point（`1/72 inch`）。
 - 已发布内容必须具备可解析的 Provenance。
 - Page cardinality、Reading Order、Graph Reference、Table Grid 和 Section Topology 是硬不变量。
+- Sibling Section 可以共享物理页面；Table Cell 保留行/列表头角色；冲突的 Parser Reading
+  Order 保持 `UNRESOLVED`；装饰性 Block 保留为证据但不进入普通 Retrieval Flow。
 - Extension 必须带命名空间且大小受限，不能覆盖 Canonical 语义，也不能承载任意 Parser Raw JSON。
 
 权威契约见 [DOCUMENT_IR_SPEC.md](docs/DOCUMENT_IR_SPEC.md)，生成后的 wire schema 见
