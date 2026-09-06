@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import json
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -18,6 +20,15 @@ from docparser.ir.ids import ArtifactId
 from docparser.ir.migrations import migrate_ir
 from docparser.ir.serialization import dump_canonical_json, load_canonical_json, semantic_digest
 from docparser.ir.types import Sha256Digest
+
+
+def _v1_2_table_payload() -> dict[str, Any]:
+    payload: dict[str, Any] = json.loads(dump_canonical_json(make_full_document()))
+    payload["schema_version"] = "1.2.0"
+    table = payload["tables"][0]
+    for cell in table["cells"]:
+        cell.pop("header_role")
+    return payload
 
 
 def test_noop_migration_is_pure_idempotent_and_digest_preserving() -> None:
@@ -63,22 +74,80 @@ def test_v1_1_migrates_deterministically_to_v1_2_without_rewriting_quality() -> 
     assert payload["schema_version"] == "1.1.0"
 
 
-def test_v1_2_migrates_header_roles_without_inventing_unspecified_semantics() -> None:
-    payload = json.loads(dump_canonical_json(make_full_document()))
-    payload["schema_version"] = "1.2.0"
-    cells = payload["tables"][0]["cells"]
-    for cell in cells:
-        cell.pop("header_role")
+def test_v1_2_ambiguous_headers_migrate_to_unknown_and_clear_header_rows() -> None:
+    payload = _v1_2_table_payload()
+    table = payload["tables"][0]
+    cells = table["cells"]
     cells[2]["is_header"] = True
+    table["header_row_indices"] = [0, 1]
 
     migrated = migrate_ir("1.2.0", "1.3.0", payload)
+    migrated_table = migrated["tables"][0]
 
-    assert [cell["header_role"] for cell in migrated["tables"][0]["cells"][:3]] == [
-        "COLUMN_HEADER",
-        "COLUMN_HEADER",
+    assert [cell["header_role"] for cell in migrated_table["cells"][:4]] == [
         "UNKNOWN",
+        "UNKNOWN",
+        "UNKNOWN",
+        "NONE",
     ]
-    assert load_canonical_json(json.dumps(payload)).schema_version == "1.3.0"
+    assert migrated_table["header_row_indices"] == []
+
+
+def test_v1_2_without_header_evidence_migrates_all_cells_to_none() -> None:
+    payload = _v1_2_table_payload()
+    table = payload["tables"][0]
+    for cell in table["cells"]:
+        cell["is_header"] = False
+    table["header_row_indices"] = [0]
+
+    migrated = migrate_ir("1.2.0", "1.3.0", payload)
+    migrated_table = migrated["tables"][0]
+
+    assert {cell["header_role"] for cell in migrated_table["cells"]} == {"NONE"}
+    assert migrated_table["header_row_indices"] == []
+
+
+def test_v1_2_migration_never_invents_a_header_axis() -> None:
+    payload = _v1_2_table_payload()
+    table = payload["tables"][0]
+    for cell in table["cells"]:
+        cell["is_header"] = True
+    table["header_row_indices"] = [0, 1, 2]
+
+    migrated = migrate_ir("1.2.0", "1.3.0", payload)
+    roles = {cell["header_role"] for cell in migrated["tables"][0]["cells"]}
+
+    assert roles == {"UNKNOWN"}
+    assert roles.isdisjoint({"COLUMN_HEADER", "ROW_HEADER", "BOTH"})
+
+
+def test_v1_2_migration_is_deterministic_and_does_not_mutate_source() -> None:
+    payload = _v1_2_table_payload()
+    original = copy.deepcopy(payload)
+
+    first = migrate_ir("1.2.0", "1.3.0", payload)
+    second = migrate_ir("1.2.0", "1.3.0", copy.deepcopy(payload))
+
+    assert first == second
+    assert payload == original
+
+
+def test_load_canonical_json_migrates_ambiguous_v1_2_table_to_valid_v1_3() -> None:
+    payload = _v1_2_table_payload()
+    table = payload["tables"][0]
+    table["cells"][2]["is_header"] = True
+    table["header_row_indices"] = [0, 1]
+
+    document = load_canonical_json(json.dumps(payload))
+
+    assert document.schema_version == "1.3.0"
+    assert document.tables[0].header_row_indices == ()
+    assert [cell.header_role.value for cell in document.tables[0].cells[:4]] == [
+        "UNKNOWN",
+        "UNKNOWN",
+        "UNKNOWN",
+        "NONE",
+    ]
 
 
 def test_semantic_fingerprint_is_derived_and_checked() -> None:

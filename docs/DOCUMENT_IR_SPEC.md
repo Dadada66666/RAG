@@ -379,10 +379,11 @@ quality evidence. The schema remains in the V1 family path.
 
 Current compatibility note (2026-09-06): V1.3 adds the typed `TableCell.header_role` needed by
 table-aware retrieval. `header_row_indices` is derived only from `COLUMN_HEADER`/`BOTH`; row stubs
-no longer turn data rows into repeated column-header rows. The deterministic V1.2→V1.3 migration
-maps header cells in historical `header_row_indices` to `COLUMN_HEADER`, other historical
-`is_header=true` cells to `UNKNOWN`, and non-header cells to `NONE`. This preserves old public
-evidence without inventing row/column semantics that V1.2 could not express.
+no longer turn data rows into repeated column-header rows. V1.2 did not preserve header-axis
+evidence: its `header_row_indices` contained every row with any `is_header=true` cell. Therefore
+the deterministic V1.2→V1.3 migration maps `is_header=true` to `UNKNOWN`, maps false to `NONE`, and
+clears historical `header_row_indices`. Fresh V1.3 parsers may emit `COLUMN_HEADER`, `ROW_HEADER`,
+or `BOTH` only from explicit parser evidence.
 
 ## 15. Complete JSON example
 

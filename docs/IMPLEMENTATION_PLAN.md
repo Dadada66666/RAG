@@ -16,6 +16,8 @@
 > strict parent topology/direct ownership, retains table header-axis evidence in IR V1.3, rejects
 > conflicting parser reading-order evidence as unresolved, and keeps decorative blocks outside the
 > normal retrieval-flow contract. Multi-fragment provenance remains a declared limitation.
+> The final V1.2→V1.3 migration correction keeps ambiguous historical header axes `UNKNOWN` and
+> clears unreliable legacy `header_row_indices`; the V1.3 wire contract itself is unchanged.
 
 | Field | Value |
 |---|---|

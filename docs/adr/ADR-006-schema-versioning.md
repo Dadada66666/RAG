@@ -65,7 +65,8 @@ reinterpreted.
 ## Compatibility note — 2026-09-06
 
 The current V1 writer is `1.3.0`. This additive structural handoff amendment introduces the
-typed `TableCell.header_role` enum while retaining `is_header`. V1.2 cells in declared
-`header_row_indices` migrate to `COLUMN_HEADER`; other `is_header=true` cells migrate to
-`UNKNOWN`; non-header cells migrate to `NONE`. The migration does not guess row-stub semantics
-that the older wire contract could not represent.
+typed `TableCell.header_role` enum while retaining `is_header`. Because V1.2 collapsed row and
+column headers into the same boolean and derived `header_row_indices` from either role, historical
+rows are not reliable column-header evidence. Migration maps every V1.2 `is_header=true` cell to
+`UNKNOWN`, false to `NONE`, and clears `header_row_indices`. It does not infer an axis that the
+older wire contract did not preserve. Fresh V1.3 parser evidence remains unaffected.

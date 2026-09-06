@@ -29,14 +29,9 @@ def _v1_1_to_v1_2(payload: Mapping[str, Any]) -> dict[str, Any]:
 def _v1_2_to_v1_3(payload: Mapping[str, Any]) -> dict[str, Any]:
     migrated = copy.deepcopy(dict(payload))
     for table in migrated.get("tables", []):
-        header_rows = set(table.get("header_row_indices", []))
         for cell in table.get("cells", []):
-            if not cell.get("is_header", False):
-                cell["header_role"] = "NONE"
-            elif cell.get("row_index") in header_rows:
-                cell["header_role"] = "COLUMN_HEADER"
-            else:
-                cell["header_role"] = "UNKNOWN"
+            cell["header_role"] = "UNKNOWN" if cell.get("is_header", False) else "NONE"
+        table["header_row_indices"] = []
     migrated["schema_version"] = CURRENT_SCHEMA_VERSION
     return migrated
 
