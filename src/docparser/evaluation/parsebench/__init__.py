@@ -2,9 +2,11 @@
 
 from docparser.evaluation.parsebench.export import (
     export_document_to_parsebench,
+    parsebench_layout_label,
     write_parsebench_prediction,
 )
 from docparser.evaluation.parsebench.runner import (
+    official_evaluation_groups,
     official_evaluator_command,
     run_official_parsebench,
 )
@@ -19,7 +21,9 @@ __all__ = [
     "export_document_to_parsebench",
     "load_subset_manifest",
     "manifest_digest",
+    "official_evaluation_groups",
     "official_evaluator_command",
+    "parsebench_layout_label",
     "prepare_subset_manifests",
     "prepare_parsebench_predictions",
     "run_official_parsebench",

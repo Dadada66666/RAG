@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | Next 1 offline evaluator and integration contract implemented; real corpus baselines pending |
-| Contract version | `parsing-eval/2.1.0` |
+| Status | Parsing v1 official bridge hardened; real corpus baselines pending |
+| Contract version | `parsing-eval/2.2.0` |
 | Scope | Parser accuracy, provenance, Quality Gate and fallback evaluation |
 
 ## 1. Purpose and terminology
@@ -116,11 +116,22 @@ fixtures validate export shape; a small upstream-compatible smoke validates the 
 metric names, including table metrics such as GTRM, are copied only from the official result.
 
 The executable contract writes `<example_id>.result.json` below a parser-isolated prediction root
-and invokes the pinned `parse-bench evaluation run` command with explicit `output_dir`,
-`test_cases_dir`, `product_type=parse`, and `report_dir`. `benchmark-parsebench-official` also keeps
+and invokes the pinned `parse-bench evaluation run` command once per discovered official evaluation
+group with explicit `output_dir`, `test_cases_dir`, `product_type=parse`, `group`, and `report_dir`.
+The shared `text/` inference stream is evaluated independently as `text_content` and
+`text_formatting`, exactly as the pinned upstream pipeline requires; neither test-case set can
+shadow the other. `benchmark-parsebench-official` also keeps
 the corresponding Canonical IR, neutral result, preflight and diagnostics per example. The checkout,
 its installed Python runtime and dataset root are supplied locally; this repository never downloads
 the ParseBench corpus in the evaluation command.
+
+The export adapter maps Canonical `BlockType` values to the pinned LlamaParse V3 label vocabulary
+only at this interoperability boundary. Unknown Canonical confidence remains unknown and is omitted
+from the optional upstream JSON field. Text/Markdown rendering and layout emission are independent,
+so a valid non-text layout object such as a bbox-only figure remains available to layout and visual
+grounding evaluation. Table structure is serialized without parser-specific repair. A benchmark run
+constructs one parser adapter; the Paddle adapter lazily initializes one pipeline and reuses it for
+the run's serial documents. Existing saved case IR can be re-exported without rerunning inference.
 
 Project-native evaluation remains responsible for requirements ParseBench does not cover:
 Canonical provenance, cross-page logical table identity, structural critical financial numerics,

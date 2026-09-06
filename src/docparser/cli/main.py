@@ -332,6 +332,13 @@ def benchmark_parsebench_official(
     ] = Path("./parsebench-output"),
     parser: Annotated[str, typer.Option("--parser")] = "docling-standard",
     device: Annotated[RuntimeDevice, typer.Option("--device")] = RuntimeDevice.AUTO,
+    reuse_saved_ir: Annotated[
+        bool,
+        typer.Option(
+            "--reuse-saved-ir",
+            help="Re-export existing case IR without parser inference.",
+        ),
+    ] = False,
 ) -> None:
     """Parse a frozen local subset and invoke the pinned official ParseBench evaluator."""
 
@@ -344,6 +351,7 @@ def benchmark_parsebench_official(
             export_root=run_root / "predictions",
             cases_root=run_root / "cases",
             config=ParsingConfig(parser=parser, device=device),
+            reuse_saved_ir=reuse_saved_ir,
         )
         request = ParseBenchRunRequest(
             benchmark_id=f"official-{subset.dataset_id}-{parser}",

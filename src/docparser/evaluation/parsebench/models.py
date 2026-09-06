@@ -16,7 +16,7 @@ PARSEBENCH_COMMIT = "a9d1391da8a9e83c0a6c56a65ea994574ff43098"
 PARSEBENCH_DATASET_REPOSITORY = "llamaindex/ParseBench"
 PARSEBENCH_DATASET_REVISION = "57fb218011ac95a628ddefacecda8010343ca0a6"
 PARSEBENCH_EVALUATOR_VERSION = "0.2.0"
-PARSEBENCH_ADAPTER_VERSION = "parsebench-export@1.0.0"
+PARSEBENCH_ADAPTER_VERSION = "parsebench-export@1.1.0"
 PARSEBENCH_SELECTION_VERSION = "parsebench-complex-selector@1.0.0"
 
 
@@ -114,6 +114,8 @@ class OfficialParseBenchResult(StrictIRModel):
     subset_manifest_digest: Sha256Digest
     evaluator_version: NonEmptyNfcString
     evaluator_command: tuple[NonEmptyNfcString, ...]
+    evaluator_commands: tuple[tuple[NonEmptyNfcString, ...], ...]
+    evaluation_groups: tuple[NonEmptyNfcString, ...]
     adapter_version: NonEmptyNfcString = PARSEBENCH_ADAPTER_VERSION
     environment_digest: Sha256Digest
     hardware_description: NonEmptyNfcString

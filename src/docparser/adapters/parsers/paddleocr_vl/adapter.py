@@ -54,6 +54,8 @@ class PaddleOCRVLParserAdapter:
         self._options = options or PaddleOCRVLOptions()
         self._run_id_factory = run_id_factory
         self._clock = clock
+        self._pipeline: Any | None = None
+        self._pipeline_device: RuntimeDevice | None = None
 
     def descriptor(self) -> ParserDescriptor:
         return ParserDescriptor(
@@ -144,9 +146,23 @@ class PaddleOCRVLParserAdapter:
         return map_paddleocr_vl_pages(payloads, descriptor=self.descriptor(), run=run)
 
     def _convert(self, source: Path, device: RuntimeDevice) -> list[JsonObject]:
+        pipeline = self._pipeline_instance(device)
+        return [
+            self._sanitize_result(result, index)
+            for index, result in enumerate(pipeline.predict(input=str(source)))
+        ]
+
+    def _pipeline_instance(self, device: RuntimeDevice) -> Any:
         from paddleocr import PaddleOCRVL
 
-        pipeline = PaddleOCRVL(
+        if self._pipeline is not None:
+            if self._pipeline_device is not device:
+                raise PaddleOCRVLRuntimeError(
+                    "one Paddle adapter instance cannot change runtime device",
+                    code="RUNTIME_UNAVAILABLE",
+                )
+            return self._pipeline
+        self._pipeline = PaddleOCRVL(
             pipeline_version=self._options.pipeline_version,
             layout_detection_model_name=self._options.layout_model,
             vl_rec_model_name=self._options.recognition_model,
@@ -159,10 +175,8 @@ class PaddleOCRVLParserAdapter:
             use_queues=self._options.use_queues,
             device="gpu:0" if device is RuntimeDevice.CUDA else "cpu",
         )
-        return [
-            self._sanitize_result(result, index)
-            for index, result in enumerate(pipeline.predict(input=str(source)))
-        ]
+        self._pipeline_device = device
+        return self._pipeline
 
     @classmethod
     def _sanitize_result(cls, value: Any, fallback_index: int) -> JsonObject:

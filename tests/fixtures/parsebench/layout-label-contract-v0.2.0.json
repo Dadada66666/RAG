@@ -1,0 +1,24 @@
+{
+  "evaluator_version": "0.2.0",
+  "repository_commit": "a9d1391da8a9e83c0a6c56a65ea994574ff43098",
+  "label_version": "v3",
+  "llamaparse_v3_accepted_labels": [
+    "caption",
+    "checkbox-selected",
+    "checkbox-unselected",
+    "code",
+    "document-index",
+    "footnote",
+    "form",
+    "formula",
+    "key-value-region",
+    "list-item",
+    "page-footer",
+    "page-header",
+    "picture",
+    "section-header",
+    "table",
+    "text",
+    "title"
+  ]
+}

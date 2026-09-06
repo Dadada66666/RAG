@@ -29,10 +29,20 @@ def test_pinned_official_parsebench_evaluator_accepts_project_export(tmp_path: P
     group = test_cases / "text"
     group.mkdir(parents=True)
     write_tiny_pdf(group / "known-answer.pdf", layout="text")
-    (group / "known-answer.test.json").write_text(
-        json.dumps({"expected_markdown": "# Annual Report\n\nRevenue increased during the year."}),
-        encoding="utf-8",
-    )
+    expected_markdown = "# Annual Report\n\nRevenue increased during the year."
+    for category in ("text_content", "text_formatting"):
+        (test_cases / f"{category}.jsonl").write_text(
+            json.dumps(
+                {
+                    "pdf": "text/known-answer.pdf",
+                    "category": category,
+                    "type": "expected_markdown",
+                    "expected_markdown": expected_markdown,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
     prediction_root = tmp_path / "predictions"
     prediction = export_document_to_parsebench(
@@ -60,5 +70,11 @@ def test_pinned_official_parsebench_evaluator_accepts_project_export(tmp_path: P
         )
     )
 
-    assert report.official_metrics["total_examples"] == 1
-    assert report.official_metrics["successful"] == 1
+    content_report = report.official_metrics["text_content"]
+    formatting_report = report.official_metrics["text_formatting"]
+    assert isinstance(content_report, dict)
+    assert isinstance(formatting_report, dict)
+    assert content_report["total_examples"] == 1
+    assert content_report["successful"] == 1
+    assert formatting_report["total_examples"] == 1
+    assert formatting_report["successful"] == 1

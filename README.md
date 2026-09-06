@@ -260,7 +260,9 @@ Expected command responsibilities:
   claim is valid.
 - `benchmark-parsebench-official` parses one frozen, locally provisioned subset, preserves each
   sample's Canonical IR/diagnostics, writes official `*.result.json` predictions, and invokes the
-  evaluator from the pinned ParseBench checkout. It does not download the corpus or evaluator.
+  evaluator from the pinned ParseBench checkout. One parser instance is reused for the serial batch;
+  `--reuse-saved-ir` re-exports existing case IR without parser inference. It does not download the
+  corpus or evaluator.
 
 After installing the optional parser, run:
 
@@ -406,9 +408,11 @@ runnable and all tests passing.
 | Complete | 2.5 | Real PDF preflight, optional Docling baseline, neutral normalization, diagnostics, local CLI |
 | Complete | 2.6 | Native PDF evidence, PaddleOCR-VL candidate, accuracy metrics and benchmark foundation |
 | Complete | Next 1 offline preparation | Correct project evaluator, pinned Official ParseBench boundary, deterministic unprovisioned development/holdout manifests |
+| Complete | Parsing v1 closeout | Official labels/serialization and text-group routing hardened; bbox-only layout retained; Paddle model reused per benchmark run |
 | Awaiting local corpus | Next 1 baselines | User-provisioned approved ParseBench data; no dataset is downloaded by default |
 | Complete, observe-only by default | Next 2 | Discrete Quality Gate, IR 1.2 lifecycle, calibration metrics/profile freeze contract |
 | Complete, evidence-gated MVP | Next 3 | Single-page materialization, atomic PAGE/TABLE fallback, copy-on-write revalidation |
+| Next | Next 4 | Structure-aware parent-child chunking for RAG experiments |
 | Planned | 3–5 | Immutable local artifacts, SQLite job state, durable parser orchestration |
 | Planned | 6–8 | Secure PDF admission and production multipage normalization hardening |
 | Planned | 9–11 | Quality engine, selective fallback, transactional merge and revalidation |

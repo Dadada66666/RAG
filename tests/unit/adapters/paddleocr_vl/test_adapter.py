@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from tests.parser_fixture import normalization_context, profile_for_result
@@ -128,3 +130,32 @@ def test_official_result_json_rejects_private_sdk_objects() -> None:
 
     with pytest.raises(PaddleOCRVLRuntimeError, match="non-JSON-safe"):
         PaddleOCRVLParserAdapter._sanitize_result(result, 0)
+
+
+def test_adapter_instance_reuses_one_pipeline_for_repeated_documents(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    constructor_count = 0
+    predict_count = 0
+
+    class FakePipeline:
+        def __init__(self, **options: object) -> None:
+            nonlocal constructor_count
+            del options
+            constructor_count += 1
+
+        def predict(self, *, input: str) -> list[_MappingLikePaddleResult]:
+            nonlocal predict_count
+            assert input.endswith(".pdf")
+            predict_count += 1
+            return [_MappingLikePaddleResult()]
+
+    monkeypatch.setitem(sys.modules, "paddleocr", SimpleNamespace(PaddleOCRVL=FakePipeline))
+    adapter = PaddleOCRVLParserAdapter()
+
+    for index in range(12):
+        adapter._convert(tmp_path / f"document-{index}.pdf", RuntimeDevice.CPU)
+
+    assert constructor_count == 1
+    assert predict_count == 12

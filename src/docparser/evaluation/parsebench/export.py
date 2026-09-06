@@ -20,6 +20,32 @@ from docparser.ir.enums import BlockType, ReadingOrderStatus
 from docparser.ir.models import Block, DocumentIR
 from docparser.ir.tables import Table
 
+PARSEBENCH_LAYOUT_LABEL_CONTRACT = "llamaparse-v3@parsebench-0.2.0"
+_PARSEBENCH_LAYOUT_LABELS: dict[BlockType, str] = {
+    BlockType.TITLE: "title",
+    BlockType.HEADING: "section-header",
+    BlockType.PARAGRAPH: "text",
+    BlockType.LIST: "text",
+    BlockType.LIST_ITEM: "list-item",
+    BlockType.TABLE: "table",
+    BlockType.FIGURE: "picture",
+    BlockType.FIGURE_CAPTION: "caption",
+    BlockType.EQUATION: "formula",
+    BlockType.CODE: "code",
+    BlockType.QUOTE: "text",
+    BlockType.FOOTNOTE: "footnote",
+    BlockType.HEADER: "page-header",
+    BlockType.FOOTER: "page-footer",
+    BlockType.PAGE_NUMBER: "text",
+    BlockType.UNKNOWN: "text",
+}
+
+
+def parsebench_layout_label(block_type: BlockType) -> str:
+    """Map Canonical block semantics to the pinned ParseBench V3 vocabulary."""
+
+    return _PARSEBENCH_LAYOUT_LABELS[block_type]
+
 
 def _table_html(table: Table) -> str:
     anchors = {(cell.row_index, cell.column_index): cell for cell in table.cells}
@@ -65,8 +91,9 @@ def _block_markdown(block: Block, table_by_id: dict[str, Table]) -> str:
 
 
 def _layout_item(block: Block, markdown: str) -> ParseBenchLayoutItemIR:
+    label = parsebench_layout_label(block.block_type)
     return ParseBenchLayoutItemIR(
-        type=block.block_type.value.lower(),
+        type=label,
         md=markdown,
         html=markdown if block.block_type is BlockType.TABLE else "",
         value=block.text or "",
@@ -76,7 +103,7 @@ def _layout_item(block: Block, markdown: str) -> ParseBenchLayoutItemIR:
             w=block.bbox.width,
             h=block.bbox.height,
             confidence=block.confidence,
-            label=block.block_type.value,
+            label=label,
         ),
     )
 
@@ -106,12 +133,12 @@ def export_document_to_parsebench(
                 str(block.block_id),
             ),
         )
-        rendered = [
+        textual_blocks = [
             (block, markdown)
             for block in ordered
             if (markdown := _block_markdown(block, table_by_id))
         ]
-        page_markdown = "\n\n".join(markdown for _, markdown in rendered)
+        page_markdown = "\n\n".join(markdown for _, markdown in textual_blocks)
         pages.append(ParseBenchPageIR(page_index=page.page_number - 1, markdown=page_markdown))
         layout_pages.append(
             ParseBenchLayoutPageIR(
@@ -119,9 +146,11 @@ def export_document_to_parsebench(
                 width=page.width,
                 height=page.height,
                 md=page_markdown,
-                text="\n".join(block.text or "" for block, _ in rendered),
+                text="\n".join(block.text or "" for block, _ in textual_blocks),
                 original_orientation_angle=int(page.rotation_applied),
-                items=tuple(_layout_item(block, markdown) for block, markdown in rendered),
+                items=tuple(
+                    _layout_item(block, _block_markdown(block, table_by_id)) for block in ordered
+                ),
             )
         )
         document_markdown.append(page_markdown)
@@ -163,7 +192,7 @@ def write_parsebench_prediction(
     path = export_root / f"{prediction.request.example_id}.result.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(
-        prediction.model_dump(mode="json"),
+        prediction.model_dump(mode="json", exclude_none=True),
         ensure_ascii=False,
         allow_nan=False,
         sort_keys=True,

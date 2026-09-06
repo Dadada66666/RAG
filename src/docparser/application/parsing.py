@@ -335,7 +335,7 @@ def _diagnostics(
     )
 
 
-def _build_parser(config: ParsingConfig) -> DocumentParser:
+def build_parser(config: ParsingConfig) -> DocumentParser:
     def docling() -> DocumentParser:
         from docparser.adapters.parsers.docling import DoclingOptions, DoclingParserAdapter
 
@@ -375,7 +375,7 @@ def parse_document_with_diagnostics(
     """Run preflight, parser, neutral normalization, and IR invariant validation."""
 
     if parser is None:
-        parser = _build_parser(config)
+        parser = build_parser(config)
     started = perf_counter()
     profile = profile_provider(path)
     digest = _source_digest(path)
