@@ -1,8 +1,8 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: Deterministic flat section materialization complete**
+> **CURRENT EXECUTION POINTER: OHR-Bench deterministic retrieval subset preparation complete**
 >
-> **NEXT: Retrieval benchmark + fixed-token baseline, then minimal structure-aware chunking**
+> **NEXT: IR fixed-token retrieval baseline with BGE-M3 and exact cosine search**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
@@ -24,6 +24,12 @@
 > It is an explicit RAG-ingestion derived step: callers apply `materialize_sections()` to the final
 > saved Canonical IR after optional fallback. `parse-local` and `parse-robust` do not invoke it.
 > The derived revision resets revision-scoped quality evidence to `NOT_EVALUATED`.
+> Retrieval benchmark preparation reads the official local `data/qas_v2.json` contract, selects
+> the deterministic external `ohr-rag-core-v1` subset, and emits chunking-independent query truth
+> plus required-document metadata. OHR data, PDFs, model weights, embeddings, and run artifacts
+> remain external to Git. The first retrieval baseline uses L2-normalized BGE-M3 embeddings and
+> exhaustive NumPy matrix multiplication so chunking comparisons are not confounded by ANN index
+> behavior or vector-database infrastructure.
 
 | Field | Value |
 |---|---|

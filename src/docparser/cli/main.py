@@ -16,7 +16,13 @@ from docparser.application.parsing import (
 from docparser.application.robust import robust_parse_document, write_robust_outputs
 from docparser.config import load_config
 from docparser.domain.parser_contract import RuntimeDevice
-from docparser.evaluation import load_manifest, run_parsing_benchmark, write_benchmark_report
+from docparser.evaluation import (
+    load_manifest,
+    prepare_ohr_rag_core,
+    run_parsing_benchmark,
+    write_benchmark_report,
+    write_ohr_subset,
+)
 from docparser.evaluation.parsebench import (
     load_subset_manifest,
     manifest_digest,
@@ -303,6 +309,54 @@ def prepare_parsebench_manifests(
     typer.echo(
         f"prepared {len(development.selected_items)} development and "
         f"{len(holdout.selected_items)} protected-holdout IDs"
+    )
+
+
+@app.command("prepare-ohr-rag-core")
+def prepare_ohr_retrieval_subset(
+    dataset_root: Annotated[
+        Path,
+        typer.Option(
+            "--dataset-root",
+            file_okay=False,
+            resolve_path=True,
+            help="Locally provisioned OHR-Bench root containing data/qas_v2.json.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            "--output-dir",
+            file_okay=False,
+            resolve_path=True,
+            help="External destination for subset artifacts; no data is written into Git.",
+        ),
+    ],
+    source_dataset_revision: Annotated[
+        str | None,
+        typer.Option("--source-dataset-revision"),
+    ] = None,
+    source_commit: Annotated[
+        str | None,
+        typer.Option("--source-commit", help="Optional current RAG source commit for provenance."),
+    ] = None,
+) -> None:
+    """Prepare deterministic OHR retrieval truth from local external metadata."""
+
+    try:
+        subset = prepare_ohr_rag_core(
+            dataset_root=dataset_root,
+            source_dataset_revision=source_dataset_revision,
+            source_commit=source_commit,
+        )
+        write_ohr_subset(subset, output_dir)
+    except (OSError, ValueError, json.JSONDecodeError, ValidationError) as exc:
+        typer.echo(f"OHR subset preparation failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    shortfall = " with quota shortfall" if subset.manifest.shortfalls else ""
+    typer.echo(
+        f"prepared {subset.manifest.selected_query_count} queries from "
+        f"{subset.manifest.selected_document_count} documents{shortfall}; output={output_dir}"
     )
 
 

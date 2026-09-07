@@ -1,0 +1,57 @@
+[
+  {
+    "doc_name": "finance/synthetic-report",
+    "ID": "synthetic-text-1",
+    "questions": "What phrase appears in the synthetic paragraph?",
+    "answers": "Example phrase",
+    "doc_type": "finance",
+    "answer_form": "String",
+    "evidence_source": "text",
+    "evidence_context": "This is an invented paragraph with an example phrase.",
+    "evidence_page_no": 1
+  },
+  {
+    "doc_name": "finance/synthetic-report",
+    "ID": "synthetic-table-1",
+    "questions": "What is the invented table value?",
+    "answers": "42",
+    "doc_type": "finance",
+    "answer_form": "Numeric",
+    "evidence_source": "table",
+    "evidence_context": "Synthetic metric | 42",
+    "evidence_page_no": 2
+  },
+  {
+    "doc_name": "manual/synthetic-guide",
+    "ID": "synthetic-order-1",
+    "questions": "Which invented step comes first?",
+    "answers": "Step A",
+    "doc_type": "manual",
+    "answer_form": "String",
+    "evidence_source": "reading_order",
+    "evidence_context": "Step A precedes Step B in this synthetic example.",
+    "evidence_page_no": 3
+  },
+  {
+    "doc_name": "academic/synthetic-paper",
+    "ID": "synthetic-formula-1",
+    "questions": "What is the invented formula?",
+    "answers": "x plus y",
+    "doc_type": "academic",
+    "answer_form": "String",
+    "evidence_source": "formula",
+    "evidence_context": "An invented formula context.",
+    "evidence_page_no": 4
+  },
+  {
+    "doc_name": "newspaper/synthetic-story",
+    "ID": "synthetic-chart-1",
+    "questions": "What does the invented chart show?",
+    "answers": "An upward line",
+    "doc_type": "newspaper",
+    "answer_form": "String",
+    "evidence_source": "chart",
+    "evidence_context": "An invented chart context.",
+    "evidence_page_no": 5
+  }
+]

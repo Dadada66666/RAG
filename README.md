@@ -10,9 +10,19 @@ traceable, parser-independent representation suitable for downstream RAG ingesti
 > evidence and benchmark infrastructure make accuracy measurable once an approved benchmark
 > corpus is supplied. This is still
 > development/evaluation quality, not a production service or a 95% accuracy claim.
-> The pre-RAG structural handoff and deterministic flat section materialization are complete;
-> parser expansion is frozen. Next: retrieval benchmark plus a fixed-token baseline, followed by
-> minimal structure-aware chunking.
+> The pre-RAG structural handoff, deterministic flat section materialization, and OHR-Bench
+> retrieval-subset preparation are complete; parser expansion is frozen. Next: the IR fixed-token
+> retrieval baseline with BGE-M3 and exact cosine search.
+
+Retrieval benchmark data, source PDFs, model weights, embeddings, and run artifacts are external
+runtime assets. Git contains only deterministic preparation/evaluation code and synthetic tests.
+Prepare the external subset with:
+
+```bash
+docparser prepare-ohr-rag-core --dataset-root /data/rag/datasets/ohr-bench \
+  --output-dir /data/rag/benchmark_subsets/ohr-rag-core-v1 \
+  --source-commit "$(git rev-parse HEAD)"
+```
 
 ## What this project is
 
@@ -421,10 +431,11 @@ runnable and all tests passing.
 | Complete | Next 1 offline preparation | Correct project evaluator, pinned Official ParseBench boundary, deterministic unprovisioned development/holdout manifests |
 | Complete | Parsing v1 closeout | Official labels/serialization and text-group routing hardened; bbox-only layout retained; Paddle model reused per benchmark run |
 | Complete | Section materialization | Deterministic flat sections, synthetic preamble/body, derived provenance and assignment diagnostics |
+| Complete | OHR retrieval preparation | Deterministic external `ohr-rag-core-v1` query and required-document manifests |
 | Awaiting local corpus | Next 1 baselines | User-provisioned approved ParseBench data; no dataset is downloaded by default |
 | Complete, observe-only by default | Next 2 | Discrete Quality Gate, IR 1.2 lifecycle, calibration metrics/profile freeze contract |
 | Complete, evidence-gated MVP | Next 3 | Single-page materialization, atomic PAGE/TABLE fallback, copy-on-write revalidation |
-| Next | Retrieval baseline | Retrieval benchmark and fixed-token baseline before structure-aware chunking |
+| Next | Retrieval baseline | IR fixed-token chunks, BGE-M3, and exact cosine search |
 | Planned | 3–5 | Immutable local artifacts, SQLite job state, durable parser orchestration |
 | Planned | 6–8 | Secure PDF admission and production multipage normalization hardening |
 | Planned | 9–11 | Quality engine, selective fallback, transactional merge and revalidation |

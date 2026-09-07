@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -27,6 +28,73 @@ def test_version_succeeds() -> None:
 
     assert result.exit_code == 0
     assert result.stdout.strip() == __version__
+
+
+def test_prepare_ohr_subset_uses_explicit_external_paths(tmp_path: Path) -> None:
+    dataset_root = tmp_path / "ohr"
+    qa_path = dataset_root / "data" / "qas_v2.json"
+    qa_path.parent.mkdir(parents=True)
+    qa_path.write_text(
+        json.dumps(
+            [
+                {
+                    "doc_name": "manual/synthetic",
+                    "ID": "synthetic-1",
+                    "questions": "What is the synthetic answer?",
+                    "answers": "Example",
+                    "doc_type": "manual",
+                    "answer_form": "String",
+                    "evidence_source": "text",
+                    "evidence_context": "Synthetic context.",
+                    "evidence_page_no": 1,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "external-subset"
+
+    result = runner.invoke(
+        app,
+        [
+            "prepare-ohr-rag-core",
+            "--dataset-root",
+            str(dataset_root),
+            "--output-dir",
+            str(output),
+            "--source-dataset-revision",
+            "synthetic-v1",
+            "--source-commit",
+            "abc123",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "prepared 1 queries from 1 documents with quota shortfall" in result.stdout
+    assert (output / "queries.jsonl").is_file()
+    assert (output / "manifest.json").is_file()
+    assert (output / "required_documents.json").is_file()
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["source_dataset_revision"] == "synthetic-v1"
+    assert manifest["source_commit"] == "abc123"
+
+
+def test_prepare_ohr_subset_reports_missing_dataset_root(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+
+    result = runner.invoke(
+        app,
+        [
+            "prepare-ohr-rag-core",
+            "--dataset-root",
+            str(missing),
+            "--output-dir",
+            str(tmp_path / "output"),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert f"OHR dataset root not found: {missing}" in result.stderr
 
 
 def test_parse_robust_accepts_independent_supported_slice(
