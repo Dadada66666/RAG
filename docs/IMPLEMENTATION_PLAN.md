@@ -1,8 +1,8 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: OHR-Bench deterministic retrieval subset preparation complete**
+> **CURRENT EXECUTION POINTER: OHR adapter aligned with official `qas_v2.json`; real external smoke pending local dataset provisioning**
 >
-> **NEXT: IR fixed-token retrieval baseline with BGE-M3 and exact cosine search**
+> **NEXT: Run the real external OHR metadata preparation smoke; only then begin the IR fixed-token retrieval baseline**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
@@ -24,12 +24,14 @@
 > It is an explicit RAG-ingestion derived step: callers apply `materialize_sections()` to the final
 > saved Canonical IR after optional fallback. `parse-local` and `parse-robust` do not invoke it.
 > The derived revision resets revision-scoped quality evidence to `NOT_EVALUATED`.
-> Retrieval benchmark preparation reads the official local `data/qas_v2.json` contract, selects
-> the deterministic external `ohr-rag-core-v1` subset, and emits chunking-independent query truth
-> plus required-document metadata. OHR data, PDFs, model weights, embeddings, and run artifacts
-> remain external to Git. The first retrieval baseline uses L2-normalized BGE-M3 embeddings and
-> exhaustive NumPy matrix multiplication so chunking comparisons are not confounded by ANN index
-> behavior or vector-database infrastructure.
+> Retrieval benchmark preparation reads the official local `data/qas_v2.json` contract, preserving
+> scalar/list evidence contexts and zero-based source page indices before emitting normalized,
+> chunking-independent query truth plus required-document metadata. `multi`, formula, and chart
+> evidence are known but excluded from the first subset. OHR data, PDFs, model weights, embeddings,
+> and run artifacts remain external to Git. A real metadata smoke remains required before this
+> preparation phase is declared complete. The first retrieval baseline will use L2-normalized
+> BGE-M3 embeddings and exhaustive NumPy matrix multiplication so chunking comparisons are not
+> confounded by ANN index behavior or vector-database infrastructure.
 
 | Field | Value |
 |---|---|

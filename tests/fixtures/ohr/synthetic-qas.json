@@ -8,7 +8,7 @@
     "answer_form": "String",
     "evidence_source": "text",
     "evidence_context": "This is an invented paragraph with an example phrase.",
-    "evidence_page_no": 1
+    "evidence_page_no": 24
   },
   {
     "doc_name": "finance/synthetic-report",
@@ -18,8 +18,14 @@
     "doc_type": "finance",
     "answer_form": "Numeric",
     "evidence_source": "table",
-    "evidence_context": "Synthetic metric | 42",
-    "evidence_page_no": 2
+    "evidence_context": [
+      "Synthetic metric header",
+      "Synthetic metric | 42"
+    ],
+    "evidence_page_no": [
+      1,
+      2
+    ]
   },
   {
     "doc_name": "manual/synthetic-guide",
@@ -29,8 +35,31 @@
     "doc_type": "manual",
     "answer_form": "String",
     "evidence_source": "reading_order",
-    "evidence_context": "Step A precedes Step B in this synthetic example.",
-    "evidence_page_no": 3
+    "evidence_context": [
+      "Synthetic ordering context part A.",
+      "Step A precedes Step B in this synthetic example."
+    ],
+    "evidence_page_no": [
+      0,
+      2
+    ]
+  },
+  {
+    "doc_name": "manual/synthetic-multi",
+    "ID": "synthetic-multi-1",
+    "questions": "Which invented evidence families are combined?",
+    "answers": "Text and table",
+    "doc_type": "manual",
+    "answer_form": "String",
+    "evidence_source": "multi",
+    "evidence_context": [
+      "Synthetic text evidence.",
+      "Synthetic table evidence."
+    ],
+    "evidence_page_no": [
+      0,
+      1
+    ]
   },
   {
     "doc_name": "academic/synthetic-paper",

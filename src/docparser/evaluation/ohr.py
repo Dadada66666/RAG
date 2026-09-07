@@ -12,12 +12,12 @@ from typing import Annotated, Self
 
 from pydantic import Field, model_validator
 
-from docparser.ir.base import NonNegativeInt, PositiveInt, StrictIRModel
+from docparser.ir.base import NonNegativeInt, StrictIRModel
 from docparser.ir.types import NfcString, NonEmptyNfcString, Sha256Digest, UtcTimestamp
 
 OHR_BENCHMARK_ID = "ohr-rag-core-v1"
 OHR_SOURCE_DATASET = "OHR-Bench"
-OHR_SELECTION_POLICY_VERSION = "ohr-rag-core-v1@1.0.0"
+OHR_SELECTION_POLICY_VERSION = "ohr-rag-core-v1@1.1.0"
 OHR_QA_RELATIVE_PATH = Path("data/qas_v2.json")
 
 
@@ -34,7 +34,7 @@ _OHR_SUPPORTED_EVIDENCE = {
     "table": RetrievalEvidenceType.TABLE,
     "reading_order": RetrievalEvidenceType.READING_ORDER,
 }
-_OHR_EXCLUDED_EVIDENCE = frozenset({"formula", "chart"})
+_OHR_EXCLUDED_EVIDENCE = frozenset({"formula", "chart", "multi"})
 _EVIDENCE_ORDER: tuple[RetrievalEvidenceType, ...] = (
     RetrievalEvidenceType.TEXT,
     RetrievalEvidenceType.TABLE,
@@ -52,8 +52,11 @@ class OHRSourceQuestion(StrictIRModel):
     document_type_or_domain: NonEmptyNfcString = Field(alias="doc_type")
     answer_form: NonEmptyNfcString
     evidence_source: NonEmptyNfcString
-    evidence_context: NfcString
-    evidence_page_number: Annotated[int, Field(strict=True, ge=1)] = Field(
+    evidence_contexts: NfcString | list[NfcString] = Field(alias="evidence_context")
+    evidence_page_indices: (
+        Annotated[int, Field(strict=True, ge=0)]
+        | list[Annotated[int, Field(strict=True, ge=0)]]
+    ) = Field(
         alias="evidence_page_no"
     )
 
@@ -83,7 +86,7 @@ class OHRSelectionConfig(StrictIRModel):
 
 
 class RetrievalGroundTruth(StrictIRModel):
-    """Chunking-independent retrieval truth exported from one OHR QA item."""
+    """Chunking-independent truth preserving OHR's 0-based source page indices."""
 
     benchmark_query_id: NonEmptyNfcString
     source_dataset: NonEmptyNfcString
@@ -92,8 +95,8 @@ class RetrievalGroundTruth(StrictIRModel):
     question: NonEmptyNfcString
     answer: NonEmptyNfcString
     evidence_type: RetrievalEvidenceType
-    evidence_page_numbers: tuple[PositiveInt, ...]
-    evidence_context: NfcString
+    evidence_contexts: tuple[NfcString, ...]
+    evidence_page_indices: tuple[Annotated[int, Field(strict=True, ge=0)], ...]
     document_type_or_domain: NonEmptyNfcString
 
 
@@ -192,6 +195,14 @@ def _source_dataset_digest(questions: tuple[OHRSourceQuestion, ...]) -> Sha256Di
 def _query_id(item: OHRSourceQuestion) -> str:
     digest = _stable_key(OHR_SOURCE_DATASET, item.source_dataset_item_id)
     return f"ohrq-{digest[:32]}"
+
+
+def _normalized_contexts(value: str | list[str]) -> tuple[str, ...]:
+    return tuple(value) if isinstance(value, list) else (value,)
+
+
+def _normalized_page_indices(value: int | list[int]) -> tuple[int, ...]:
+    return tuple(value) if isinstance(value, list) else (value,)
 
 
 def _eligible_items(
@@ -348,8 +359,8 @@ def prepare_ohr_rag_core(
             question=item.question,
             answer=item.answer,
             evidence_type=evidence_type,
-            evidence_page_numbers=(item.evidence_page_number,),
-            evidence_context=item.evidence_context,
+            evidence_contexts=_normalized_contexts(item.evidence_contexts),
+            evidence_page_indices=_normalized_page_indices(item.evidence_page_indices),
             document_type_or_domain=item.document_type_or_domain,
         )
         for item, evidence_type in selected_items

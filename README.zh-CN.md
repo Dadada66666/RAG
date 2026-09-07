@@ -9,9 +9,9 @@
 > 产线是可选的、GPU 优先的对比候选。系统已保留原生 PDF 证据，并提供本地 Golden Dataset
 > Benchmark（黄金数据集基准）基础设施；提供获批语料后才能测量准确率。这仍是开发/评估质量，不是生产服务，
 > 也不代表已经达到 95% 准确率。
-> Pre-RAG 结构交接、确定性平级 Section Materialization 与 OHR-Bench Retrieval Subset
-> Preparation 已完成，Parser 扩展已冻结。下一步是使用 BGE-M3 与 Exact Cosine Search 的
-> IR Fixed-token Retrieval Baseline。
+> Pre-RAG 结构交接与确定性平级 Section Materialization 已完成，Parser 扩展已冻结。
+> OHR Adapter 已对齐官方 scalar/list evidence 与 zero-based page-index contract；在开始
+> IR Fixed-token Retrieval Baseline 前，仍需在用户 provision 的真实外部 metadata 上运行 smoke。
 
 Retrieval Benchmark 数据、源 PDF、模型权重、Embedding 与运行产物均是 Git 外部 Runtime
 Asset。Git 只保存确定性 preparation/evaluation 代码与 synthetic tests。
@@ -394,8 +394,8 @@ IR Domain Coverage Gate 不低于 85%。默认测试完全离线；标记为 `ne
 | 已完成（默认观察模式） | Next 2 | 离散 Quality Gate、Calibration Metrics 与 Profile Freeze Contract |
 | 已完成（Evidence-gated MVP） | Next 3 | 单页 Materialization、PAGE/TABLE 原子 Fallback 与 Copy-on-write 重验证 |
 | 已完成 | Section Materialization | 确定性平级 Section、Synthetic Preamble/Body、派生 Provenance 与归属 Diagnostics |
-| 已完成 | OHR Retrieval Preparation | 确定性生成 Git 外部 `ohr-rag-core-v1` Query 与 Required-document Manifest |
-| 下一步 | Retrieval Baseline | IR Fixed-token Chunk、BGE-M3 与 Exact Cosine Search |
+| Contract 就绪；真实 Smoke 待执行 | OHR Retrieval Preparation | 官方 scalar/list evidence、zero-based page index 与确定性外部 Manifest |
+| 等待真实 OHR Smoke | Retrieval Baseline | IR Fixed-token Chunk、BGE-M3 与 Exact Cosine Search |
 | 已规划 | 3–5 | 不可变本地 Artifact、SQLite Job State 和持久化 Parser 编排 |
 | 已规划 | 6–8 | 安全 PDF Admission 与生产级多页 Normalization 加固 |
 | 已规划 | 9–11 | Quality Engine、Selective Fallback、事务式 Merge 与重新验证 |

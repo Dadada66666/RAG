@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from docparser.evaluation.ohr import (
     OHRSelectionConfig,
+    OHRSourceQuestion,
     RetrievalEvidenceType,
     load_ohr_questions,
     map_ohr_evidence_type,
@@ -62,9 +63,12 @@ def test_real_wire_evidence_mapping_is_explicit() -> None:
     assert map_ohr_evidence_type("reading_order") is RetrievalEvidenceType.READING_ORDER
     assert map_ohr_evidence_type("formula") is None
     assert map_ohr_evidence_type("chart") is None
+    assert map_ohr_evidence_type("multi") is None
 
     with pytest.raises(ValueError, match="unknown OHR evidence_source: 'TXT'"):
         map_ohr_evidence_type("TXT")
+    with pytest.raises(ValueError, match="unknown OHR evidence_source: 'something_new'"):
+        map_ohr_evidence_type("something_new")
 
 
 def test_synthetic_fixture_excludes_unsupported_evidence(tmp_path: Path) -> None:
@@ -86,7 +90,41 @@ def test_synthetic_fixture_excludes_unsupported_evidence(tmp_path: Path) -> None
     assert subset.manifest.excluded_query_count_by_evidence_source == {
         "chart": 1,
         "formula": 1,
+        "multi": 1,
     }
+    text = next(
+        query for query in subset.queries if query.evidence_type is RetrievalEvidenceType.TEXT
+    )
+    table = next(
+        query for query in subset.queries if query.evidence_type is RetrievalEvidenceType.TABLE
+    )
+    reading_order = next(
+        query
+        for query in subset.queries
+        if query.evidence_type is RetrievalEvidenceType.READING_ORDER
+    )
+    assert text.evidence_contexts == (
+        "This is an invented paragraph with an example phrase.",
+    )
+    assert text.evidence_page_indices == (24,)
+    assert table.evidence_contexts == (
+        "Synthetic metric header",
+        "Synthetic metric | 42",
+    )
+    assert table.evidence_page_indices == (1, 2)
+    assert reading_order.evidence_contexts == (
+        "Synthetic ordering context part A.",
+        "Step A precedes Step B in this synthetic example.",
+    )
+    assert reading_order.evidence_page_indices == (0, 2)
+
+
+def test_negative_source_page_index_is_rejected() -> None:
+    payload = _item("manual/invalid", 1, "text", domain="manual")
+    payload["evidence_page_no"] = -1
+
+    with pytest.raises(ValidationError):
+        OHRSourceQuestion.model_validate(payload)
 
 
 def test_document_selection_prefers_evidence_coverage_then_domain_diversity(
@@ -222,6 +260,8 @@ def test_identity_order_and_digest_are_path_independent(tmp_path: Path) -> None:
         _item("finance/a", 2, "table"),
         _item("manual/b", 3, "reading_order", domain="manual"),
     ]
+    items[0]["evidence_context"] = ["Synthetic part A.", "Synthetic part B."]
+    items[0]["evidence_page_no"] = [0, 2]
     first_root = _write_dataset(tmp_path / "first" / "dataset", items)
     second_root = _write_dataset(tmp_path / "second" / "other-name", list(reversed(items)))
     config = OHRSelectionConfig(target_query_counts=_targets(text=1, table=1, reading_order=1))
@@ -281,8 +321,12 @@ def test_ground_truth_is_chunking_independent_and_artifacts_are_consistent(
         json.loads(line)
         for line in (output / "queries.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    forbidden = {"chunk_id", "block_id", "section_id", "table_id"}
+    forbidden = {"chunk_id", "block_id", "canonical_block_id", "section_id", "table_id"}
     assert all(not forbidden.intersection(payload) for payload in query_payloads)
+    assert all("evidence_context" not in payload for payload in query_payloads)
+    assert all("evidence_page_numbers" not in payload for payload in query_payloads)
+    assert all("evidence_contexts" in payload for payload in query_payloads)
+    assert all("evidence_page_indices" in payload for payload in query_payloads)
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     required = json.loads((output / "required_documents.json").read_text(encoding="utf-8"))
     assert manifest["selected_query_count"] == len(query_payloads)
