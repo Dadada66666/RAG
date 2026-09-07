@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -17,7 +17,7 @@ from docparser.ir.types import NfcString, NonEmptyNfcString, Sha256Digest, UtcTi
 
 OHR_BENCHMARK_ID = "ohr-rag-core-v1"
 OHR_SOURCE_DATASET = "OHR-Bench"
-OHR_SELECTION_POLICY_VERSION = "ohr-rag-core-v1@1.1.0"
+OHR_SELECTION_POLICY_VERSION = "ohr-rag-core-v1@1.2.0"
 OHR_QA_RELATIVE_PATH = Path("data/qas_v2.json")
 
 
@@ -222,10 +222,12 @@ def _eligible_items(
     return tuple(eligible), dict(sorted(excluded.items()))
 
 
-def _select_documents(
+def _document_catalog(
     eligible: tuple[tuple[OHRSourceQuestion, RetrievalEvidenceType], ...],
-    config: OHRSelectionConfig,
-) -> tuple[str, ...]:
+) -> tuple[
+    dict[str, list[tuple[OHRSourceQuestion, RetrievalEvidenceType]]],
+    dict[str, str],
+]:
     by_document: dict[str, list[tuple[OHRSourceQuestion, RetrievalEvidenceType]]] = defaultdict(
         list
     )
@@ -238,25 +240,162 @@ def _select_documents(
         if len(document_domains) != 1:
             raise ValueError(f"OHR document has conflicting doc_type values: {document_name}")
         domains[document_name] = next(iter(document_domains))
+    return by_document, domains
+
+
+def _ordered_document_names(document_names: tuple[str, ...] | set[str]) -> tuple[str, ...]:
+    return tuple(sorted(document_names, key=lambda name: (_stable_key(name), name)))
+
+
+def _allocate_query_counts(
+    by_document: dict[str, list[tuple[OHRSourceQuestion, RetrievalEvidenceType]]],
+    document_names: tuple[str, ...],
+    config: OHRSelectionConfig,
+) -> dict[tuple[str, RetrievalEvidenceType], int]:
+    source = ("source", "")
+    sink = ("sink", "")
+    residual: dict[tuple[str, str], dict[tuple[str, str], int]] = defaultdict(dict)
+    adjacency: dict[tuple[str, str], list[tuple[str, str]]] = defaultdict(list)
+
+    def add_edge(start: tuple[str, str], end: tuple[str, str], capacity: int) -> None:
+        residual[start][end] = capacity
+        residual[end][start] = 0
+        adjacency[start].append(end)
+        adjacency[end].append(start)
+
+    ordered_documents = _ordered_document_names(document_names)
+    for document_name in ordered_documents:
+        add_edge(("document", document_name), sink, config.max_queries_per_document)
+
+    availability: Counter[tuple[str, RetrievalEvidenceType]] = Counter(
+        (item.document_name, evidence_type)
+        for document_name in ordered_documents
+        for item, evidence_type in by_document[document_name]
+    )
+    edge_capacity: dict[tuple[str, RetrievalEvidenceType], int] = {}
+    for evidence_type in _EVIDENCE_ORDER:
+        evidence_node = ("evidence", evidence_type.value)
+        add_edge(source, evidence_node, config.target_query_counts[evidence_type])
+        for document_name in ordered_documents:
+            capacity = min(
+                availability[(document_name, evidence_type)],
+                config.max_queries_per_document,
+            )
+            edge_capacity[(document_name, evidence_type)] = capacity
+            if capacity:
+                add_edge(evidence_node, ("document", document_name), capacity)
+
+    while True:
+        parents: dict[tuple[str, str], tuple[str, str] | None] = {source: None}
+        queue = deque([source])
+        while queue and sink not in parents:
+            node = queue.popleft()
+            for neighbor in adjacency[node]:
+                if neighbor not in parents and residual[node][neighbor] > 0:
+                    parents[neighbor] = node
+                    queue.append(neighbor)
+        if sink not in parents:
+            break
+        path_capacity = sum(config.target_query_counts.values())
+        node = sink
+        while node != source:
+            parent = parents[node]
+            assert parent is not None
+            path_capacity = min(path_capacity, residual[parent][node])
+            node = parent
+        node = sink
+        while node != source:
+            parent = parents[node]
+            assert parent is not None
+            residual[parent][node] -= path_capacity
+            residual[node][parent] += path_capacity
+            node = parent
+
+    return {
+        (document_name, evidence_type): edge_capacity[(document_name, evidence_type)]
+        - residual[("evidence", evidence_type.value)].get(("document", document_name), 0)
+        for document_name in ordered_documents
+        for evidence_type in _EVIDENCE_ORDER
+    }
+
+
+def _selection_objective(
+    *,
+    by_document: dict[str, list[tuple[OHRSourceQuestion, RetrievalEvidenceType]]],
+    domains: dict[str, str],
+    document_names: tuple[str, ...],
+    config: OHRSelectionConfig,
+) -> tuple[int, int, int, int, str]:
+    allocations = _allocate_query_counts(by_document, document_names, config)
+    actual = Counter[RetrievalEvidenceType]()
+    for (_, evidence_type), count in allocations.items():
+        actual[evidence_type] += count
+    total_shortfall = sum(
+        max(0, config.target_query_counts[evidence_type] - actual[evidence_type])
+        for evidence_type in _EVIDENCE_ORDER
+    )
+    domain_counts = Counter(domains[name] for name in document_names)
+    max_domain_count = max(domain_counts.values())
+    concentration = sum(count * count for count in domain_counts.values())
+    ordered_names = _ordered_document_names(document_names)
+    return (
+        total_shortfall,
+        -len(domain_counts),
+        max_domain_count,
+        concentration,
+        _stable_key(*ordered_names),
+    )
+
+
+def _select_documents(
+    eligible: tuple[tuple[OHRSourceQuestion, RetrievalEvidenceType], ...],
+    config: OHRSelectionConfig,
+) -> tuple[str, ...]:
+    by_document, domains = _document_catalog(eligible)
 
     remaining = set(by_document)
     selected: list[str] = []
-    domain_counts: Counter[str] = Counter()
     while remaining and len(selected) < config.max_documents:
         document_name = min(
             remaining,
-            key=lambda name: (
-                -len({evidence_type for _, evidence_type in by_document[name]}),
-                domain_counts[domains[name]],
-                -min(len(by_document[name]), config.max_queries_per_document),
-                _stable_key(name),
-                name,
+            key=lambda name: _selection_objective(
+                by_document=by_document,
+                domains=domains,
+                document_names=tuple((*selected, name)),
+                config=config,
             ),
         )
         selected.append(document_name)
-        domain_counts[domains[document_name]] += 1
         remaining.remove(document_name)
-    return tuple(selected)
+
+    while selected and remaining:
+        current = tuple(selected)
+        current_objective = _selection_objective(
+            by_document=by_document,
+            domains=domains,
+            document_names=current,
+            config=config,
+        )
+        best_selection = current
+        best_objective = current_objective
+        for removed in _ordered_document_names(current):
+            retained = tuple(name for name in current if name != removed)
+            for added in _ordered_document_names(remaining):
+                candidate = tuple((*retained, added))
+                objective = _selection_objective(
+                    by_document=by_document,
+                    domains=domains,
+                    document_names=candidate,
+                    config=config,
+                )
+                if objective < best_objective:
+                    best_selection = candidate
+                    best_objective = objective
+        if best_objective >= current_objective:
+            break
+        selected = list(best_selection)
+        remaining = set(by_document).difference(selected)
+    return _ordered_document_names(tuple(selected))
 
 
 def _select_queries(
@@ -264,43 +403,23 @@ def _select_queries(
     selected_documents: tuple[str, ...],
     config: OHRSelectionConfig,
 ) -> tuple[tuple[OHRSourceQuestion, RetrievalEvidenceType], ...]:
-    candidates: dict[
-        tuple[str, RetrievalEvidenceType], list[tuple[OHRSourceQuestion, RetrievalEvidenceType]]
-    ] = defaultdict(list)
-    selected_document_set = set(selected_documents)
-    for item in eligible:
-        if item[0].document_name in selected_document_set:
-            candidates[(item[0].document_name, item[1])].append(item)
+    by_document, _ = _document_catalog(eligible)
+    candidates: dict[tuple[str, RetrievalEvidenceType], list[OHRSourceQuestion]] = defaultdict(list)
+    for document_name in selected_documents:
+        for item, evidence_type in by_document[document_name]:
+            candidates[(document_name, evidence_type)].append(item)
     for items in candidates.values():
-        items.sort(key=lambda item: _stable_key(item[0].source_dataset_item_id))
+        items.sort(key=lambda item: _stable_key(item.source_dataset_item_id))
 
-    selected: list[tuple[OHRSourceQuestion, RetrievalEvidenceType]] = []
-    document_counts: Counter[str] = Counter()
-    evidence_counts: Counter[RetrievalEvidenceType] = Counter()
-    offsets: Counter[tuple[str, RetrievalEvidenceType]] = Counter()
-    while True:
-        progress = False
-        for evidence_type in _EVIDENCE_ORDER:
-            target = config.target_query_counts.get(evidence_type, 0)
-            if evidence_counts[evidence_type] >= target:
-                continue
-            for document_name in selected_documents:
-                if evidence_counts[evidence_type] >= target:
-                    break
-                if document_counts[document_name] >= config.max_queries_per_document:
-                    continue
-                key = (document_name, evidence_type)
-                offset = offsets[key]
-                if offset >= len(candidates[key]):
-                    continue
-                selected.append(candidates[key][offset])
-                offsets[key] += 1
-                document_counts[document_name] += 1
-                evidence_counts[evidence_type] += 1
-                progress = True
-        if not progress:
-            break
-    return tuple(selected)
+    allocations = _allocate_query_counts(by_document, selected_documents, config)
+    return tuple(
+        (item, evidence_type)
+        for evidence_type in _EVIDENCE_ORDER
+        for document_name in selected_documents
+        for item in candidates[(document_name, evidence_type)][
+            : allocations[(document_name, evidence_type)]
+        ]
+    )
 
 
 def _selection_digest(

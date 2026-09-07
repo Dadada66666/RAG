@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections import Counter
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from docparser.evaluation.ohr import (
+    OHR_SELECTION_POLICY_VERSION,
     OHRSelectionConfig,
     OHRSourceQuestion,
     RetrievalEvidenceType,
@@ -158,6 +160,119 @@ def test_document_selection_prefers_evidence_coverage_then_domain_diversity(
     assert len(selected & {"finance/mixed-a", "finance/mixed-b"}) == 1
 
 
+def test_document_selection_maximizes_domain_coverage_after_meeting_quotas(
+    tmp_path: Path,
+) -> None:
+    items: list[dict[str, object]] = []
+    for document in range(4):
+        name = f"academic/three-type-{document}"
+        for evidence_source in ("text", "table", "reading_order"):
+            items.append(
+                _item(
+                    name,
+                    document * 100 + len(items),
+                    evidence_source,
+                    domain="academic",
+                )
+            )
+
+    diverse_documents = {
+        "finance/text-table": ("finance", ("text", "table")),
+        "law/table-order": ("law", ("table", "reading_order")),
+        "news/text-order": ("news", ("text", "reading_order")),
+        "manual/text-table": ("manual", ("text", "table")),
+    }
+    for document_offset, (name, (domain, evidence_sources)) in enumerate(
+        diverse_documents.items(),
+        start=10,
+    ):
+        for evidence_source in evidence_sources:
+            for query_offset in range(2):
+                items.append(
+                    _item(
+                        name,
+                        document_offset * 100 + len(items) + query_offset,
+                        evidence_source,
+                        domain=domain,
+                    )
+                )
+
+    root = _write_dataset(tmp_path / "dataset", items)
+    subset = prepare_ohr_rag_core(
+        dataset_root=root,
+        config=OHRSelectionConfig(
+            max_documents=4,
+            max_queries_per_document=3,
+            target_query_counts=_targets(text=4, table=4, reading_order=4),
+        ),
+        created_at=CREATED_AT,
+    )
+
+    assert subset.manifest.query_count_by_evidence_type == _targets(
+        text=4,
+        table=4,
+        reading_order=4,
+    )
+    assert subset.manifest.shortfalls == ()
+    assert len(subset.manifest.document_count_by_domain) == 4
+    assert max(subset.manifest.document_count_by_domain.values()) == 1
+
+
+def test_query_allocation_reserves_shared_capacity_for_scarce_evidence(
+    tmp_path: Path,
+) -> None:
+    items: list[dict[str, object]] = []
+    for evidence_source in ("text", "table", "reading_order"):
+        for index in range(2):
+            items.append(
+                _item(
+                    "academic/scarce-order",
+                    len(items) + index,
+                    evidence_source,
+                    domain="academic",
+                )
+            )
+    for document, domain in (
+        ("finance/flexible-a", "finance"),
+        ("law/flexible-b", "law"),
+    ):
+        for evidence_source in ("text", "table"):
+            for index in range(2):
+                items.append(
+                    _item(
+                        document,
+                        len(items) + index,
+                        evidence_source,
+                        domain=domain,
+                    )
+                )
+
+    root = _write_dataset(tmp_path / "dataset", items)
+    subset = prepare_ohr_rag_core(
+        dataset_root=root,
+        config=OHRSelectionConfig(
+            max_documents=3,
+            max_queries_per_document=2,
+            target_query_counts=_targets(text=2, table=2, reading_order=2),
+        ),
+        created_at=CREATED_AT,
+    )
+
+    assert subset.manifest.query_count_by_evidence_type == _targets(
+        text=2,
+        table=2,
+        reading_order=2,
+    )
+    assert subset.manifest.shortfalls == ()
+    per_document = Counter(query.document_name for query in subset.queries)
+    assert max(per_document.values()) == 2
+    assert {
+        query.evidence_type
+        for query in subset.queries
+        if query.document_name == "academic/scarce-order"
+    } == {RetrievalEvidenceType.READING_ORDER}
+
+
 def test_document_and_per_document_caps_are_enforced(tmp_path: Path) -> None:
     items = [
         _item(f"domain/document-{document}", index, "text", domain=f"domain-{document}")
@@ -221,6 +336,8 @@ def test_default_evidence_quotas_produce_100_queries(tmp_path: Path) -> None:
         reading_order=20,
     )
     assert subset.manifest.shortfalls == ()
+    assert subset.manifest.selection_policy_version == OHR_SELECTION_POLICY_VERSION
+    assert OHR_SELECTION_POLICY_VERSION == "ohr-rag-core-v1@1.2.0"
 
 
 def test_quota_shortfall_is_explicit(tmp_path: Path) -> None:

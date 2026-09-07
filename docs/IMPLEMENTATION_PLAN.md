@@ -1,8 +1,8 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: OHR adapter aligned with official `qas_v2.json`; real external smoke pending local dataset provisioning**
+> **CURRENT EXECUTION POINTER: OHR selector repaired after the real 99-query/domain-skew smoke; post-repair real smoke pending**
 >
-> **NEXT: Run the real external OHR metadata preparation smoke; only then begin the IR fixed-token retrieval baseline**
+> **NEXT: Re-run the real external OHR subset preparation; freeze only after 10 documents, 100 queries, exact quotas, and improved domain diversity are confirmed**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
@@ -27,9 +27,12 @@
 > Retrieval benchmark preparation reads the official local `data/qas_v2.json` contract, preserving
 > scalar/list evidence contexts and zero-based source page indices before emitting normalized,
 > chunking-independent query truth plus required-document metadata. `multi`, formula, and chart
-> evidence are known but excluded from the first subset. OHR data, PDFs, model weights, embeddings,
-> and run artifacts remain external to Git. A real metadata smoke remains required before this
-> preparation phase is declared complete. The first retrieval baseline will use L2-normalized
+> evidence are known but excluded from the first subset. Selection policy `ohr-rag-core-v1@1.2.0`
+> uses quota-aware shared-capacity allocation plus deterministic document-swap repair, prioritizing
+> exact evidence quotas before domain coverage and concentration. OHR data, PDFs, model weights,
+> embeddings, and run artifacts remain external to Git. The official wire contract has been tested
+> on real metadata; a post-repair real selector smoke remains required before the subset is frozen.
+> The first retrieval baseline will use L2-normalized
 > BGE-M3 embeddings and exhaustive NumPy matrix multiplication so chunking comparisons are not
 > confounded by ANN index behavior or vector-database infrastructure.
 
