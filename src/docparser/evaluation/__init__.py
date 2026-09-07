@@ -20,6 +20,12 @@ from docparser.evaluation.ohr import (
     prepare_ohr_rag_core,
     write_ohr_subset,
 )
+from docparser.evaluation.retrieval import (
+    PageRetrievalMetrics,
+    PageRetrievalReport,
+    RetrievalSlice,
+    evaluate_page_retrieval,
+)
 
 __all__ = [
     "compute_normalized_edit_similarity",
@@ -27,13 +33,17 @@ __all__ = [
     "match_truth_blocks",
     "normalized_edit_similarity",
     "OHRSelectionConfig",
+    "PageRetrievalMetrics",
+    "PageRetrievalReport",
     "PreparedOHRSubset",
     "prepare_ohr_rag_core",
     "run_parsing_benchmark",
+    "RetrievalSlice",
     "score_numeric_predictions",
     "score_outcome",
     "score_table_predictions",
     "summarize_cases",
     "write_benchmark_report",
     "write_ohr_subset",
+    "evaluate_page_retrieval",
 ]

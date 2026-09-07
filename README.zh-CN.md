@@ -12,10 +12,14 @@
 > Pre-RAG 结构交接与确定性平级 Section Materialization 已完成，Parser 扩展已冻结。
 > OHR Adapter 已对齐官方 scalar/list evidence 与 zero-based page-index contract。
 > Selection Policy `ohr-rag-core-v1@1.2.0` 已修复真实运行暴露的 99-query/domain-skew 问题；
-> 子集冻结及进入 IR Fixed-token Retrieval Baseline 前，仍需完成修复后的真实外部 smoke。
+> 仓库现已具备完成 Fixed-token 与 Structure-aware Exact Dense Retrieval A/B 的完整代码；
+> 真实指标仍需在外部 OHR 子集、已选择 PDF、完成 Section Materialization 的 Canonical IR
+> 与本地 BGE-M3 模型上运行。
 
 Retrieval Benchmark 数据、源 PDF、模型权重、Embedding 与运行产物均是 Git 外部 Runtime
 Asset。Git 只保存确定性 preparation/evaluation 代码与 synthetic tests。
+使用 `pip install -e '.[retrieval]'` 安装可选本地 Retrieval Runtime；模型权重仍需单独
+准备，并通过命令参数传入。
 使用以下命令生成外部子集：
 
 ```bash
@@ -23,6 +27,20 @@ docparser prepare-ohr-rag-core --dataset-root /data/rag/datasets/ohr-bench \
   --output-dir /data/rag/benchmark_subsets/ohr-rag-core-v1 \
   --source-commit "$(git rev-parse HEAD)"
 ```
+
+离线运行受控 Retrieval A/B：
+
+```bash
+docparser rag-retrieval-ab \
+  --ir-root /data/rag/canonical-ir/ohr-rag-core-v1 \
+  --queries /data/rag/benchmark_subsets/ohr-rag-core-v1/queries.jsonl \
+  --model-path /data/rag/models/bge-m3 \
+  --output /data/rag/runs/fixed-vs-structure
+```
+
+该命令输出 Manifest、共同 Eligible Queries、两套 Chunks、归一化 Embedding、排序结果、
+分系统指标、`comparison.json` 与 `report.md`。检索使用 NumPy Exact Cosine，不会自动下载
+模型，也不引入 Vector DB、Sparse Retrieval 或 Reranker。
 
 ## 项目定位
 

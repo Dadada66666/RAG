@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Authoritative next-phase contract; not implemented |
+| Status | Minimal fixed-token and structure-aware experiment implemented |
 | Chunk schema version | `1.0.0` |
 | Default chunker version | `1.0.0` |
 
@@ -10,8 +10,8 @@
 
 Chunks are deterministic retrieval views over a specific immutable IR revision. They are not a second source of truth. Every chunk must be reconstructible from its ordered source blocks and must resolve to page/bbox/source provenance.
 
-Parent-child chunking and structure-aware chunking are **not implemented** in the current
-repository. They are the first RAG ingestion experiment, not a claim of global optimality.
+The implemented experiment provides a Canonical-IR fixed-token control and a minimal
+section/table-aware treatment. It does not claim a globally optimal hierarchy or chunk policy.
 
 Fixed-size character splitting is prohibited as the primary policy because it:
 
@@ -226,12 +226,18 @@ Old chunk manifests remain immutable and are withdrawn from downstream indexing 
 
 ## 10. Validation and evaluation
 
-### 10.1 Required A/B experiment
+### 10.1 Implemented A/B experiment
 
 Before promotion, evaluate on the same versioned query/QA set:
 
-- **Baseline A:** native/simple extracted PDF text, fixed-token chunks, deterministic overlap;
-- **Baseline B:** Canonical IR, structure-aware parent-child chunks defined here.
+- **Control:** resolved retrieval-flow Canonical IR blocks, fixed-token chunks and deterministic
+  token overlap;
+- **Experiment:** the same IR and tokenizer, with Section boundaries, heading context and protected
+  logical Table row groups.
+
+Both representations use the exact BGE-M3 tokenizer. The first implementation emits retrieval
+chunks directly and does not add LLM summaries, hierarchy inference, semantic overlap, or a vector
+database.
 
 Report retrieval, table retrieval, citation and latency deltas independently. Later optional
 experiments may add contextual heading/path enrichment. Late Chunking is allowed only when the

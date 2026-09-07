@@ -23,10 +23,15 @@ paddleocr-vl = [
   "paddleocr[doc-parser]==3.7.0",
   "paddlex[ocr,genai-client]==3.7.1",
 ]
+retrieval = [
+  "numpy==2.2.6",
+  "sentence-transformers==5.1.2",
+]
 dev = [
   "hypothesis==6.165.10",
   "jsonschema==4.26.0",
   "mypy==1.11.2",
+  "numpy==2.2.6",
   "pytest==9.1.1",
   "pytest-cov==7.1.0",
   "ruff==0.15.20",
@@ -60,7 +65,7 @@ strict = true
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["docling.*", "paddleocr.*", "paddle.*"]
+module = ["docling.*", "paddleocr.*", "paddle.*", "sentence_transformers.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -1,8 +1,8 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: OHR selector repaired after the real 99-query/domain-skew smoke; post-repair real smoke pending**
+> **CURRENT EXECUTION POINTER: Fixed-token vs structure-aware exact-dense retrieval A/B implemented**
 >
-> **NEXT: Re-run the real external OHR subset preparation; freeze only after 10 documents, 100 queries, exact quotas, and improved domain diversity are confirmed**
+> **NEXT: Run the frozen external OHR subset and locally provisioned BGE-M3 through `rag-retrieval-ab`**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
@@ -35,6 +35,9 @@
 > The first retrieval baseline will use L2-normalized
 > BGE-M3 embeddings and exhaustive NumPy matrix multiplication so chunking comparisons are not
 > confounded by ANN index behavior or vector-database infrastructure.
+> The implementation now provides both controlled chunk representations, a local-only BGE-M3
+> runtime, exact deterministic dense ranking, OHR page-level evaluation, and one artifact-producing
+> A/B command. Real retrieval claims remain pending the external Linux run.
 
 | Field | Value |
 |---|---|
@@ -852,6 +855,9 @@ frozen predicate without collateral hard failure; fallback rate/cost/unresolved 
 
 ### Next 4 — Structure-aware parent-child chunker
 
+**Implementation status:** minimal experiment complete. It uses existing flat Sections and protects
+logical Table rows; broader hierarchy inference and semantic overlap remain deferred.
+
 **Goal:** compare fixed-token baseline with deterministic IR-derived section/table-aware chunks.
 
 **Files:** chunking pipeline/renderers/tokenizer profiles/manifests and evaluation fixtures.
@@ -873,6 +879,9 @@ retrieval A/B inputs are frozen and repository remains runnable.
 **Risks:** unresolved hierarchy/order. Isolate units and disclose warnings instead of inventing order.
 
 ### Next 5 — Dense retrieval baseline
+
+**Implementation status:** exact dense experiment path complete. Real OHR/BGE-M3 execution is
+required before reporting metrics.
 
 **Goal:** establish a local exact dense baseline over fixed and structure-aware child/table chunks.
 

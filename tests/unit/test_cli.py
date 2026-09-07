@@ -11,6 +11,7 @@ from docparser.application.parsing import ParsingConfig, parse_document_with_dia
 from docparser.cli.main import app
 from docparser.domain.parser_contract import RuntimeDevice
 from docparser.quality import QualityDecision, QualityMode
+from docparser.retrieval import FixedChunkConfig, StructureChunkConfig
 from docparser.version import __version__
 
 runner = CliRunner()
@@ -21,6 +22,54 @@ def test_help_succeeds() -> None:
 
     assert result.exit_code == 0
     assert "doctor" in result.stdout
+
+
+def test_retrieval_ab_accepts_external_paths_and_chunk_configs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ir_root = tmp_path / "ir"
+    model_path = tmp_path / "model"
+    ir_root.mkdir()
+    model_path.mkdir()
+    queries = tmp_path / "queries.jsonl"
+    queries.write_text("", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run(**kwargs: object) -> SimpleNamespace:
+        captured.update(kwargs)
+        return SimpleNamespace(eligible_queries=(object(),))
+
+    monkeypatch.setattr("docparser.cli.main.run_retrieval_ab", fake_run)
+    result = runner.invoke(
+        app,
+        [
+            "rag-retrieval-ab",
+            "--ir-root",
+            str(ir_root),
+            "--queries",
+            str(queries),
+            "--model-path",
+            str(model_path),
+            "--output",
+            str(tmp_path / "run"),
+            "--fixed-target-tokens",
+            "256",
+            "--fixed-overlap-tokens",
+            "32",
+            "--structure-target-tokens",
+            "384",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["ir_root"] == ir_root.resolve()
+    assert captured["model_path"] == model_path.resolve()
+    fixed_config = captured["fixed_config"]
+    structure_config = captured["structure_config"]
+    assert isinstance(fixed_config, FixedChunkConfig)
+    assert isinstance(structure_config, StructureChunkConfig)
+    assert fixed_config.target_tokens == 256
+    assert structure_config.target_tokens == 384
 
 
 def test_version_succeeds() -> None:

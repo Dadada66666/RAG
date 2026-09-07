@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Authoritative experiment contract; not implemented |
+| Status | Minimal exact-dense OHR A/B path implemented |
 | Contract version | `rag-eval/1.0.0` |
 | Rule | Parsing, retrieval and answer quality remain separate result layers |
 
@@ -74,8 +74,11 @@ No stage may change an earlier controlled variable without creating a separate e
 
 Publish absolute results and incremental delta for each stage. A later stage is promoted only when it
 improves its declared target slices without unacceptable latency, citation or other-slice regression.
-Parent-child and structure-aware chunking are currently not implemented; these are experimental
-baselines, not assumed improvements.
+The current `rag-retrieval-ab` experiment compares the IR fixed-token control with the minimal
+Section/Table-aware representation using one local BGE-M3 runtime, shared query embeddings and
+exact NumPy cosine ranking. OHR evaluation reports `PageHitRate@1/5/10` and MRR for ALL, TEXT,
+TABLE and READING_ORDER. PageHitRate is deliberately not labeled Recall because OHR truth here is
+page-level evidence rather than adjudicated chunk relevance.
 
 ### 4.3 Relevance and citations
 

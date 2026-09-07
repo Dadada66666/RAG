@@ -13,6 +13,7 @@ from docparser.application.parsing import (
     parse_document_with_diagnostics,
     write_parse_outputs,
 )
+from docparser.application.retrieval_ab import run_retrieval_ab
 from docparser.application.robust import robust_parse_document, write_robust_outputs
 from docparser.config import load_config
 from docparser.domain.parser_contract import RuntimeDevice
@@ -53,6 +54,7 @@ from docparser.ir.schema import (
 )
 from docparser.ir.types import Sha256Digest
 from docparser.quality import CalibrationProfile
+from docparser.retrieval import FixedChunkConfig, StructureChunkConfig
 from docparser.version import __version__
 
 app = typer.Typer(
@@ -357,6 +359,77 @@ def prepare_ohr_retrieval_subset(
     typer.echo(
         f"prepared {subset.manifest.selected_query_count} queries from "
         f"{subset.manifest.selected_document_count} documents{shortfall}; output={output_dir}"
+    )
+
+
+@app.command("rag-retrieval-ab")
+def rag_retrieval_ab(
+    ir_root: Annotated[
+        Path,
+        typer.Option("--ir-root", exists=True, file_okay=False, readable=True, resolve_path=True),
+    ],
+    queries: Annotated[
+        Path,
+        typer.Option("--queries", exists=True, file_okay=True, readable=True, resolve_path=True),
+    ],
+    model_path: Annotated[
+        Path,
+        typer.Option(
+            "--model-path",
+            exists=True,
+            file_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="Locally provisioned BAAI/bge-m3 directory; never downloaded by this command.",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("--output", file_okay=False, resolve_path=True),
+    ],
+    fixed_target_tokens: Annotated[
+        int, typer.Option("--fixed-target-tokens", min=1)
+    ] = 512,
+    fixed_overlap_tokens: Annotated[
+        int, typer.Option("--fixed-overlap-tokens", min=0)
+    ] = 64,
+    structure_target_tokens: Annotated[
+        int, typer.Option("--structure-target-tokens", min=1)
+    ] = 512,
+    structure_hard_max_tokens: Annotated[
+        int, typer.Option("--structure-hard-max-tokens", min=1)
+    ] = 8000,
+    top_k: Annotated[int, typer.Option("--top-k", min=10)] = 10,
+    device: Annotated[str, typer.Option("--device", help="BGE-M3 torch device.")] = "cpu",
+    batch_size: Annotated[int, typer.Option("--batch-size", min=1)] = 16,
+    source_commit: Annotated[str | None, typer.Option("--source-commit")] = None,
+) -> None:
+    """Run the fixed-token versus structure-aware exact-dense retrieval experiment."""
+
+    try:
+        outcome = run_retrieval_ab(
+            ir_root=ir_root,
+            queries_path=queries,
+            output_dir=output,
+            model_path=model_path,
+            fixed_config=FixedChunkConfig(
+                target_tokens=fixed_target_tokens,
+                overlap_tokens=fixed_overlap_tokens,
+            ),
+            structure_config=StructureChunkConfig(
+                target_tokens=structure_target_tokens,
+                hard_max_tokens=structure_hard_max_tokens,
+            ),
+            top_k=top_k,
+            device=device,
+            batch_size=batch_size,
+            source_commit=source_commit,
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError, ValidationError) as exc:
+        typer.echo(f"RAG retrieval A/B failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"retrieval A/B completed for {len(outcome.eligible_queries)} queries; output={output}"
     )
 
 

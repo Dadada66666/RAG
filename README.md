@@ -13,11 +13,14 @@ traceable, parser-independent representation suitable for downstream RAG ingesti
 > The pre-RAG structural handoff and deterministic flat section materialization are complete;
 > parser expansion is frozen. The OHR adapter matches the official scalar/list evidence and
 > zero-based page-index contract. Selection policy `ohr-rag-core-v1@1.2.0` repairs the observed
-> 99-query/domain-skew result; a post-repair real external smoke is required before the subset is
-> frozen and the IR fixed-token retrieval baseline begins.
+> 99-query/domain-skew result. The repository now contains the full offline-tested fixed-token vs
+> structure-aware exact-dense A/B pipeline; real metrics require the external OHR subset, selected
+> PDFs, sectioned Canonical IR and a local BGE-M3 directory.
 
 Retrieval benchmark data, source PDFs, model weights, embeddings, and run artifacts are external
 runtime assets. Git contains only deterministic preparation/evaluation code and synthetic tests.
+Install the optional local retrieval runtime with `pip install -e '.[retrieval]'`; model weights
+must still be provisioned separately at the path passed to the command.
 Prepare the external subset with:
 
 ```bash
@@ -25,6 +28,20 @@ docparser prepare-ohr-rag-core --dataset-root /data/rag/datasets/ohr-bench \
   --output-dir /data/rag/benchmark_subsets/ohr-rag-core-v1 \
   --source-commit "$(git rev-parse HEAD)"
 ```
+
+Run the controlled retrieval experiment without network downloads:
+
+```bash
+docparser rag-retrieval-ab \
+  --ir-root /data/rag/canonical-ir/ohr-rag-core-v1 \
+  --queries /data/rag/benchmark_subsets/ohr-rag-core-v1/queries.jsonl \
+  --model-path /data/rag/models/bge-m3 \
+  --output /data/rag/runs/fixed-vs-structure
+```
+
+The command writes manifests, shared eligible queries, chunks, normalized embedding matrices,
+ranked results, per-system metrics, `comparison.json`, and `report.md`. It uses exact NumPy cosine
+ranking; no vector database, sparse retrieval, reranker, or model auto-download is involved.
 
 ## What this project is
 
