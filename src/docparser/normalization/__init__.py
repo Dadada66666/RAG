@@ -4,6 +4,11 @@ from docparser.normalization.base import NormalizationContext, NormalizationErro
 from docparser.normalization.docling import normalize_docling_result
 from docparser.normalization.neutral import normalize_neutral_result
 from docparser.normalization.paddleocr_vl import normalize_paddleocr_vl_result
+from docparser.normalization.sections import (
+    SectionMaterializationDiagnostics,
+    materialize_sections,
+    section_materialization_diagnostics,
+)
 
 __all__ = [
     "NormalizationContext",
@@ -11,4 +16,7 @@ __all__ = [
     "normalize_docling_result",
     "normalize_neutral_result",
     "normalize_paddleocr_vl_result",
+    "SectionMaterializationDiagnostics",
+    "materialize_sections",
+    "section_materialization_diagnostics",
 ]

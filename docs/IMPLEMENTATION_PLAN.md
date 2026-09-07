@@ -1,8 +1,8 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: Pre-RAG structural handoff complete; parser expansion frozen**
+> **CURRENT EXECUTION POINTER: Deterministic flat section materialization complete**
 >
-> **NEXT: Section materialization**
+> **NEXT: Retrieval benchmark + fixed-token baseline, then minimal structure-aware chunking**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
@@ -18,6 +18,9 @@
 > normal retrieval-flow contract. Multi-fragment provenance remains a declared limitation.
 > The final V1.2→V1.3 migration correction keeps ambiguous historical header axes `UNKNOWN` and
 > clears unreliable legacy `header_row_indices`; the V1.3 wire contract itself is unchanged.
+> Section materialization now deterministically groups only resolved retrieval-flow blocks into a
+> flat section forest after fallback. It preserves unresolved/decorative evidence as unassigned,
+> performs no heading-level inference, and emits a new immutable revision with derived provenance.
 
 | Field | Value |
 |---|---|

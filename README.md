@@ -10,8 +10,9 @@ traceable, parser-independent representation suitable for downstream RAG ingesti
 > evidence and benchmark infrastructure make accuracy measurable once an approved benchmark
 > corpus is supplied. This is still
 > development/evaluation quality, not a production service or a 95% accuracy claim.
-> The pre-RAG structural handoff is hardened and parser expansion is frozen. Next implementation:
-> section materialization, then semantic units and controlled chunking/retrieval experiments.
+> The pre-RAG structural handoff and deterministic flat section materialization are complete;
+> parser expansion is frozen. Next: retrieval benchmark plus a fixed-token baseline, followed by
+> minimal structure-aware chunking.
 
 ## What this project is
 
@@ -75,6 +76,9 @@ vertical slice:
   real-corpus profile the runtime is explicitly `OBSERVE_ONLY` and non-publishable.
 - One-round selective fallback using one-page PDF materialization, atomic PAGE or single-page
   TABLE replacement, copy-on-write revisions, fallback provenance, and full revalidation.
+- Deterministic post-fallback section materialization using only resolved Canonical reading order;
+  it creates a flat section forest, synthetic preamble/body sections, derived provenance, and
+  assignment diagnostics without inferring heading levels.
 
 The real-document development flow is:
 
@@ -414,10 +418,11 @@ runnable and all tests passing.
 | Complete | 2.6 | Native PDF evidence, PaddleOCR-VL candidate, accuracy metrics and benchmark foundation |
 | Complete | Next 1 offline preparation | Correct project evaluator, pinned Official ParseBench boundary, deterministic unprovisioned development/holdout manifests |
 | Complete | Parsing v1 closeout | Official labels/serialization and text-group routing hardened; bbox-only layout retained; Paddle model reused per benchmark run |
+| Complete | Section materialization | Deterministic flat sections, synthetic preamble/body, derived provenance and assignment diagnostics |
 | Awaiting local corpus | Next 1 baselines | User-provisioned approved ParseBench data; no dataset is downloaded by default |
 | Complete, observe-only by default | Next 2 | Discrete Quality Gate, IR 1.2 lifecycle, calibration metrics/profile freeze contract |
 | Complete, evidence-gated MVP | Next 3 | Single-page materialization, atomic PAGE/TABLE fallback, copy-on-write revalidation |
-| Next | Next 4 | Structure-aware parent-child chunking for RAG experiments |
+| Next | Retrieval baseline | Retrieval benchmark and fixed-token baseline before structure-aware chunking |
 | Planned | 3–5 | Immutable local artifacts, SQLite job state, durable parser orchestration |
 | Planned | 6–8 | Secure PDF admission and production multipage normalization hardening |
 | Planned | 9–11 | Quality engine, selective fallback, transactional merge and revalidation |

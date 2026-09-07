@@ -9,8 +9,8 @@
 > 产线是可选的、GPU 优先的对比候选。系统已保留原生 PDF 证据，并提供本地 Golden Dataset
 > Benchmark（黄金数据集基准）基础设施；提供获批语料后才能测量准确率。这仍是开发/评估质量，不是生产服务，
 > 也不代表已经达到 95% 准确率。
-> Pre-RAG 结构交接已完成加固，Parser 扩展已冻结。下一步只进入 Section Materialization，
-> 再构建 Semantic Units 和受控的分块/检索实验。
+> Pre-RAG 结构交接与确定性平级 Section Materialization 已完成，Parser 扩展已冻结。
+> 下一步是 Retrieval Benchmark 与 Fixed-token Baseline，随后实现最小 Structure-aware Chunking。
 
 ## 项目定位
 
@@ -61,8 +61,14 @@ flowchart TD
   PaddlePaddle `3.3.0`，包含 PP-DocLayoutV3 与 1.6 VLM，而不是只调用裸 0.9B 模型。
 - 将 Docling 的文本、版面、阅读顺序、表格/单元格/Span、Figure/Caption 和基础 Equation 映射到
   已有 Canonical IR；表格不会被压扁成 Markdown 或 Paragraph。
-- 只报告事实的解析诊断，以及 `parse-local`、`benchmark-parsing` 命令。基准分别报告文本、
+- 只报告事实的解析诊断，以及 `parse-local`、`parse-robust`、`benchmark-parsing` 命令。基准分别报告文本、
   表格、阅读顺序、关键数值、来源追踪和延迟，不生成会掩盖差异的全局总分。
+- 离散 Quality Gate、版本化 Calibration Profile，以及 DOCUMENT/PAGE/TABLE 校准报告；没有冻结的
+  真实语料 Profile 时，运行模式明确为不可发布的 `OBSERVE_ONLY`。
+- 单轮 Selective Fallback：单页 PDF materialization、PAGE 或单页 TABLE 原子替换、copy-on-write
+  revision、fallback provenance 和完整重验证。
+- Fallback 后按已解析 Canonical reading order 确定性生成平级 Section forest；支持 synthetic
+  preamble/body、派生 provenance 和归属 diagnostics，不推断标题层级。
 
 当前真实文档可执行流程是：
 
@@ -85,9 +91,9 @@ flowchart LR
 
 - 本地/S3 Artifact Storage，以及 SQLite/PostgreSQL Job Persistence。
 - Parser Worker、GPU 调度、Checkpoint/Resume、Queue 和分布式执行。
-- Quality Scoring Engine、Fallback Planning、Fallback Execution 和 Merge Pipeline。
-- MinerU、Marker、Surya Adapter，以及 Selective Fallback 执行。Paddle 当前只是评估候选，
-  不会自动成为 Primary 或 Fallback。
+- 经真实语料冻结的生产级 Quality Gate / Fallback Profile；尚无可靠性或 95% 声明。
+- MinerU、Marker、Surya Adapter。Paddle 仍是需要冻结证据 Profile 才可使用的候选，
+  不是无条件 Primary 或 Fallback。
 - Semantic Chunk 构建、Token Packing、Embedding、Retrieval 和 Reranking。
 - FastAPI 服务、上传接口、Prometheus、OpenTelemetry 和 Grafana 集成。
 
@@ -371,7 +377,11 @@ IR Domain Coverage Gate 不低于 85%。默认测试完全离线；标记为 `ne
 | 已完成 | 0–2 | Bootstrap、可执行 Shell、完整 Canonical IR Graph、Schema、Migration |
 | 已完成 | 2.5 | 真实 PDF Preflight、可选 Docling 基线、中立标准化、诊断和本地 CLI |
 | 已完成 | 2.6 | 原生 PDF 证据、PaddleOCR-VL 候选、准确率指标与 Benchmark 基础 |
-| 推荐下一步 | 质量门校准 | 根据实际 Benchmark 失败校准确定性 Quality Gate |
+| 已完成 | Next 1 | 正确的项目 Evaluator、官方 ParseBench 边界与确定性 Dataset Manifest |
+| 已完成（默认观察模式） | Next 2 | 离散 Quality Gate、Calibration Metrics 与 Profile Freeze Contract |
+| 已完成（Evidence-gated MVP） | Next 3 | 单页 Materialization、PAGE/TABLE 原子 Fallback 与 Copy-on-write 重验证 |
+| 已完成 | Section Materialization | 确定性平级 Section、Synthetic Preamble/Body、派生 Provenance 与归属 Diagnostics |
+| 下一步 | Retrieval Baseline | Retrieval Benchmark 与 Fixed-token Baseline，之后再实现 Structure-aware Chunking |
 | 已规划 | 3–5 | 不可变本地 Artifact、SQLite Job State 和持久化 Parser 编排 |
 | 已规划 | 6–8 | 安全 PDF Admission 与生产级多页 Normalization 加固 |
 | 已规划 | 9–11 | Quality Engine、Selective Fallback、事务式 Merge 与重新验证 |
