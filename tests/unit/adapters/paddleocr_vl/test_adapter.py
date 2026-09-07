@@ -101,7 +101,7 @@ def test_official_result_json_maps_table_to_neutral_contract() -> None:
     assert result.pages[0].tables[0].row_count == 2
     assert result.pages[0].tables[0].column_count == 2
     assert len(result.pages[0].tables[0].cells) == 4
-    assert result.descriptor.adapter_version == "0.1.2"
+    assert result.descriptor.adapter_version == "0.1.3"
 
     document = normalize_neutral_result(
         result,

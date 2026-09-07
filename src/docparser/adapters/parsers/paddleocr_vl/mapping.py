@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from collections.abc import Mapping
 from html.parser import HTMLParser
 from typing import Any, Literal, cast
@@ -24,23 +25,47 @@ from docparser.ir.enums import TableCellHeaderRole
 
 JsonObject = dict[str, Any]
 
+PADDLE_LABEL_CONTRACT_VERSION = "PaddleX-3.7.1/PP-DocLayoutV3"
+
 _LABELS: dict[str, ExtractedElementType] = {
     "doc_title": ExtractedElementType.TITLE,
     "paragraph_title": ExtractedElementType.HEADING,
+    "abstract_title": ExtractedElementType.HEADING,
+    "reference_title": ExtractedElementType.HEADING,
+    "refer_title": ExtractedElementType.HEADING,
+    "content_title": ExtractedElementType.HEADING,
     "text": ExtractedElementType.PARAGRAPH,
     "paragraph": ExtractedElementType.PARAGRAPH,
+    "content": ExtractedElementType.PARAGRAPH,
+    "abstract": ExtractedElementType.PARAGRAPH,
+    "reference": ExtractedElementType.PARAGRAPH,
+    "reference_content": ExtractedElementType.PARAGRAPH,
+    "aside_text": ExtractedElementType.PARAGRAPH,
     "list": ExtractedElementType.LIST,
     "table": ExtractedElementType.TABLE,
     "image": ExtractedElementType.FIGURE,
     "figure": ExtractedElementType.FIGURE,
+    "chart": ExtractedElementType.FIGURE,
+    "flowchart": ExtractedElementType.FIGURE,
+    "seal": ExtractedElementType.FIGURE,
+    "table_title": ExtractedElementType.FIGURE_CAPTION,
+    "table_caption": ExtractedElementType.FIGURE_CAPTION,
+    "chart_title": ExtractedElementType.FIGURE_CAPTION,
+    "figure_title": ExtractedElementType.FIGURE_CAPTION,
+    "figure_table_chart_title": ExtractedElementType.FIGURE_CAPTION,
     "figure_caption": ExtractedElementType.FIGURE_CAPTION,
     "image_caption": ExtractedElementType.FIGURE_CAPTION,
     "formula": ExtractedElementType.EQUATION,
+    "display_formula": ExtractedElementType.EQUATION,
+    "inline_formula": ExtractedElementType.EQUATION,
+    "formula_number": ExtractedElementType.UNKNOWN,
     "algorithm": ExtractedElementType.CODE,
     "footnote": ExtractedElementType.FOOTNOTE,
     "vision_footnote": ExtractedElementType.FOOTNOTE,
     "header": ExtractedElementType.HEADER,
+    "header_image": ExtractedElementType.HEADER,
     "footer": ExtractedElementType.FOOTER,
+    "footer_image": ExtractedElementType.FOOTER,
     "number": ExtractedElementType.PAGE_NUMBER,
 }
 
@@ -140,10 +165,32 @@ def table_cells_from_html(
     return row_count, column_count, tuple(cells)
 
 
-def _element(page_number: int, raw: JsonObject, index: int) -> ExtractedElement:
-    label = str(raw.get("block_label", "unknown")).lower()
-    kind = _LABELS.get(label, ExtractedElementType.UNKNOWN)
+def _source_object_id(page_number: int, raw: JsonObject, index: int) -> str:
     source_id = str(raw.get("block_id", f"page-{page_number}-block-{index}"))
+    return f"paddle:{page_number}:{source_id}"
+
+
+def _parent_source_object_id(page_number: int, raw: JsonObject) -> str | None:
+    parent_id = raw.get("parent_block_id")
+    return f"paddle:{page_number}:{parent_id}" if parent_id is not None else None
+
+
+def _element(
+    page_number: int,
+    raw: JsonObject,
+    index: int,
+    *,
+    element_types_by_source_id: dict[str, ExtractedElementType],
+) -> ExtractedElement:
+    label = str(raw.get("block_label", "unknown"))
+    kind = _LABELS.get(label, ExtractedElementType.UNKNOWN)
+    source_object_id = _source_object_id(page_number, raw, index)
+    parent_source_object_id = _parent_source_object_id(page_number, raw)
+    caption_for_source_object_id = None
+    if kind is ExtractedElementType.FIGURE_CAPTION and element_types_by_source_id.get(
+        parent_source_object_id or ""
+    ) in {ExtractedElementType.TABLE, ExtractedElementType.FIGURE}:
+        caption_for_source_object_id = parent_source_object_id
     decorative = kind in {
         ExtractedElementType.HEADER,
         ExtractedElementType.FOOTER,
@@ -161,7 +208,7 @@ def _element(page_number: int, raw: JsonObject, index: int) -> ExtractedElement:
     elif kind is ExtractedElementType.EQUATION:
         method = "FORMULA_MODEL"
     return ExtractedElement(
-        source_object_id=f"paddle:{page_number}:{source_id}",
+        source_object_id=source_object_id,
         element_type=kind,
         page_number=page_number,
         bbox=_bbox(raw.get("block_bbox")),
@@ -172,12 +219,8 @@ def _element(page_number: int, raw: JsonObject, index: int) -> ExtractedElement:
         language=None,
         confidence=None,
         extraction_method=method,
-        parent_source_object_id=(
-            f"paddle:{page_number}:{raw['parent_block_id']}"
-            if raw.get("parent_block_id") is not None
-            else None
-        ),
-        caption_for_source_object_id=None,
+        parent_source_object_id=parent_source_object_id,
+        caption_for_source_object_id=caption_for_source_object_id,
         metadata={"org.paddleocr.label": label},
     )
 
@@ -195,9 +238,37 @@ def map_paddleocr_vl_pages(
         if not isinstance(raw_blocks, list):
             raise ValueError("Paddle page has no parsing_res_list")
         raw_mappings = [_object(raw) for raw in raw_blocks if isinstance(raw, Mapping)]
-        elements = tuple(
-            _element(page_number, raw, index) for index, raw in enumerate(raw_mappings)
+        unmapped_labels = Counter(
+            str(raw.get("block_label", "unknown"))
+            for raw in raw_mappings
+            if str(raw.get("block_label", "unknown")) not in _LABELS
         )
+        if unmapped_labels:
+            counts = ", ".join(
+                f"{label}={count}" for label, count in sorted(unmapped_labels.items())
+            )
+            warnings.append(f"page {page_number}: unmapped Paddle labels: {counts}")
+        element_types_by_source_id = {
+            _source_object_id(page_number, raw, index): _LABELS.get(
+                str(raw.get("block_label", "unknown")), ExtractedElementType.UNKNOWN
+            )
+            for index, raw in enumerate(raw_mappings)
+        }
+        elements = tuple(
+            _element(
+                page_number,
+                raw,
+                index,
+                element_types_by_source_id=element_types_by_source_id,
+            )
+            for index, raw in enumerate(raw_mappings)
+        )
+        captions_by_parent: dict[str, list[str]] = defaultdict(list)
+        for element in elements:
+            if element.caption_for_source_object_id is not None:
+                captions_by_parent[element.caption_for_source_object_id].append(
+                    element.source_object_id
+                )
         tables: list[ExtractedTable] = []
         for element, raw in zip(elements, raw_mappings, strict=True):
             if element.element_type is not ExtractedElementType.TABLE:
@@ -219,6 +290,9 @@ def map_paddleocr_vl_pages(
                     row_count=row_count,
                     column_count=column_count,
                     cells=cells,
+                    caption_source_object_ids=tuple(
+                        captions_by_parent[element.source_object_id]
+                    ),
                     continuation_from_source_object_id=(
                         f"paddle:{page_number}:{raw['continuation_from_block_id']}"
                         if raw.get("continuation_from_block_id") is not None

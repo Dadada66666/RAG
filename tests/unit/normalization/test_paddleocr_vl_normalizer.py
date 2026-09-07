@@ -16,7 +16,7 @@ from docparser.domain.parser_contract import (
     ParserHealth,
     RuntimeDevice,
 )
-from docparser.ir.enums import ExtractionMethod
+from docparser.ir.enums import BlockType, ExtractionMethod, ReadingOrderStatus
 from docparser.ir.serialization import dump_canonical_json
 from docparser.normalization import normalize_neutral_result, normalize_paddleocr_vl_result
 
@@ -38,6 +38,15 @@ class _StaticPaddleParser:
 def _result() -> ParseResult:
     fixture = json.loads(
         Path("tests/fixtures/paddleocr_vl/synthetic-structured.json").read_text(encoding="utf-8")
+    )
+    return map_paddleocr_vl_pages(fixture["pages"], descriptor=_descriptor(), run=_run())
+
+
+def _label_contract_result() -> ParseResult:
+    fixture = json.loads(
+        Path("tests/fixtures/paddleocr_vl/synthetic-label-contract.json").read_text(
+            encoding="utf-8"
+        )
     )
     return map_paddleocr_vl_pages(fixture["pages"], descriptor=_descriptor(), run=_run())
 
@@ -80,3 +89,96 @@ def test_paddle_entrypoint_has_neutral_normalizer_parity() -> None:
     neutral_document = normalize_neutral_result(result, context)
 
     assert dump_canonical_json(paddle_document) == dump_canonical_json(neutral_document)
+
+
+def test_sanitized_label_contract_replays_into_canonical_ir() -> None:
+    result = _label_contract_result()
+    context = normalization_context(profile_for_result(result), "paddle-label-contract")
+
+    document = normalize_neutral_result(result, context)
+    provenance = {record.provenance_id: record for record in document.provenance}
+    blocks_by_source = {
+        provenance[block.provenance_ids[0]].original_object_id: block
+        for block in document.pages[0].blocks
+    }
+
+    assert blocks_by_source["paddle:1:0"].block_type is BlockType.TITLE
+    assert blocks_by_source["paddle:1:1"].block_type is BlockType.HEADING
+    assert blocks_by_source["paddle:1:2"].block_type is BlockType.PARAGRAPH
+    assert blocks_by_source["paddle:1:3"].block_type is BlockType.FIGURE
+    assert blocks_by_source["paddle:1:5"].block_type is BlockType.EQUATION
+    assert blocks_by_source["paddle:1:6"].block_type is BlockType.UNKNOWN
+    assert blocks_by_source["paddle:1:7"].block_type is BlockType.TABLE
+    assert blocks_by_source["paddle:1:12"].block_type is BlockType.UNKNOWN
+    assert len(document.equations) == 1
+    assert len(document.tables) == 1
+    assert len(document.tables[0].cells) == 4
+    assert len(document.figures) == 1
+    assert document.figures[0].caption_block_ids == (
+        blocks_by_source["paddle:1:4"].block_id,
+    )
+    assert document.tables[0].caption_block_ids == (
+        blocks_by_source["paddle:1:8"].block_id,
+    )
+    assert blocks_by_source["paddle:1:13"].block_id not in document.figures[0].caption_block_ids
+    assert all(block.provenance_ids for block in document.pages[0].blocks)
+    assert all(record.original_object_id for record in provenance.values())
+
+    in_flow = [
+        block
+        for block in document.pages[0].blocks
+        if block.reading_order_status is ReadingOrderStatus.IN_FLOW
+    ]
+    assert [block.reading_order for block in in_flow] == list(range(len(in_flow)))
+    assert blocks_by_source["paddle:1:9"].reading_order_status is ReadingOrderStatus.DECORATIVE
+    assert blocks_by_source["paddle:1:10"].reading_order_status is ReadingOrderStatus.DECORATIVE
+    assert blocks_by_source["paddle:1:11"].reading_order_status is ReadingOrderStatus.DECORATIVE
+
+    repeated = normalize_neutral_result(result, context)
+    assert dump_canonical_json(document) == dump_canonical_json(repeated)
+
+
+def test_duplicate_or_missing_paddle_order_is_not_canonicalized_into_flow() -> None:
+    result = map_paddleocr_vl_pages(
+        [
+            {
+                "page_index": 0,
+                "source_width": 100,
+                "source_height": 100,
+                "parsing_res_list": [
+                    {
+                        "block_id": 1,
+                        "block_order": 5,
+                        "block_label": "text",
+                        "block_bbox": [1, 1, 40, 20],
+                        "block_content": "First",
+                    },
+                    {
+                        "block_id": 2,
+                        "block_order": 5,
+                        "block_label": "text",
+                        "block_bbox": [1, 30, 40, 50],
+                        "block_content": "Second",
+                    },
+                    {
+                        "block_id": 3,
+                        "block_order": None,
+                        "block_label": "text",
+                        "block_bbox": [1, 60, 40, 80],
+                        "block_content": "Third",
+                    },
+                ],
+            }
+        ],
+        descriptor=_descriptor(),
+        run=_run(),
+    )
+    context = normalization_context(profile_for_result(result), "paddle-order-conflict")
+
+    document = normalize_neutral_result(result, context)
+
+    assert all(
+        block.reading_order_status is ReadingOrderStatus.UNRESOLVED
+        and block.reading_order is None
+        for block in document.pages[0].blocks
+    )
