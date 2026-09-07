@@ -4,10 +4,12 @@ from dataclasses import dataclass
 
 from tests.ir_factory import ARTIFACT_ID, DOCUMENT_ID, TEST_NAMESPACE, make_document
 
+from docparser.ir.content import IssueCounts, QualitySummary
 from docparser.ir.enums import (
     BlockType,
     ConfidenceSource,
     ExtractionMethod,
+    QualityStatus,
     ReadingOrderStatus,
     TableCellHeaderRole,
     TextDirection,
@@ -360,7 +362,16 @@ def test_materialization_is_deterministic_immutable_and_provenance_resolvable() 
     assert first.created_at == _MATERIALIZED_AT
     assert first.pages == document.pages
     assert first.tables == document.tables
-    assert first.quality_summary == document.quality_summary
+    assert first.quality_summary == QualitySummary(
+        quality_report_id=None,
+        score=None,
+        status=QualityStatus.NOT_EVALUATED,
+        issue_counts=IssueCounts(INFO=0, WARNING=0, ERROR=0, CRITICAL=0),
+        publishable=False,
+    )
+    assert document.quality_summary.status is QualityStatus.PASS
+    assert document.quality_summary.quality_report_id is not None
+    assert document.quality_summary.publishable is True
     assert first.processing.parser_runs == document.processing.parser_runs
     assert first.processing.pipeline_version == (
         f"{document.processing.pipeline_version}+{SECTION_MATERIALIZER_VERSION}"
@@ -373,3 +384,31 @@ def test_materialization_is_deterministic_immutable_and_provenance_resolvable() 
         assert record.parent_provenance_ids
         assert all(parent_id in provenance_by_id for parent_id in record.parent_provenance_ids)
     validate_document_invariants(first)
+
+
+def test_materializing_unevaluated_input_keeps_new_revision_unevaluated() -> None:
+    document = _document((_BlockSpec("Body", BlockType.PARAGRAPH),))
+    payload = document.model_dump(mode="python")
+    payload["quality_summary"] = QualitySummary(
+        quality_report_id=None,
+        score=None,
+        status=QualityStatus.NOT_EVALUATED,
+        issue_counts=IssueCounts(INFO=0, WARNING=0, ERROR=0, CRITICAL=0),
+        publishable=False,
+    )
+    unevaluated = DocumentIR.model_validate(payload)
+
+    result = _materialize(unevaluated)
+
+    assert result.quality_summary.status is QualityStatus.NOT_EVALUATED
+    assert result.quality_summary.quality_report_id is None
+    assert result.quality_summary.score is None
+    assert result.quality_summary.publishable is False
+    assert result.quality_summary.issue_counts == IssueCounts(
+        INFO=0,
+        WARNING=0,
+        ERROR=0,
+        CRITICAL=0,
+    )
+    assert result.previous_revision_id == unevaluated.revision_id
+    assert result.revision_number == unevaluated.revision_number + 1

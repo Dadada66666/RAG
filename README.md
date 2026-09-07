@@ -78,7 +78,9 @@ vertical slice:
   TABLE replacement, copy-on-write revisions, fallback provenance, and full revalidation.
 - Deterministic post-fallback section materialization using only resolved Canonical reading order;
   it creates a flat section forest, synthetic preamble/body sections, derived provenance, and
-  assignment diagnostics without inferring heading levels.
+  assignment diagnostics without inferring heading levels. This is an explicit derived step over
+  saved final IR; `parse-local` and `parse-robust` do not invoke it automatically, and its new
+  revision starts with `quality_summary.status=NOT_EVALUATED`.
 
 The real-document development flow is:
 

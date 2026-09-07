@@ -21,6 +21,9 @@
 > Section materialization now deterministically groups only resolved retrieval-flow blocks into a
 > flat section forest after fallback. It preserves unresolved/decorative evidence as unassigned,
 > performs no heading-level inference, and emits a new immutable revision with derived provenance.
+> It is an explicit RAG-ingestion derived step: callers apply `materialize_sections()` to the final
+> saved Canonical IR after optional fallback. `parse-local` and `parse-robust` do not invoke it.
+> The derived revision resets revision-scoped quality evidence to `NOT_EVALUATED`.
 
 | Field | Value |
 |---|---|

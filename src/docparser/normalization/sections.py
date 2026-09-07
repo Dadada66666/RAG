@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-from docparser.ir.content import Section
+from docparser.ir.content import IssueCounts, QualitySummary, Section
 from docparser.ir.enums import (
     RETRIEVAL_FLOW_BLOCK_TYPES,
     BlockType,
     ExtractionMethod,
+    QualityStatus,
     ReadingOrderStatus,
 )
 from docparser.ir.ids import (
@@ -50,6 +51,16 @@ def _utc_now() -> UtcTimestamp:
 
 def _document_namespace(document: DocumentIR) -> UUID:
     return UUID(str(document.document_id).removeprefix("doc_"))
+
+
+def _quality_not_evaluated() -> QualitySummary:
+    return QualitySummary(
+        quality_report_id=None,
+        score=None,
+        status=QualityStatus.NOT_EVALUATED,
+        issue_counts=IssueCounts(INFO=0, WARNING=0, ERROR=0, CRITICAL=0),
+        publishable=False,
+    )
 
 
 def _reading_order(block: Block) -> int:
@@ -219,6 +230,7 @@ def materialize_sections(
             "created_at": clock(),
             "sections": sections,
             "provenance": document.provenance + section_provenance,
+            "quality_summary": _quality_not_evaluated(),
             "processing": document.processing.model_copy(
                 update={
                     "pipeline_version": (

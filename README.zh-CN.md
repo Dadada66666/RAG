@@ -68,7 +68,9 @@ flowchart TD
 - 单轮 Selective Fallback：单页 PDF materialization、PAGE 或单页 TABLE 原子替换、copy-on-write
   revision、fallback provenance 和完整重验证。
 - Fallback 后按已解析 Canonical reading order 确定性生成平级 Section forest；支持 synthetic
-  preamble/body、派生 provenance 和归属 diagnostics，不推断标题层级。
+  preamble/body、派生 provenance 和归属 diagnostics，不推断标题层级。这是对已保存 Final IR
+  显式调用 `materialize_sections()` 的 derived step；`parse-local` / `parse-robust` 不会自动执行，
+  新 revision 的 `quality_summary.status` 从 `NOT_EVALUATED` 开始。
 
 当前真实文档可执行流程是：
 
