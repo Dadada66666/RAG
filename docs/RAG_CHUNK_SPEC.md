@@ -2,9 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | Fixed-token control and relationship-bound structure-aware v2 implemented |
+| Status | Retrieval evidence contract closed over ordered and isolated evidence |
 | Chunk schema version | `1.0.0` |
-| Structure chunker version | `ir-structure-aware@2.0.0` |
+| Fixed chunker version | `ir-fixed-token@1.1.0` |
+| Structure chunker version | `ir-structure-aware@2.1.0` |
 
 ## 1. Purpose
 
@@ -109,8 +110,15 @@ Header/footer/page number blocks are excluded from normal retrieval text but rem
 
 The retrieval semantic stream is a dedicated derived view over Canonical IR. ParseBench/evaluation
 renderers are interoperability views and must never be reused as the RAG semantic renderer. Only
-`IN_FLOW` blocks with types in the canonical retrieval-flow allowlist enter normal ordered units;
-decorative evidence is retained but excluded, and `UNRESOLVED` blocks remain explicitly separate.
+`IN_FLOW` blocks with types in the canonical retrieval-flow allowlist are ordered retrievable
+evidence. `UNRESOLVED` allowlisted blocks are unordered but still retrievable: each is rendered as
+an isolated source stream and never participates in adjacency, overlap, cross-block packing, or
+inferred Section ownership. `DECORATIVE` and `UNKNOWN` blocks remain in Canonical IR but are
+excluded from the normal retrieval corpus. A semantic block with neither text nor renderable linked
+entity content is reported as unrenderable rather than silently dropped.
+
+Section is the trusted ordered structure view, not the complete retrieval inventory. The dedicated
+Retrieval Evidence View combines Section-backed ordered evidence with isolated unresolved evidence.
 
 ### 3.3 Protected boundaries
 
@@ -240,8 +248,8 @@ Old chunk manifests remain immutable and are withdrawn from downstream indexing 
 
 Before promotion, evaluate on the same versioned query/QA set:
 
-- **Control:** resolved retrieval-flow Canonical IR blocks, fixed-token chunks and deterministic
-  token overlap;
+- **Control:** the complete retrieval evidence universe, with the resolved stream using unchanged
+  fixed-token windows and each unresolved block using an isolated fixed-token stream;
 - **Experiment:** the same IR and tokenizer, with Section boundaries, heading context and protected
   logical Table row groups.
 
@@ -250,6 +258,12 @@ semantic-unit overlap within a Section, explicit Table-caption binding, header-a
 and precise row-segment provenance. It does not add LLM summaries, hierarchy inference, score
 fusion or a vector database. Non-embedding Section parents retain complete context and are counted
 component-wise so they are not sent through the tokenizer as one model-oversized input.
+
+Before embedding, each document must satisfy exact source-evidence parity:
+`expected == fixed covered == structure covered`. Coverage includes direct source blocks plus
+explicitly rendered context and semantic-overlap sources. Canonical Table blocks must be covered by
+both representations and must activate at least one Structure `TABLE` chunk when linked to a valid
+Table entity.
 
 Report retrieval, table retrieval, citation and latency deltas independently. Later optional
 experiments may add contextual heading/path enrichment. Late Chunking is allowed only when the

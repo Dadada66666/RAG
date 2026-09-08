@@ -3,7 +3,11 @@ from __future__ import annotations
 from tests.ir_factory import TEST_NAMESPACE
 
 from docparser.evaluation.ohr import RetrievalEvidenceType, RetrievalGroundTruth
-from docparser.evaluation.retrieval import RetrievalSlice, evaluate_page_retrieval
+from docparser.evaluation.retrieval import (
+    RetrievalSlice,
+    evaluate_page_retrieval,
+    evaluate_table_source_exposure,
+)
 from docparser.ir.ids import ChunkId, generate_uuid5_id
 from docparser.retrieval.dense import QueryRetrieval, RetrievedChunk
 
@@ -87,3 +91,26 @@ def test_missing_retrieval_output_is_a_zero_not_an_exclusion() -> None:
     assert metrics.query_count == 1
     assert metrics.hit_count_at_10 == 0
     assert metrics.mrr == 0.0
+
+
+def test_table_source_exposure_is_distinct_from_same_page_hit() -> None:
+    truth = _truth("table-exposure", RetrievalEvidenceType.TABLE, 0)
+    paragraph_hit = _hit("paragraph", (1,), 1)
+    table_hit = _hit("table-source", (1,), 2)
+    retrieval = QueryRetrieval(
+        benchmark_query_id=truth.benchmark_query_id,
+        document_name=truth.document_name,
+        hits=(paragraph_hit, table_hit),
+    )
+
+    page_metrics = evaluate_page_retrieval((truth,), (retrieval,))
+    no_table = evaluate_table_source_exposure((truth,), (retrieval,), frozenset())
+    with_table = evaluate_table_source_exposure(
+        (truth,), (retrieval,), frozenset({table_hit.chunk_id})
+    )
+
+    assert page_metrics.metrics_by_slice[RetrievalSlice.TABLE].page_hit_rate_at_1 == 1.0
+    assert no_table.metrics.table_source_exposure_at_1 == 0.0
+    assert no_table.metrics.table_source_exposure_at_5 == 0.0
+    assert with_table.metrics.table_source_exposure_at_1 == 0.0
+    assert with_table.metrics.table_source_exposure_at_5 == 1.0

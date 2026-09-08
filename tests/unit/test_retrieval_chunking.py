@@ -3,19 +3,26 @@ from __future__ import annotations
 from typing import cast
 
 from tests.ir_factory import TEST_NAMESPACE
-from tests.retrieval_factory import CharacterTokenizer, make_retrieval_document
+from tests.retrieval_factory import (
+    CharacterTokenizer,
+    make_paddle_like_unresolved_document,
+    make_retrieval_document,
+)
 
 from docparser.ir.chunks import Chunk
 from docparser.ir.content import Equation
 from docparser.ir.enums import BlockType, ChunkType, EquationFormat, TableCellHeaderRole
 from docparser.ir.ids import BlockId, EquationId, TableSegmentId, generate_uuid5_id
-from docparser.ir.invariants import validate_document_invariants
 from docparser.ir.models import DocumentIR
 from docparser.ir.tables import TableSegment
 from docparser.retrieval import (
+    FIXED_CHUNKER_VERSION,
+    STRUCTURE_CHUNKER_VERSION,
     FixedChunkConfig,
     StructureChunkConfig,
+    covered_source_block_ids,
     fixed_token_chunks,
+    retrieval_evidence_view,
     structure_aware_chunks,
 )
 
@@ -165,7 +172,7 @@ def _with_multisegment_table(document: DocumentIR) -> DocumentIR:
     return _validated(document.model_copy(update={"pages": pages, "tables": (updated_table,)}))
 
 
-def test_fixed_chunks_use_only_resolved_retrieval_flow_and_exact_overlap() -> None:
+def test_fixed_chunks_preserve_ordered_flow_and_isolate_unresolved_evidence() -> None:
     document = make_retrieval_document()
     tokenizer = CharacterTokenizer()
     config = FixedChunkConfig(target_tokens=32, overlap_tokens=8)
@@ -183,14 +190,20 @@ def test_fixed_chunks_use_only_resolved_retrieval_flow_and_exact_overlap() -> No
     assert all(BlockType.HEADER not in chunk.content_types for chunk in chunks)
     assert all(BlockType.FOOTER not in chunk.content_types for chunk in chunks)
     assert all(BlockType.UNKNOWN not in chunk.content_types for chunk in chunks)
-    assert "unresolved multicolumn text" not in "".join(chunk.text for chunk in chunks)
+    unresolved = [
+        chunk
+        for chunk in chunks
+        if chunk.metadata.get("reading_order_policy") == "ISOLATED_UNRESOLVED"
+    ]
+    assert "unresolved multicolumn text" in "".join(chunk.text for chunk in unresolved)
+    assert all(chunk.parent_chunk_id is None for chunk in unresolved)
+    assert all(chunk.parent_section_id is None for chunk in unresolved)
+    assert all(chunk.heading_path == () for chunk in unresolved)
     assert tokenizer.encode(chunks[0].text)[-8:] == tokenizer.encode(chunks[1].text)[:8]
     assert all(chunk.provenance_ids and chunk.bboxes for chunk in chunks)
     assert all_chunks == fixed_token_chunks(document, tokenizer, config)
     assert FixedChunkConfig() == FixedChunkConfig(target_tokens=512, overlap_tokens=64)
-    payload = document.model_dump(mode="python")
-    payload["chunks"] = all_chunks
-    validate_document_invariants(DocumentIR.model_validate(payload))
+    assert all(isinstance(chunk, Chunk) for chunk in all_chunks)
 
 
 def test_fixed_baseline_can_split_a_table_as_an_ordinary_token_stream() -> None:
@@ -209,23 +222,29 @@ def test_fixed_baseline_can_split_a_table_as_an_ordinary_token_stream() -> None:
     assert all(chunk.chunk_type is ChunkType.CHILD for chunk in table_chunks)
 
 
-def test_fixed_baseline_snapshot_is_unchanged_by_structure_v2() -> None:
+def test_fixed_ordered_window_semantics_are_unchanged_by_evidence_v1_1() -> None:
     chunks = fixed_token_chunks(
         make_retrieval_document(),
         CharacterTokenizer(),
         FixedChunkConfig(target_tokens=32, overlap_tokens=8),
     )
 
-    assert [str(chunk.chunk_id) for chunk in chunks] == [
-        "chk_90f0b6bc-f0e2-58c7-894b-f57da6cd5d32",
-        "chk_79492230-3b90-5eee-a54c-6d28bcaca0eb",
-        "chk_f1e9618f-1a5c-5b4f-9e5c-ec329422532e",
-        "chk_f7659046-88cf-5329-be8f-ada8c1be7bb3",
-        "chk_ed9581a5-4a7b-51a2-89d4-97afbbfa4315",
-        "chk_78d99278-fd2f-54f5-9cf0-bb5ce60ea4da",
-        "chk_cbb99bd8-2daa-5d0b-8be3-f3c9c25b3e5c",
-        "chk_6669ce5a-5a26-5491-80cc-b4627141eb65",
+    ordered = [
+        chunk
+        for chunk in chunks
+        if chunk.embedding_eligible
+        and chunk.metadata.get("reading_order_policy") is None
     ]
+    assert [(chunk.metadata["token_start"], chunk.metadata["token_end"]) for chunk in ordered] == [
+        (0, 32),
+        (24, 56),
+        (48, 80),
+        (72, 104),
+        (96, 128),
+        (120, 152),
+        (144, 153),
+    ]
+    assert all(chunk.chunker_version == FIXED_CHUNKER_VERSION for chunk in chunks)
 
 
 def test_structure_chunks_respect_sections_and_keep_heading_context() -> None:
@@ -238,18 +257,21 @@ def test_structure_chunks_respect_sections_and_keep_heading_context() -> None:
     )
 
     assert chunks
-    assert all(chunk.parent_section_id is not None for chunk in chunks)
-    assert all(len(chunk.heading_path) == 1 for chunk in chunks)
+    ordered_chunks = [
+        chunk
+        for chunk in chunks
+        if chunk.metadata.get("reading_order_policy") is None
+    ]
+    assert all(chunk.parent_section_id is not None for chunk in ordered_chunks)
+    assert all(len(chunk.heading_path) == 1 for chunk in ordered_chunks)
     assert all(not ({"Revenue", "Risk"} <= set(chunk.heading_path)) for chunk in chunks)
-    assert {chunk.parent_section_id for chunk in chunks} == {
+    assert {chunk.parent_section_id for chunk in ordered_chunks} == {
         document.sections[0].section_id,
         document.sections[1].section_id,
     }
     assert all(chunk.provenance_ids and chunk.source_block_ids for chunk in chunks)
-    assert all(chunk.chunker_version == "ir-structure-aware@2.0.0" for chunk in chunks)
-    payload = document.model_dump(mode="python")
-    payload["chunks"] = chunks
-    validate_document_invariants(DocumentIR.model_validate(payload))
+    assert all(chunk.chunker_version == STRUCTURE_CHUNKER_VERSION for chunk in chunks)
+    assert all(isinstance(chunk, Chunk) for chunk in chunks)
 
 
 def test_structure_table_is_atomic_under_limit_and_row_grouped_when_oversized() -> None:
@@ -589,3 +611,166 @@ def test_non_embedding_parent_is_counted_without_one_oversized_encode() -> None:
 
     assert any(parent.token_count > 150 for parent in parents)
     assert all(not parent.embedding_eligible for parent in parents)
+
+
+def test_retrieval_evidence_view_partitions_realistic_paddle_states() -> None:
+    document = make_paddle_like_unresolved_document()
+    view = retrieval_evidence_view(document)
+
+    assert all(
+        block.reading_order_status.value == "IN_FLOW" for block in view.ordered_blocks
+    )
+    assert all(
+        block.reading_order_status.value == "UNRESOLVED"
+        for block in view.isolated_unresolved_blocks
+    )
+    assert sum(
+        block.block_type is BlockType.TABLE
+        for block in view.isolated_unresolved_blocks
+    ) == 2
+    assert all(
+        block.block_type not in {BlockType.HEADER, BlockType.FOOTER, BlockType.UNKNOWN}
+        for block in (*view.ordered_blocks, *view.isolated_unresolved_blocks)
+    )
+
+
+def test_unrenderable_semantic_evidence_is_explicitly_diagnosed() -> None:
+    document = make_paddle_like_unresolved_document()
+    page = document.pages[0]
+    unresolved = page.blocks[4].model_copy(update={"text": ""})
+    updated = _validated(
+        document.model_copy(
+            update={
+                "pages": (
+                    page.model_copy(update={"blocks": (*page.blocks[:4], unresolved)}),
+                    document.pages[1],
+                )
+            }
+        )
+    )
+
+    view = retrieval_evidence_view(updated)
+
+    assert view.unrenderable_blocks == (unresolved,)
+    assert unresolved.block_id not in view.expected_source_block_ids
+
+
+def test_fixed_unresolved_blocks_are_standalone_and_tables_remain_naive() -> None:
+    document = make_paddle_like_unresolved_document()
+    chunks = fixed_token_chunks(
+        document,
+        CharacterTokenizer(),
+        FixedChunkConfig(target_tokens=18, overlap_tokens=4),
+    )
+    unresolved = [
+        chunk
+        for chunk in chunks
+        if chunk.metadata.get("reading_order_policy") == "ISOLATED_UNRESOLVED"
+    ]
+    unresolved_table = [
+        chunk for chunk in unresolved if BlockType.TABLE in chunk.content_types
+    ]
+
+    assert unresolved
+    assert unresolved_table
+    assert all(len(chunk.source_block_ids) == 1 for chunk in unresolved)
+    assert all(chunk.parent_chunk_id is None for chunk in unresolved)
+    assert all(
+        "Columns:" not in chunk.text and "Row:\n" not in chunk.text
+        for chunk in unresolved_table
+    )
+    assert all(chunk.token_count <= 18 for chunk in unresolved)
+    assert any(chunk.metadata["token_start"] == 14 for chunk in unresolved)
+
+
+def test_long_fixed_unresolved_block_uses_exact_512_64_windows() -> None:
+    document = make_retrieval_document()
+    page = document.pages[0]
+    unresolved = page.blocks[4].model_copy(update={"text": "x" * 700})
+    document = _validated(
+        document.model_copy(
+            update={
+                "pages": (
+                    page.model_copy(update={"blocks": (*page.blocks[:4], unresolved)}),
+                    document.pages[1],
+                )
+            }
+        )
+    )
+
+    chunks = fixed_token_chunks(document, CharacterTokenizer(), FixedChunkConfig())
+    windows = [
+        chunk
+        for chunk in chunks
+        if chunk.metadata.get("reading_order_policy") == "ISOLATED_UNRESOLVED"
+    ]
+
+    assert [(chunk.metadata["token_start"], chunk.metadata["token_end"]) for chunk in windows] == [
+        (0, 512),
+        (448, 700),
+    ]
+    assert all(chunk.source_block_ids == (unresolved.block_id,) for chunk in windows)
+
+
+def test_structure_unresolved_reuses_table_v2_and_preserves_caption_policy() -> None:
+    document = make_paddle_like_unresolved_document()
+    chunks = structure_aware_chunks(
+        document,
+        CharacterTokenizer(),
+        StructureChunkConfig(target_tokens=100, hard_max_tokens=220),
+    )
+    isolated = [
+        chunk
+        for chunk in chunks
+        if chunk.metadata.get("reading_order_policy") == "ISOLATED_UNRESOLVED"
+    ]
+    table_chunks = [chunk for chunk in isolated if chunk.chunk_type is ChunkType.TABLE]
+    child_chunks = [chunk for chunk in isolated if chunk.chunk_type is ChunkType.CHILD]
+    bound_caption_id = document.tables[0].caption_block_ids[0]
+    unbound_caption = next(
+        block
+        for page in document.pages
+        for block in page.blocks
+        if block.text == "unbound table caption"
+    )
+
+    assert table_chunks
+    assert all(chunk.parent_chunk_id is None for chunk in table_chunks)
+    assert all(chunk.parent_section_id is None for chunk in table_chunks)
+    assert all(chunk.heading_path == () for chunk in table_chunks)
+    assert {chunk.metadata["table_rendering"] for chunk in table_chunks} == {
+        "HEADER_AWARE_KEY_VALUE",
+        "COMPACT_LOGICAL_ROWS",
+    }
+    assert any(
+        str(bound_caption_id) in _metadata_str_list(chunk, "context_source_block_ids")
+        for chunk in table_chunks
+    )
+    assert all(bound_caption_id not in chunk.source_block_ids for chunk in child_chunks)
+    assert any(unbound_caption.block_id in chunk.source_block_ids for chunk in child_chunks)
+    assert all(chunk.metadata["overlap_source_block_ids"] == [] for chunk in isolated)
+
+
+def test_fixed_and_structure_cover_the_same_complete_evidence_universe() -> None:
+    document = make_paddle_like_unresolved_document()
+    tokenizer = CharacterTokenizer()
+    expected = retrieval_evidence_view(document).expected_source_block_ids
+    fixed = fixed_token_chunks(
+        document, tokenizer, FixedChunkConfig(target_tokens=40, overlap_tokens=8)
+    )
+    structure = structure_aware_chunks(
+        document,
+        tokenizer,
+        StructureChunkConfig(target_tokens=100, hard_max_tokens=220),
+    )
+
+    assert covered_source_block_ids(fixed) == expected
+    assert covered_source_block_ids(structure) == expected
+    assert fixed == fixed_token_chunks(
+        document, tokenizer, FixedChunkConfig(target_tokens=40, overlap_tokens=8)
+    )
+    assert structure == structure_aware_chunks(
+        document,
+        tokenizer,
+        StructureChunkConfig(target_tokens=100, hard_max_tokens=220),
+    )

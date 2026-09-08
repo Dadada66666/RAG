@@ -205,6 +205,8 @@ Important wire guarantees include:
 - Sibling sections may share a physical page, table cells retain row/column header roles, invalid
   parser ordering remains unresolved, and decorative blocks remain evidence outside normal
   retrieval flow.
+- Retrieval treats `IN_FLOW` as ordered evidence and `UNRESOLVED` as isolated unordered evidence;
+  Section membership is not used as the complete retrieval inventory.
 - Namespaced and bounded extensions cannot replace canonical semantics or contain arbitrary raw
   parser output.
 

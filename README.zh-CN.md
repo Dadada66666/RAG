@@ -189,6 +189,8 @@ DocumentIR
 - Page cardinality、Reading Order、Graph Reference、Table Grid 和 Section Topology 是硬不变量。
 - Sibling Section 可以共享物理页面；Table Cell 保留行/列表头角色；冲突的 Parser Reading
   Order 保持 `UNRESOLVED`；装饰性 Block 保留为证据但不进入普通 Retrieval Flow。
+- Retrieval 将 `IN_FLOW` 视为有序证据，将 `UNRESOLVED` 视为隔离的无序证据；Section
+  membership 不代表完整 Retrieval inventory。
 - Extension 必须带命名空间且大小受限，不能覆盖 Canonical 语义，也不能承载任意 Parser Raw JSON。
 
 权威契约见 [DOCUMENT_IR_SPEC.md](docs/DOCUMENT_IR_SPEC.md)，生成后的 wire schema 见

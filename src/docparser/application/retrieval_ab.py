@@ -8,21 +8,27 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
+from typing import cast
 
 from docparser.evaluation.ohr import RetrievalGroundTruth
 from docparser.evaluation.retrieval import (
     PageRetrievalReport,
     RetrievalSlice,
+    TableSourceExposureReport,
     evaluate_page_retrieval,
+    evaluate_table_source_exposure,
 )
 from docparser.ir.chunks import Chunk
-from docparser.ir.enums import ChunkType
+from docparser.ir.enums import BlockType, ChunkType, ReadingOrderStatus
+from docparser.ir.ids import BlockId, ChunkId, TableId
 from docparser.ir.models import DocumentIR
 from docparser.ir.serialization import load_canonical_json, semantic_digest
 from docparser.retrieval.chunking import (
     FixedChunkConfig,
     StructureChunkConfig,
+    covered_source_block_ids,
     fixed_token_chunks,
+    retrieval_evidence_view,
     structure_aware_chunks,
 )
 from docparser.retrieval.dense import (
@@ -44,8 +50,126 @@ class RetrievalABOutcome:
     structure_retrievals: tuple[QueryRetrieval, ...]
     fixed_metrics: PageRetrievalReport
     structure_metrics: PageRetrievalReport
+    fixed_table_source_exposure: TableSourceExposureReport
+    structure_table_source_exposure: TableSourceExposureReport
     comparison: dict[str, object]
     manifest: dict[str, object]
+
+
+def _table_source_chunk_ids(
+    chunks: tuple[Chunk, ...], table_block_ids: frozenset[BlockId]
+) -> frozenset[ChunkId]:
+    return frozenset(
+        chunk.chunk_id
+        for chunk in chunks
+        if chunk.embedding_eligible
+        and covered_source_block_ids((chunk,)).intersection(table_block_ids)
+    )
+
+
+def _evidence_contract_diagnostics(
+    document_name: str,
+    document: DocumentIR,
+    fixed_chunks: tuple[Chunk, ...],
+    structure_chunks: tuple[Chunk, ...],
+) -> dict[str, object]:
+    view = retrieval_evidence_view(document)
+    expected = view.expected_source_block_ids
+    fixed = covered_source_block_ids(fixed_chunks)
+    structure = covered_source_block_ids(structure_chunks)
+    if expected != fixed or expected != structure:
+        missing_fixed = sorted(str(value) for value in expected - fixed)
+        missing_structure = sorted(str(value) for value in expected - structure)
+        unexpected_fixed = sorted(str(value) for value in fixed - expected)
+        unexpected_structure = sorted(str(value) for value in structure - expected)
+        raise ValueError(
+            "retrieval evidence parity failed for "
+            f"{document_name}: expected_count={len(expected)}, "
+            f"fixed_count={len(fixed)}, structure_count={len(structure)}, "
+            f"missing_in_fixed={missing_fixed[:20]}, "
+            f"missing_in_structure={missing_structure[:20]}, "
+            f"unexpected_in_fixed={unexpected_fixed[:20]}, "
+            f"unexpected_in_structure={unexpected_structure[:20]}"
+        )
+
+    all_blocks = tuple(block for page in document.pages for block in page.blocks)
+    table_blocks = tuple(block for block in all_blocks if block.block_type is BlockType.TABLE)
+    table_block_ids = frozenset(block.block_id for block in table_blocks)
+    tables_by_id = {table.table_id: table for table in document.tables}
+    linked_table_blocks = tuple(
+        block
+        for block in table_blocks
+        if block.content_ref is not None and block.content_ref in tables_by_id
+    )
+    fixed_table_coverage = len(fixed.intersection(table_block_ids))
+    structure_table_coverage = len(structure.intersection(table_block_ids))
+    structure_table_chunks = tuple(
+        chunk
+        for chunk in structure_chunks
+        if chunk.embedding_eligible and chunk.chunk_type is ChunkType.TABLE
+    )
+    if (
+        fixed_table_coverage != len(table_blocks)
+        or structure_table_coverage != len(table_blocks)
+        or (linked_table_blocks and not structure_table_chunks)
+    ):
+        raise ValueError(
+            "retrieval TABLE activation failed for "
+            f"{document_name}: canonical_table_block_count={len(table_blocks)}, "
+            f"fixed_table_source_block_coverage_count={fixed_table_coverage}, "
+            "structure_table_source_block_coverage_count="
+            f"{structure_table_coverage}, "
+            f"structure_table_chunk_count={len(structure_table_chunks)}"
+        )
+
+    represented_table_ids = frozenset(
+        cast(TableId, entity_id)
+        for chunk in structure_table_chunks
+        for entity_id in chunk.source_entity_ids
+        if entity_id in tables_by_id
+    )
+    return {
+        "document_name": document_name,
+        "expected_retrieval_source_block_count": len(expected),
+        "in_flow_retrieval_block_count": sum(
+            block.reading_order_status is ReadingOrderStatus.IN_FLOW
+            for block in (*view.ordered_blocks, *view.isolated_unresolved_blocks)
+        ),
+        "unresolved_retrieval_block_count": len(view.isolated_unresolved_blocks),
+        "unrenderable_retrieval_block_count": len(view.unrenderable_blocks),
+        "unrenderable_retrieval_block_ids": [
+            str(block.block_id) for block in view.unrenderable_blocks
+        ],
+        "canonical_table_entity_count": len(document.tables),
+        "canonical_table_block_count": len(table_blocks),
+        "table_block_in_flow_count": sum(
+            block.reading_order_status is ReadingOrderStatus.IN_FLOW
+            for block in table_blocks
+        ),
+        "table_block_unresolved_count": sum(
+            block.reading_order_status is ReadingOrderStatus.UNRESOLVED
+            for block in table_blocks
+        ),
+        "fixed_table_source_block_coverage_count": fixed_table_coverage,
+        "structure_table_source_block_coverage_count": structure_table_coverage,
+        "structure_table_chunk_count": len(structure_table_chunks),
+        "structure_bound_caption_table_count": sum(
+            bool(tables_by_id[table_id].caption_block_ids)
+            for table_id in represented_table_ids
+        ),
+        "structure_unbound_caption_table_count": sum(
+            not tables_by_id[table_id].caption_block_ids
+            for table_id in represented_table_ids
+        ),
+        "structure_header_aware_table_chunk_count": sum(
+            chunk.metadata.get("table_rendering") == "HEADER_AWARE_KEY_VALUE"
+            for chunk in structure_table_chunks
+        ),
+        "structure_compact_table_chunk_count": sum(
+            chunk.metadata.get("table_rendering") == "COMPACT_LOGICAL_ROWS"
+            for chunk in structure_table_chunks
+        ),
+    }
 
 
 def _load_queries(path: Path) -> tuple[RetrievalGroundTruth, ...]:
@@ -134,13 +258,24 @@ def _metric_delta(
 
 
 def _comparison(
-    fixed: PageRetrievalReport, structure: PageRetrievalReport
+    fixed: PageRetrievalReport,
+    structure: PageRetrievalReport,
+    fixed_table_exposure: TableSourceExposureReport,
+    structure_table_exposure: TableSourceExposureReport,
 ) -> dict[str, object]:
     return {
         "metric_contract": "OHR PageHitRate@K and MRR; PageHitRate is not Recall",
         "fixed": fixed.model_dump(mode="json"),
         "structure": structure.model_dump(mode="json"),
         "delta_structure_minus_fixed": _metric_delta(fixed, structure),
+        "table_source_exposure_diagnostic": {
+            "contract": (
+                "TABLE-query Top-K contains a chunk covering a Canonical TABLE source block; "
+                "this is not TableAccuracy, TableRecall, or a primary metric"
+            ),
+            "fixed": fixed_table_exposure.model_dump(mode="json"),
+            "structure": structure_table_exposure.model_dump(mode="json"),
+        },
     }
 
 
@@ -152,6 +287,12 @@ def _manifest_number(manifest: dict[str, object], key: str) -> float:
     value = manifest[key]
     assert isinstance(value, int | float)
     return float(value)
+
+
+def _diagnostic_int(diagnostic: dict[str, object], key: str) -> int:
+    value = diagnostic[key]
+    assert isinstance(value, int)
+    return value
 
 
 def _markdown_report(outcome: RetrievalABOutcome) -> str:
@@ -172,6 +313,27 @@ def _markdown_report(outcome: RetrievalABOutcome) -> str:
         f"{_manifest_number(manifest, 'structure_median_tokens_per_chunk'):.2f}",
         f"- Structure table chunks: {manifest['structure_table_chunk_count']}",
         f"- Structure normal child chunks: {manifest['structure_normal_child_count']}",
+        f"- Expected retrieval source blocks: "
+        f"{manifest['expected_retrieval_source_block_count']}",
+        f"- In-flow retrieval blocks: {manifest['in_flow_retrieval_block_count']}",
+        f"- Unresolved retrieval blocks: {manifest['unresolved_retrieval_block_count']}",
+        f"- Unrenderable retrieval blocks: {manifest['unrenderable_retrieval_block_count']}",
+        f"- Canonical table entities: {manifest['canonical_table_entity_count']}",
+        f"- Canonical table blocks: {manifest['canonical_table_block_count']}",
+        f"- Table blocks in flow: {manifest['table_block_in_flow_count']}",
+        f"- Table blocks unresolved: {manifest['table_block_unresolved_count']}",
+        f"- Fixed table source coverage: "
+        f"{manifest['fixed_table_source_block_coverage_count']}",
+        f"- Structure table source coverage: "
+        f"{manifest['structure_table_source_block_coverage_count']}",
+        f"- Structure bound-caption tables: "
+        f"{manifest['structure_bound_caption_table_count']}",
+        f"- Structure unbound-caption tables: "
+        f"{manifest['structure_unbound_caption_table_count']}",
+        f"- Structure header-aware table chunks: "
+        f"{manifest['structure_header_aware_table_chunk_count']}",
+        f"- Structure compact table chunks: "
+        f"{manifest['structure_compact_table_chunk_count']}",
         f"- Fixed config: `{json.dumps(manifest['fixed_config'], sort_keys=True)}`",
         f"- Structure config: `{json.dumps(manifest['structure_config'], sort_keys=True)}`",
         "",
@@ -202,6 +364,26 @@ def _markdown_report(outcome: RetrievalABOutcome) -> str:
                 f"{_metric(slice_delta['mrr'])} |",
             ]
         )
+    fixed_exposure = outcome.fixed_table_source_exposure.metrics
+    structure_exposure = outcome.structure_table_source_exposure.metrics
+    lines.extend(
+        [
+            "",
+            "## TableSourceExposure (diagnostic, non-primary)",
+            "",
+            "| System | TABLE queries | TableSourceExposure@1 | "
+            "TableSourceExposure@5 | TableSourceExposure@10 |",
+            "|---|---:|---:|---:|---:|",
+            f"| Fixed | {fixed_exposure.query_count} | "
+            f"{_metric(fixed_exposure.table_source_exposure_at_1)} | "
+            f"{_metric(fixed_exposure.table_source_exposure_at_5)} | "
+            f"{_metric(fixed_exposure.table_source_exposure_at_10)} |",
+            f"| Structure | {structure_exposure.query_count} | "
+            f"{_metric(structure_exposure.table_source_exposure_at_1)} | "
+            f"{_metric(structure_exposure.table_source_exposure_at_5)} | "
+            f"{_metric(structure_exposure.table_source_exposure_at_10)} |",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -241,15 +423,24 @@ def run_retrieval_ab(
     relevant_names = tuple(sorted({query.document_name for query in eligible}))
     fixed_all_pairs: list[tuple[str, Chunk]] = []
     structure_all_pairs: list[tuple[str, Chunk]] = []
+    evidence_diagnostics: list[dict[str, object]] = []
     for document_name in relevant_names:
         document = documents[document_name]
-        fixed_all_pairs.extend(
-            (document_name, chunk)
-            for chunk in fixed_token_chunks(document, tokenizer, fixed_config)
+        document_fixed_chunks = fixed_token_chunks(document, tokenizer, fixed_config)
+        document_structure_chunks = structure_aware_chunks(
+            document, tokenizer, structure_config
         )
+        evidence_diagnostics.append(
+            _evidence_contract_diagnostics(
+                document_name,
+                document,
+                document_fixed_chunks,
+                document_structure_chunks,
+            )
+        )
+        fixed_all_pairs.extend((document_name, chunk) for chunk in document_fixed_chunks)
         structure_all_pairs.extend(
-            (document_name, chunk)
-            for chunk in structure_aware_chunks(document, tokenizer, structure_config)
+            (document_name, chunk) for chunk in document_structure_chunks
         )
     fixed_pairs = [pair for pair in fixed_all_pairs if pair[1].embedding_eligible]
     structure_pairs = [pair for pair in structure_all_pairs if pair[1].embedding_eligible]
@@ -282,9 +473,55 @@ def run_retrieval_ab(
     )
     fixed_metrics = evaluate_page_retrieval(eligible, fixed_retrievals)
     structure_metrics = evaluate_page_retrieval(eligible, structure_retrievals)
-    comparison = _comparison(fixed_metrics, structure_metrics)
+    all_table_block_ids = frozenset(
+        block.block_id
+        for name in relevant_names
+        for page in documents[name].pages
+        for block in page.blocks
+        if block.block_type is BlockType.TABLE
+    )
+    fixed_table_source_exposure = evaluate_table_source_exposure(
+        eligible,
+        fixed_retrievals,
+        _table_source_chunk_ids(
+            tuple(chunk for _, chunk in fixed_pairs), all_table_block_ids
+        ),
+    )
+    structure_table_source_exposure = evaluate_table_source_exposure(
+        eligible,
+        structure_retrievals,
+        _table_source_chunk_ids(
+            tuple(chunk for _, chunk in structure_pairs), all_table_block_ids
+        ),
+    )
+    comparison = _comparison(
+        fixed_metrics,
+        structure_metrics,
+        fixed_table_source_exposure,
+        structure_table_source_exposure,
+    )
+    aggregate_evidence = {
+        key: sum(_diagnostic_int(item, key) for item in evidence_diagnostics)
+        for key in (
+            "expected_retrieval_source_block_count",
+            "in_flow_retrieval_block_count",
+            "unresolved_retrieval_block_count",
+            "unrenderable_retrieval_block_count",
+            "canonical_table_entity_count",
+            "canonical_table_block_count",
+            "table_block_in_flow_count",
+            "table_block_unresolved_count",
+            "fixed_table_source_block_coverage_count",
+            "structure_table_source_block_coverage_count",
+            "structure_table_chunk_count",
+            "structure_bound_caption_table_count",
+            "structure_unbound_caption_table_count",
+            "structure_header_aware_table_chunk_count",
+            "structure_compact_table_chunk_count",
+        )
+    }
     manifest: dict[str, object] = {
-        "experiment_version": "rag-retrieval-ab@1.0.0",
+        "experiment_version": "rag-retrieval-ab@1.1.0",
         "source_commit": source_commit,
         "document_count": len(relevant_names),
         "documents": [
@@ -333,6 +570,8 @@ def run_retrieval_ab(
         "structure_normal_child_count": sum(
             chunk.chunk_type is ChunkType.CHILD for _, chunk in structure_pairs
         ),
+        **aggregate_evidence,
+        "retrieval_evidence_by_document": evidence_diagnostics,
         "tokenizer_id": tokenizer.tokenizer_id,
         "embedding_model_id": runtime.model_id,
         "embedding_model_digest": str(runtime.model_digest),
@@ -353,6 +592,8 @@ def run_retrieval_ab(
         structure_retrievals=structure_retrievals,
         fixed_metrics=fixed_metrics,
         structure_metrics=structure_metrics,
+        fixed_table_source_exposure=fixed_table_source_exposure,
+        structure_table_source_exposure=structure_table_source_exposure,
         comparison=comparison,
         manifest=manifest,
     )

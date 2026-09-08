@@ -32,8 +32,8 @@ from docparser.ir.models import Block, DocumentIR
 from docparser.ir.tables import Table, TableCell, TableSegment
 from docparser.ir.types import Sha256Digest
 
-FIXED_CHUNKER_VERSION = "ir-fixed-token@1.0.0"
-STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.0.0"
+FIXED_CHUNKER_VERSION = "ir-fixed-token@1.1.0"
+STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.1.0"
 STRUCTURE_EMBEDDING_TOKEN_LIMIT = 8000
 
 
@@ -97,6 +97,22 @@ class _SemanticRetrievalUnit:
     table_segment_ids: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class RetrievalEvidenceView:
+    """Renderable semantic evidence partitioned by reading-order confidence."""
+
+    ordered_blocks: tuple[Block, ...]
+    isolated_unresolved_blocks: tuple[Block, ...]
+    unrenderable_blocks: tuple[Block, ...]
+
+    @property
+    def expected_source_block_ids(self) -> frozenset[BlockId]:
+        return frozenset(
+            block.block_id
+            for block in (*self.ordered_blocks, *self.isolated_unresolved_blocks)
+        )
+
+
 def _sha256(value: str | bytes) -> Sha256Digest:
     raw = value.encode("utf-8") if isinstance(value, str) else value
     return Sha256Digest(f"sha256:{hashlib.sha256(raw).hexdigest()}")
@@ -117,17 +133,67 @@ def _namespace(document: DocumentIR) -> UUID:
     return UUID(str(document.document_id).removeprefix("doc_"))
 
 
-def _ordered_blocks(document: DocumentIR) -> tuple[Block, ...]:
-    blocks: list[Block] = []
+def retrieval_evidence_view(document: DocumentIR) -> RetrievalEvidenceView:
+    """Build the complete retrieval inventory without inventing reading order."""
+
+    ordered: list[Block] = []
+    unresolved: list[Block] = []
+    unrenderable: list[Block] = []
     for page in sorted(document.pages, key=lambda item: item.page_number):
-        flow = [
+        candidates = [
             block
             for block in page.blocks
-            if block.reading_order_status is ReadingOrderStatus.IN_FLOW
-            and block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES
+            if block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES
+            and block.reading_order_status
+            in {ReadingOrderStatus.IN_FLOW, ReadingOrderStatus.UNRESOLVED}
         ]
-        blocks.extend(sorted(flow, key=lambda block: block.reading_order or 0))
-    return tuple(blocks)
+        renderable: list[Block] = []
+        for block in candidates:
+            if _render_block(document, block).strip():
+                renderable.append(block)
+            else:
+                unrenderable.append(block)
+        ordered.extend(
+            sorted(
+                (
+                    block
+                    for block in renderable
+                    if block.reading_order_status is ReadingOrderStatus.IN_FLOW
+                ),
+                key=lambda block: block.reading_order or 0,
+            )
+        )
+        unresolved.extend(
+            block
+            for block in renderable
+            if block.reading_order_status is ReadingOrderStatus.UNRESOLVED
+        )
+    return RetrievalEvidenceView(
+        ordered_blocks=tuple(ordered),
+        isolated_unresolved_blocks=tuple(
+            sorted(unresolved, key=lambda block: (block.page_number, str(block.block_id)))
+        ),
+        unrenderable_blocks=tuple(
+            sorted(unrenderable, key=lambda block: (block.page_number, str(block.block_id)))
+        ),
+    )
+
+
+def covered_source_block_ids(chunks: Iterable[Chunk]) -> frozenset[BlockId]:
+    """Return every source block represented directly or as rendered context."""
+
+    covered: set[BlockId] = set()
+    for chunk in chunks:
+        if not chunk.embedding_eligible:
+            continue
+        covered.update(chunk.source_block_ids)
+        for key in ("context_source_block_ids", "overlap_source_block_ids"):
+            values = chunk.metadata.get(key, [])
+            assert isinstance(values, list)
+            for value in values:
+                assert isinstance(value, str)
+                covered.add(BlockId(value))
+    return frozenset(covered)
 
 
 def _table_by_id(document: DocumentIR) -> dict[ContentEntityId, Table]:
@@ -308,35 +374,37 @@ def fixed_token_chunks(
     """Create the controlled continuous-token baseline over Canonical IR blocks."""
 
     config = config or FixedChunkConfig()
+    evidence = retrieval_evidence_view(document)
     token_ids: list[int] = []
     ranges: list[tuple[int, int, Block]] = []
-    for block in _ordered_blocks(document):
+    for block in evidence.ordered_blocks:
         rendered = _render_block(document, block)
-        if not rendered.strip():
-            continue
         start = len(token_ids)
         token_ids.extend(tokenizer.encode(rendered + "\n\n"))
         ranges.append((start, len(token_ids), block))
-    if not token_ids:
-        return ()
 
     config_hash = _config_hash(config)
-    all_blocks = tuple(block for _, _, block in ranges)
-    parent = _chunk(
-        document,
-        text=tokenizer.decode(token_ids).rstrip(),
-        blocks=all_blocks,
-        tokenizer=tokenizer,
-        chunker_version=FIXED_CHUNKER_VERSION,
-        config_hash=config_hash,
-        ordinal=0,
-        chunk_type=ChunkType.PARENT,
-        metadata={"policy": "FIXED_TOKEN", "context_scope": "DOCUMENT"},
-        embedding_eligible=False,
-    )
-    chunks: list[Chunk] = [parent]
+    chunks: list[Chunk] = []
+    ordinal = 0
+    parent: Chunk | None = None
+    if token_ids:
+        all_blocks = tuple(block for _, _, block in ranges)
+        parent = _chunk(
+            document,
+            text=tokenizer.decode(token_ids).rstrip(),
+            blocks=all_blocks,
+            tokenizer=tokenizer,
+            chunker_version=FIXED_CHUNKER_VERSION,
+            config_hash=config_hash,
+            ordinal=ordinal,
+            chunk_type=ChunkType.PARENT,
+            metadata={"policy": "FIXED_TOKEN", "context_scope": "DOCUMENT"},
+            embedding_eligible=False,
+        )
+        chunks.append(parent)
+        ordinal += 1
     step = config.target_tokens - config.overlap_tokens
-    for ordinal, start in enumerate(range(0, len(token_ids), step), start=1):
+    for start in range(0, len(token_ids), step):
         end = min(start + config.target_tokens, len(token_ids))
         selected = tuple(
             block
@@ -355,7 +423,7 @@ def fixed_token_chunks(
                 config_hash=config_hash,
                 ordinal=ordinal,
                 chunk_type=ChunkType.CHILD,
-                parent_chunk_id=parent.chunk_id,
+                parent_chunk_id=parent.chunk_id if parent is not None else None,
                 metadata={
                     "policy": "FIXED_TOKEN",
                     "token_start": start,
@@ -364,8 +432,38 @@ def fixed_token_chunks(
                 },
             )
         )
+        ordinal += 1
         if end == len(token_ids):
             break
+
+    for block in evidence.isolated_unresolved_blocks:
+        rendered = _render_block(document, block).strip()
+        isolated_tokens = tokenizer.encode(rendered)
+        for start in range(0, len(isolated_tokens), step):
+            end = min(start + config.target_tokens, len(isolated_tokens))
+            chunks.append(
+                _chunk(
+                    document,
+                    text=tokenizer.decode(isolated_tokens[start:end]),
+                    blocks=(block,),
+                    tokenizer=tokenizer,
+                    chunker_version=FIXED_CHUNKER_VERSION,
+                    config_hash=config_hash,
+                    ordinal=ordinal,
+                    chunk_type=ChunkType.CHILD,
+                    metadata={
+                        "policy": "FIXED_TOKEN",
+                        "reading_order_policy": "ISOLATED_UNRESOLVED",
+                        "source_reading_order_status": "UNRESOLVED",
+                        "token_start": start,
+                        "token_end": end,
+                        "overlap_tokens": config.overlap_tokens,
+                    },
+                )
+            )
+            ordinal += 1
+            if end == len(isolated_tokens):
+                break
     return tuple(chunks)
 
 
@@ -560,7 +658,14 @@ def _table_units(
 ) -> tuple[_SemanticRetrievalUnit, ...]:
     blocks_by_id = _block_by_id(document)
     section_prefix, _ = _heading_prefix(heading)
-    captions = _caption_blocks(table, blocks_by_id)
+    captions = tuple(
+        caption
+        for caption in _caption_blocks(table, blocks_by_id)
+        if caption.block_type in RETRIEVAL_FLOW_BLOCK_TYPES
+        and caption.reading_order_status
+        in {ReadingOrderStatus.IN_FLOW, ReadingOrderStatus.UNRESOLVED}
+        and (caption.text or "").strip()
+    )
     header_rows = table.header_row_indices
     data_rows = tuple(
         row for row in range(table.logical_row_count) if row not in header_rows
@@ -577,7 +682,11 @@ def _table_units(
         column_labels,
         header_rows,
     )
-    context_blocks = ((heading,) if heading is not None else ()) + captions
+    header_segments = _table_segments_for_rows(table, header_rows)
+    header_blocks = tuple(blocks_by_id[segment.block_id] for segment in header_segments)
+    context_blocks = _unique_blocks(
+        ((heading,) if heading is not None else ()) + captions + header_blocks
+    )
     bands = _row_bands(table, data_rows)
     units: list[_SemanticRetrievalUnit] = []
     current: list[int] = []
@@ -706,6 +815,75 @@ def _overlap_tail(
     return tuple(reversed(selected))
 
 
+def _build_table_chunk(
+    document: DocumentIR,
+    unit: _SemanticRetrievalUnit,
+    tokenizer: Tokenizer,
+    config: StructureChunkConfig,
+    config_hash: Sha256Digest,
+    ordinal: int,
+    *,
+    parent_chunk_id: ChunkId | None,
+    section_id: SectionId | None,
+    heading_path: tuple[str, ...],
+    rendered_heading_prefix: bool,
+    reading_order_policy: str | None = None,
+) -> Chunk:
+    assert unit.table is not None
+    token_count = len(tokenizer.encode(unit.text))
+    if token_count > config.hard_max_tokens:
+        raise ChunkingError("a table row group exceeds structure hard_max_tokens")
+    metadata: dict[str, JsonValue] = {
+        "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
+        "protected_unit": "TABLE",
+        "rendered_heading_prefix": rendered_heading_prefix,
+        "row_start": min(unit.row_indices),
+        "row_end_exclusive": max(unit.row_indices) + 1,
+        "data_row_indices": list(unit.row_indices),
+        "repeated_header_rows": list(unit.repeated_header_rows),
+        "caption_block_ids": [
+            str(block.block_id)
+            for block in unit.context_blocks
+            if block.block_id in unit.table.caption_block_ids
+        ],
+        "table_segment_ids": list(unit.table_segment_ids),
+        "context_source_block_ids": [
+            str(block.block_id) for block in unit.context_blocks
+        ],
+        "overlap_source_block_ids": [],
+        "table_rendering": (
+            "HEADER_AWARE_KEY_VALUE"
+            if unit.table_header_aware
+            else "COMPACT_LOGICAL_ROWS"
+        ),
+    }
+    if reading_order_policy is not None:
+        metadata.update(
+            {
+                "reading_order_policy": reading_order_policy,
+                "source_reading_order_status": "UNRESOLVED",
+            }
+        )
+    return _chunk(
+        document,
+        text=unit.text,
+        blocks=unit.blocks,
+        tokenizer=tokenizer,
+        chunker_version=STRUCTURE_CHUNKER_VERSION,
+        config_hash=config_hash,
+        ordinal=ordinal,
+        chunk_type=ChunkType.TABLE,
+        parent_chunk_id=parent_chunk_id,
+        section_id=section_id,
+        heading_path=heading_path,
+        metadata=metadata,
+        token_count=token_count,
+        additional_source_entity_ids=(unit.table.table_id,),
+        extra_provenance_ids=unit.extra_provenance_ids,
+        source_bboxes=unit.segment_bboxes or None,
+    )
+
+
 def structure_aware_chunks(
     document: DocumentIR,
     tokenizer: Tokenizer,
@@ -714,7 +892,8 @@ def structure_aware_chunks(
     """Build relationship-bound semantic retrieval chunks from materialized Sections."""
 
     config = config or StructureChunkConfig()
-    if not document.sections:
+    evidence = retrieval_evidence_view(document)
+    if not document.sections and not evidence.isolated_unresolved_blocks:
         raise ChunkingError("structure-aware chunking requires materialized sections")
     blocks_by_id = _block_by_id(document)
     tables_by_id = _table_by_id(document)
@@ -820,6 +999,31 @@ def structure_aware_chunks(
         )
         chunks.append(parent)
         ordinal += 1
+        if not units and heading is not None:
+            heading_text = (heading.text or "").strip()
+            chunks.append(
+                _chunk(
+                    document,
+                    text=heading_text,
+                    blocks=(heading,),
+                    tokenizer=tokenizer,
+                    chunker_version=STRUCTURE_CHUNKER_VERSION,
+                    config_hash=config_hash,
+                    ordinal=ordinal,
+                    chunk_type=ChunkType.CHILD,
+                    parent_chunk_id=parent.chunk_id,
+                    section_id=section.section_id,
+                    heading_path=heading_path,
+                    metadata={
+                        "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
+                        "semantic_unit_count": 1,
+                        "heading_only_section": True,
+                        "context_source_block_ids": [],
+                        "overlap_source_block_ids": [],
+                    },
+                )
+            )
+            ordinal += 1
         pending: list[_SemanticRetrievalUnit] = []
         pending_overlap_count = 0
 
@@ -946,52 +1150,18 @@ def structure_aware_chunks(
             section_heading_path: tuple[str, ...] = heading_path,
         ) -> None:
             nonlocal ordinal
-            assert unit.table is not None
-            token_count = len(tokenizer.encode(unit.text))
-            if token_count > config.hard_max_tokens:
-                raise ChunkingError("a table row group exceeds structure hard_max_tokens")
-            metadata: dict[str, JsonValue] = {
-                "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
-                "protected_unit": "TABLE",
-                "rendered_heading_prefix": bool(section_prefix),
-                "row_start": min(unit.row_indices),
-                "row_end_exclusive": max(unit.row_indices) + 1,
-                "data_row_indices": list(unit.row_indices),
-                "repeated_header_rows": list(unit.repeated_header_rows),
-                "caption_block_ids": [
-                    str(block.block_id)
-                    for block in unit.context_blocks
-                    if block.block_id in unit.table.caption_block_ids
-                ],
-                "table_segment_ids": list(unit.table_segment_ids),
-                "context_source_block_ids": [
-                    str(block.block_id) for block in unit.context_blocks
-                ],
-                "overlap_source_block_ids": [],
-                "table_rendering": (
-                    "HEADER_AWARE_KEY_VALUE"
-                    if unit.table_header_aware
-                    else "COMPACT_LOGICAL_ROWS"
-                ),
-            }
             chunks.append(
-                _chunk(
+                _build_table_chunk(
                     document,
-                    text=unit.text,
-                    blocks=unit.blocks,
-                    tokenizer=tokenizer,
-                    chunker_version=STRUCTURE_CHUNKER_VERSION,
-                    config_hash=config_hash,
-                    ordinal=ordinal,
-                    chunk_type=ChunkType.TABLE,
+                    unit,
+                    tokenizer,
+                    config,
+                    config_hash,
+                    ordinal,
                     parent_chunk_id=parent_id,
                     section_id=section_id,
                     heading_path=section_heading_path,
-                    metadata=metadata,
-                    token_count=token_count,
-                    additional_source_entity_ids=(unit.table.table_id,),
-                    extra_provenance_ids=unit.extra_provenance_ids,
-                    source_bboxes=unit.segment_bboxes or None,
+                    rendered_heading_prefix=bool(section_prefix),
                 )
             )
             ordinal += 1
@@ -1027,6 +1197,75 @@ def structure_aware_chunks(
                     continue
             pending.append(unit)
         emit_normal()
+
+    for block in evidence.isolated_unresolved_blocks:
+        if block.block_id in bound_table_caption_ids:
+            continue
+        if block.block_type is BlockType.TABLE and block.content_ref is not None:
+            if block.content_ref in seen_tables:
+                continue
+            table = tables_by_id.get(block.content_ref)
+            if table is not None:
+                seen_tables.add(block.content_ref)
+                for unit in _table_units(
+                    document, block, table, None, tokenizer, config
+                ):
+                    chunks.append(
+                        _build_table_chunk(
+                            document,
+                            unit,
+                            tokenizer,
+                            config,
+                            config_hash,
+                            ordinal,
+                            parent_chunk_id=None,
+                            section_id=None,
+                            heading_path=(),
+                            rendered_heading_prefix=False,
+                            reading_order_policy="ISOLATED_UNRESOLVED",
+                        )
+                    )
+                    ordinal += 1
+                continue
+        unit = _normal_unit(document, block)
+        assert unit is not None
+        isolated_units: tuple[_SemanticRetrievalUnit, ...] = (unit,)
+        if len(tokenizer.encode(unit.text)) > config.hard_max_tokens:
+            if unit.protected_boundary:
+                raise ChunkingError(
+                    f"an unresolved protected {unit.semantic_type.value} unit exceeds "
+                    "structure hard_max_tokens"
+                )
+            isolated_units = _split_normal_unit(unit, "", tokenizer, config)
+        for isolated in isolated_units:
+            token_count = len(tokenizer.encode(isolated.text))
+            chunks.append(
+                _chunk(
+                    document,
+                    text=isolated.text,
+                    blocks=isolated.blocks,
+                    tokenizer=tokenizer,
+                    chunker_version=STRUCTURE_CHUNKER_VERSION,
+                    config_hash=config_hash,
+                    ordinal=ordinal,
+                    chunk_type=ChunkType.CHILD,
+                    metadata={
+                        "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
+                        "protected_unit": (
+                            isolated.semantic_type.value
+                            if isolated.protected_boundary
+                            else None
+                        ),
+                        "oversized_text_block_split": isolated.oversized_split,
+                        "reading_order_policy": "ISOLATED_UNRESOLVED",
+                        "source_reading_order_status": "UNRESOLVED",
+                        "context_source_block_ids": [],
+                        "overlap_source_block_ids": [],
+                    },
+                    token_count=token_count,
+                )
+            )
+            ordinal += 1
 
     if any(
         chunk.embedding_eligible and chunk.token_count > config.hard_max_tokens

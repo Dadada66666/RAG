@@ -286,6 +286,168 @@ def make_retrieval_document() -> DocumentIR:
     )
 
 
+def make_paddle_like_unresolved_document() -> DocumentIR:
+    """Model the observed Paddle IR state without requiring a parser runtime."""
+
+    document = make_retrieval_document()
+    first_page = document.pages[0]
+    second_page = document.pages[1]
+    caption = first_page.blocks[2].model_copy(
+        update={"block_type": BlockType.FIGURE_CAPTION}
+    )
+    first_table_block = first_page.blocks[3].model_copy(
+        update={"reading_order": None, "reading_order_status": ReadingOrderStatus.UNRESOLVED}
+    )
+    first_table = document.tables[0]
+    unknown_cells = tuple(
+        cell.model_copy(
+            update={
+                "header_role": TableCellHeaderRole.UNKNOWN,
+                "is_header": True,
+            }
+        )
+        if cell.row_index == 0
+        else cell
+        for cell in first_table.cells
+    )
+    first_table = first_table.model_copy(
+        update={
+            "cells": unknown_cells,
+            "caption_block_ids": (caption.block_id,),
+            "header_row_indices": (),
+        }
+    )
+
+    second_table_id = generate_uuid5_id(TableId, TEST_NAMESPACE, "paddle-like-table-two")
+    second_table_block = second_page.blocks[2].model_copy(
+        update={
+            "block_type": BlockType.TABLE,
+            "content_ref": second_table_id,
+            "reading_order": None,
+            "reading_order_status": ReadingOrderStatus.UNRESOLVED,
+            "text": "second table source",
+        }
+    )
+    unbound_caption, unbound_provenance = _block(
+        "unbound table caption",
+        BlockType.FIGURE_CAPTION,
+        2,
+        None,
+        ReadingOrderStatus.UNRESOLVED,
+    )
+    unknown, unknown_provenance = _block(
+        "unknown future block",
+        BlockType.UNKNOWN,
+        2,
+        None,
+        ReadingOrderStatus.UNRESOLVED,
+    )
+    second_cells = tuple(
+        TableCell(
+            cell_id=generate_uuid5_id(
+                TableCellId,
+                TEST_NAMESPACE,
+                "paddle-like-table-two-cell",
+                str(row),
+                str(column),
+            ),
+            row_index=row,
+            column_index=column,
+            row_span=1,
+            column_span=1,
+            text=text,
+            is_header=row == 0,
+            header_role=(
+                TableCellHeaderRole.COLUMN_HEADER
+                if row == 0
+                else TableCellHeaderRole.NONE
+            ),
+            page_number=2,
+            bbox=None,
+            source_block_ids=(),
+            confidence=None,
+            provenance_ids=second_table_block.provenance_ids,
+            fragments=(),
+            extensions={},
+        )
+        for row, values in enumerate((("Item", "Amount"), ("Cash", "42")))
+        for column, text in enumerate(values)
+    )
+    second_table = Table(
+        table_id=second_table_id,
+        logical_row_count=2,
+        logical_column_count=2,
+        segments=(
+            TableSegment(
+                segment_id=generate_uuid5_id(
+                    TableSegmentId, TEST_NAMESPACE, "paddle-like-table-two-segment"
+                ),
+                page_number=2,
+                bbox=second_table_block.bbox,
+                block_id=second_table_block.block_id,
+                row_start=0,
+                row_end_exclusive=2,
+                continued_from_segment_id=None,
+                continues_to_segment_id=None,
+                provenance_ids=second_table_block.provenance_ids,
+                extensions={},
+            ),
+        ),
+        cells=second_cells,
+        caption_block_ids=(),
+        header_row_indices=(0,),
+        provenance_ids=second_table_block.provenance_ids,
+        confidence=None,
+        extensions={},
+    )
+    pages = (
+        first_page.model_copy(
+            update={
+                "blocks": (
+                    *first_page.blocks[:2],
+                    caption,
+                    first_table_block,
+                    *first_page.blocks[4:],
+                )
+            }
+        ),
+        second_page.model_copy(
+            update={
+                "blocks": (
+                    *second_page.blocks[:2],
+                    second_table_block,
+                    second_page.blocks[3],
+                    unbound_caption,
+                    unknown,
+                )
+            }
+        ),
+    )
+    first_section = document.sections[0].model_copy(
+        update={
+            "content_block_ids": tuple(
+                block_id
+                for block_id in document.sections[0].content_block_ids
+                if block_id != first_table_block.block_id
+            )
+        }
+    )
+    return DocumentIR.model_validate(
+        document.model_copy(
+            update={
+                "pages": pages,
+                "tables": (first_table, second_table),
+                "sections": (first_section, *document.sections[1:]),
+                "provenance": (
+                    *document.provenance,
+                    unbound_provenance,
+                    unknown_provenance,
+                ),
+            }
+        ).model_dump(mode="python")
+    )
+
+
 def write_model_stub(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     (path / "config.json").write_text('{"model_type":"bge-m3"}\n', encoding="utf-8")

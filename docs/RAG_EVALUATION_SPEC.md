@@ -82,6 +82,13 @@ visible beside retrieval quality. OHR evaluation reports `PageHitRate@1/5/10` an
 TEXT, TABLE and READING_ORDER. PageHitRate is deliberately not labeled Recall because OHR truth
 here is page-level evidence rather than adjudicated chunk relevance.
 
+Experiment contract `rag-retrieval-ab@1.1.0` first enforces per-document parity between the
+renderable Retrieval Evidence View and both chunk representations. Its activation diagnostics make
+ordered/unresolved/unrenderable evidence, Canonical Table blocks, Table chunk rendering mode, and
+explicit caption binding visible. `TableSourceExposure@1/5/10` is a non-primary diagnostic for
+TABLE queries: it reports whether Top-K contains a chunk covering a Canonical TABLE source block.
+It is not TableAccuracy, TableRecall, or a substitute for the page-level primary metrics.
+
 ### 4.3 Relevance and citations
 
 Relevance is assigned to canonical entities/source blocks, then resolved to the derived chunk/version

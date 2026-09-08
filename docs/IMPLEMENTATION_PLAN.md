@@ -1,8 +1,8 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: Relationship-bound Structure-aware v2 implemented**
+> **CURRENT EXECUTION POINTER: Retrieval evidence contract closure implemented**
 >
-> **NEXT: Rerun the frozen 21-query development comparison without changing controls**
+> **NEXT: Rerun the same 3-document / 21-query comparison without changing controls**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
@@ -24,6 +24,11 @@
 > It is an explicit RAG-ingestion derived step: callers apply `materialize_sections()` to the final
 > saved Canonical IR after optional fallback. `parse-local` and `parse-robust` do not invoke it.
 > The derived revision resets revision-scoped quality evidence to `NOT_EVALUATED`.
+> Retrieval no longer equates ordered with retrievable. Allowlisted `IN_FLOW` evidence remains the
+> ordered stream, while allowlisted `UNRESOLVED` evidence is emitted as isolated retrieval units
+> without inferred adjacency or Section ownership. Fixed `1.1` and Structure `2.1` must cover the
+> same renderable source-block universe before an A/B run may embed or report results. Table and
+> caption/header feature activation is recorded explicitly; missing Table activation fails fast.
 > Retrieval benchmark preparation reads the official local `data/qas_v2.json` contract, preserving
 > scalar/list evidence contexts and zero-based source page indices before emitting normalized,
 > chunking-independent query truth plus required-document metadata. `multi`, formula, and chart
@@ -855,10 +860,11 @@ frozen predicate without collateral hard failure; fallback rate/cost/unresolved 
 
 ### Next 4 — Structure-aware parent-child chunker
 
-**Implementation status:** relationship-bound semantic packing v2 complete. It uses existing flat
+**Implementation status:** relationship-bound semantic packing v2.1 complete. It uses existing flat
 Sections, binds explicit Table captions, renders explicit column-header relationships, greedily
 packs complete row bands with precise segment provenance, and overlaps one complete ordinary
-semantic unit. Broader hierarchy inference remains deferred.
+semantic unit. Unresolved semantic blocks remain isolated, and unresolved linked Tables reuse the
+same v2 Table pipeline. Broader hierarchy inference remains deferred.
 
 **Goal:** compare fixed-token baseline with deterministic IR-derived section/table-aware chunks.
 

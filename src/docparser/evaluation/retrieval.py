@@ -8,6 +8,7 @@ from pydantic import Field
 
 from docparser.evaluation.ohr import RetrievalEvidenceType, RetrievalGroundTruth
 from docparser.ir.base import StrictIRModel
+from docparser.ir.ids import ChunkId
 from docparser.retrieval.dense import QueryRetrieval
 
 
@@ -33,6 +34,21 @@ class PageRetrievalMetrics(StrictIRModel):
 class PageRetrievalReport(StrictIRModel):
     evaluator_version: str = "ohr-page-retrieval@1.0.0"
     metrics_by_slice: dict[RetrievalSlice, PageRetrievalMetrics]
+
+
+class TableSourceExposureMetrics(StrictIRModel):
+    query_count: int = Field(strict=True, ge=0)
+    exposure_count_at_1: int = Field(strict=True, ge=0)
+    exposure_count_at_5: int = Field(strict=True, ge=0)
+    exposure_count_at_10: int = Field(strict=True, ge=0)
+    table_source_exposure_at_1: float | None
+    table_source_exposure_at_5: float | None
+    table_source_exposure_at_10: float | None
+
+
+class TableSourceExposureReport(StrictIRModel):
+    evaluator_version: str = "ohr-table-source-exposure@1.0.0"
+    metrics: TableSourceExposureMetrics
 
 
 def _first_page_hit_rank(
@@ -104,4 +120,42 @@ def evaluate_page_retrieval(
     }
     return PageRetrievalReport(
         metrics_by_slice={name: _metrics(items, by_id) for name, items in slices.items()}
+    )
+
+
+def evaluate_table_source_exposure(
+    truths: tuple[RetrievalGroundTruth, ...],
+    retrievals: tuple[QueryRetrieval, ...],
+    table_exposing_chunk_ids: frozenset[ChunkId],
+) -> TableSourceExposureReport:
+    """Measure whether TABLE queries expose any table-derived source in Top-K."""
+
+    table_truths = tuple(
+        truth for truth in truths if truth.evidence_type is RetrievalEvidenceType.TABLE
+    )
+    by_id = {result.benchmark_query_id: result for result in retrievals}
+
+    def exposed(truth: RetrievalGroundTruth, cutoff: int) -> bool:
+        result = by_id.get(truth.benchmark_query_id)
+        return result is not None and any(
+            hit.rank <= cutoff
+            and hit.document_name == truth.document_name
+            and hit.chunk_id in table_exposing_chunk_ids
+            for hit in result.hits
+        )
+
+    count = len(table_truths)
+    exposed_1 = sum(exposed(truth, 1) for truth in table_truths)
+    exposed_5 = sum(exposed(truth, 5) for truth in table_truths)
+    exposed_10 = sum(exposed(truth, 10) for truth in table_truths)
+    return TableSourceExposureReport(
+        metrics=TableSourceExposureMetrics(
+            query_count=count,
+            exposure_count_at_1=exposed_1,
+            exposure_count_at_5=exposed_5,
+            exposure_count_at_10=exposed_10,
+            table_source_exposure_at_1=exposed_1 / count if count else None,
+            table_source_exposure_at_5=exposed_5 / count if count else None,
+            table_source_exposure_at_10=exposed_10 / count if count else None,
+        )
     )
