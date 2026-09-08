@@ -74,11 +74,13 @@ No stage may change an earlier controlled variable without creating a separate e
 
 Publish absolute results and incremental delta for each stage. A later stage is promoted only when it
 improves its declared target slices without unacceptable latency, citation or other-slice regression.
-The current `rag-retrieval-ab` experiment compares the IR fixed-token control with the minimal
-Section/Table-aware representation using one local BGE-M3 runtime, shared query embeddings and
-exact NumPy cosine ranking. OHR evaluation reports `PageHitRate@1/5/10` and MRR for ALL, TEXT,
-TABLE and READING_ORDER. PageHitRate is deliberately not labeled Recall because OHR truth here is
-page-level evidence rather than adjudicated chunk relevance.
+The current `rag-retrieval-ab` experiment compares the unchanged IR fixed-token control with the
+relationship-bound semantic-packing v2 representation using one local BGE-M3 runtime, shared query
+embeddings and exact NumPy cosine ranking. The run manifest also records embedding candidate count,
+average/median structure chunk tokens, and structure Table/normal-child counts so fragmentation is
+visible beside retrieval quality. OHR evaluation reports `PageHitRate@1/5/10` and MRR for ALL,
+TEXT, TABLE and READING_ORDER. PageHitRate is deliberately not labeled Recall because OHR truth
+here is page-level evidence rather than adjudicated chunk relevance.
 
 ### 4.3 Relevance and citations
 

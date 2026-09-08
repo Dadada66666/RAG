@@ -18,6 +18,7 @@ from docparser.ir.enums import (
     BlockType,
     ChunkType,
     ReadingOrderStatus,
+    TableCellHeaderRole,
 )
 from docparser.ir.ids import (
     BlockId,
@@ -28,11 +29,12 @@ from docparser.ir.ids import (
     generate_uuid5_id,
 )
 from docparser.ir.models import Block, DocumentIR
-from docparser.ir.tables import Table, TableCell
+from docparser.ir.tables import Table, TableCell, TableSegment
 from docparser.ir.types import Sha256Digest
 
 FIXED_CHUNKER_VERSION = "ir-fixed-token@1.0.0"
-STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@1.0.0"
+STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.0.0"
+STRUCTURE_EMBEDDING_TOKEN_LIMIT = 8000
 
 
 class ChunkingError(ValueError):
@@ -61,7 +63,13 @@ class FixedChunkConfig(StrictIRModel):
 
 class StructureChunkConfig(StrictIRModel):
     target_tokens: int = Field(default=512, strict=True, ge=1)
-    hard_max_tokens: int = Field(default=8000, strict=True, ge=1)
+    hard_max_tokens: int = Field(
+        default=STRUCTURE_EMBEDDING_TOKEN_LIMIT,
+        strict=True,
+        ge=1,
+        le=STRUCTURE_EMBEDDING_TOKEN_LIMIT,
+    )
+    semantic_overlap_units: int = Field(default=1, strict=True, ge=0)
 
     @model_validator(mode="after")
     def _validate_limits(self) -> Self:
@@ -71,14 +79,22 @@ class StructureChunkConfig(StrictIRModel):
 
 
 @dataclass(frozen=True, slots=True)
-class _Unit:
+class _SemanticRetrievalUnit:
     text: str
     blocks: tuple[Block, ...]
+    semantic_type: BlockType
+    protected_boundary: bool = False
+    overlap_eligible: bool = True
     chunk_type: ChunkType = ChunkType.CHILD
     table: Table | None = None
-    row_start: int | None = None
-    row_end: int | None = None
+    row_indices: tuple[int, ...] = ()
     repeated_header_rows: tuple[int, ...] = ()
+    context_blocks: tuple[Block, ...] = ()
+    extra_provenance_ids: tuple[ProvenanceId, ...] = ()
+    oversized_split: bool = False
+    table_header_aware: bool = False
+    segment_bboxes: tuple[ChunkBBox, ...] = ()
+    table_segment_ids: tuple[str, ...] = ()
 
 
 def _sha256(value: str | bytes) -> Sha256Digest:
@@ -177,13 +193,18 @@ def _unique_blocks(blocks: Iterable[Block]) -> tuple[Block, ...]:
     return tuple(result)
 
 
-def _unique_provenance(blocks: Iterable[Block], table: Table | None) -> tuple[ProvenanceId, ...]:
+def _unique_provenance(
+    blocks: Iterable[Block],
+    table: Table | None,
+    extra_provenance_ids: Iterable[ProvenanceId] = (),
+) -> tuple[ProvenanceId, ...]:
     values: list[ProvenanceId] = []
     seen: set[ProvenanceId] = set()
     candidates = [identifier for block in blocks for identifier in block.provenance_ids]
     if table is not None:
         candidates.extend(table.provenance_ids)
         candidates.extend(identifier for cell in table.cells for identifier in cell.provenance_ids)
+    candidates.extend(extra_provenance_ids)
     for identifier in candidates:
         if identifier not in seen:
             seen.add(identifier)
@@ -207,16 +228,21 @@ def _chunk(
     table: Table | None = None,
     metadata: dict[str, JsonValue] | None = None,
     embedding_eligible: bool | None = None,
+    token_count: int | None = None,
+    additional_source_entity_ids: Iterable[ContentEntityId] = (),
+    extra_provenance_ids: Iterable[ProvenanceId] = (),
+    source_bboxes: Iterable[ChunkBBox] | None = None,
 ) -> Chunk:
     selected = _unique_blocks(blocks)
     if not selected:
         raise ChunkingError("a chunk must resolve to at least one source block")
-    token_count = len(tokenizer.encode(text))
-    source_entity_ids = tuple(
+    resolved_token_count = len(tokenizer.encode(text)) if token_count is None else token_count
+    source_entity_ids: tuple[ContentEntityId, ...] = tuple(
         dict.fromkeys(block.content_ref for block in selected if block.content_ref is not None)
     )
     if table is not None and table.table_id not in source_entity_ids:
         source_entity_ids += (table.table_id,)
+    source_entity_ids = tuple(dict.fromkeys((*source_entity_ids, *additional_source_entity_ids)))
     content_digest = _sha256(text)
     chunk_id = generate_uuid5_id(
         ChunkId,
@@ -232,7 +258,17 @@ def _chunk(
         *(str(block.block_id) for block in selected),
         str(content_digest),
     )
-    pages = tuple(block.page_number for block in selected)
+    resolved_bboxes = (
+        tuple(source_bboxes)
+        if source_bboxes is not None
+        else tuple(
+            ChunkBBox(page_number=block.page_number, bbox=block.bbox)
+            for block in selected
+        )
+    )
+    if not resolved_bboxes:
+        raise ChunkingError("a chunk must resolve to at least one source bbox")
+    pages = tuple(item.page_number for item in resolved_bboxes)
     return Chunk(
         chunk_id=chunk_id,
         document_id=document.document_id,
@@ -249,11 +285,9 @@ def _chunk(
         page_end=max(pages),
         source_block_ids=tuple(block.block_id for block in selected),
         source_entity_ids=source_entity_ids,
-        bboxes=tuple(
-            ChunkBBox(page_number=block.page_number, bbox=block.bbox) for block in selected
-        ),
+        bboxes=resolved_bboxes,
         content_types=tuple(dict.fromkeys(block.block_type for block in selected)),
-        token_count=token_count,
+        token_count=resolved_token_count,
         tokenizer_id=tokenizer.tokenizer_id,
         content_digest=content_digest,
         embedding_input_digest=content_digest,
@@ -262,7 +296,7 @@ def _chunk(
         ),
         sparse_eligible=bool(text.strip()),
         metadata=metadata or {},
-        provenance_ids=_unique_provenance(selected, table),
+        provenance_ids=_unique_provenance(selected, table, extra_provenance_ids),
     )
 
 
@@ -339,18 +373,95 @@ def _heading_prefix(heading: Block | None) -> tuple[str, tuple[str, ...]]:
     if heading is None or not (heading.text or "").strip():
         return "", ()
     value = (heading.text or "").strip()
-    return f"# {value}\n\n", (value,)
+    return f"Section: {value}\n\n", (value,)
 
 
-def _table_source_blocks(
-    table: Table, fallback: Block, blocks_by_id: dict[BlockId, Block]
+def _caption_blocks(
+    table: Table, blocks_by_id: dict[BlockId, Block]
 ) -> tuple[Block, ...]:
-    blocks = tuple(
-        blocks_by_id[segment.block_id]
-        for segment in table.segments
-        if segment.block_id in blocks_by_id
+    return tuple(
+        blocks_by_id[block_id]
+        for block_id in table.caption_block_ids
     )
-    return blocks or (fallback,)
+
+
+def _explicit_column_labels(table: Table) -> tuple[str, ...] | None:
+    labels: list[list[str]] = [[] for _ in range(table.logical_column_count)]
+    header_cells = sorted(
+        (
+            cell
+            for cell in table.cells
+            if cell.header_role
+            in {TableCellHeaderRole.COLUMN_HEADER, TableCellHeaderRole.BOTH}
+            and cell.text.strip()
+        ),
+        key=lambda cell: (cell.row_index, cell.column_index, str(cell.cell_id)),
+    )
+    for cell in header_cells:
+        for column in range(cell.column_index, cell.column_index + cell.column_span):
+            labels[column].append(cell.text.strip())
+    if not labels or any(not values for values in labels):
+        return None
+    return tuple(" / ".join(dict.fromkeys(values)) for values in labels)
+
+
+def _render_key_value_row(
+    table: Table, row_index: int, column_labels: tuple[str, ...]
+) -> str:
+    cells = sorted(
+        (cell for cell in table.cells if cell.row_index == row_index),
+        key=lambda cell: (cell.column_index, str(cell.cell_id)),
+    )
+    lines: list[str] = []
+    for cell in cells:
+        labels = column_labels[
+            cell.column_index : cell.column_index + cell.column_span
+        ]
+        key = " / ".join(dict.fromkeys(labels))
+        lines.append(f"{key}: {_render_cell(cell)}")
+    return "Row:\n" + "\n".join(lines)
+
+
+def _render_table_rows(
+    table: Table,
+    rows: Sequence[int],
+    column_labels: tuple[str, ...] | None,
+) -> str:
+    if column_labels is not None:
+        return "\n\n".join(
+            _render_key_value_row(table, row, column_labels) for row in rows
+        )
+    return "\n".join(_render_table_row(table, row) for row in rows)
+
+
+def _table_context_prefix(
+    section_prefix: str,
+    caption_blocks: Sequence[Block],
+    table: Table,
+    column_labels: tuple[str, ...] | None,
+    repeated_header_rows: Sequence[int],
+) -> str:
+    parts = [section_prefix.rstrip()]
+    parts.extend(
+        f"Table: {text}"
+        for block in caption_blocks
+        if (text := (block.text or "").strip())
+    )
+    if column_labels is not None:
+        parts.append("Columns:\n" + " | ".join(column_labels))
+    elif repeated_header_rows:
+        parts.append("Headers:\n" + _render_table(table, repeated_header_rows))
+    return "\n\n".join(part for part in parts if part)
+
+
+def _render_table_unit(
+    prefix: str,
+    table: Table,
+    rows: Sequence[int],
+    column_labels: tuple[str, ...] | None,
+) -> str:
+    body = _render_table_rows(table, rows, column_labels)
+    return "\n\n".join(part for part in (prefix, body) if part).strip()
 
 
 def _row_bands(table: Table, data_rows: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
@@ -378,6 +489,67 @@ def _row_bands(table: Table, data_rows: tuple[int, ...]) -> tuple[tuple[int, ...
     return tuple(bands)
 
 
+def _segment_intersects_rows(row_start: int, row_end: int, rows: set[int]) -> bool:
+    return any(row_start <= row < row_end for row in rows)
+
+
+def _table_segments_for_rows(
+    table: Table, rows: Sequence[int]
+) -> tuple[TableSegment, ...]:
+    selected_rows = set(rows)
+    return tuple(
+        segment
+        for segment in table.segments
+        if _segment_intersects_rows(
+            segment.row_start, segment.row_end_exclusive, selected_rows
+        )
+    )
+
+
+def _table_blocks_for_rows(
+    table: Table,
+    rows: Sequence[int],
+    fallback: Block,
+    blocks_by_id: dict[BlockId, Block],
+) -> tuple[Block, ...]:
+    blocks = tuple(
+        blocks_by_id[segment.block_id]
+        for segment in _table_segments_for_rows(table, rows)
+    )
+    return blocks or (fallback,)
+
+
+def _table_provenance_for_rows(
+    table: Table,
+    rows: Sequence[int],
+    repeated_header_rows: Sequence[int],
+    context_blocks: Sequence[Block],
+) -> tuple[ProvenanceId, ...]:
+    relevant_rows = set((*rows, *repeated_header_rows))
+    values: list[ProvenanceId] = []
+    values.extend(
+        identifier
+        for segment in table.segments
+        if _segment_intersects_rows(
+            segment.row_start, segment.row_end_exclusive, set(rows)
+        )
+        for identifier in segment.provenance_ids
+    )
+    values.extend(
+        identifier
+        for cell in table.cells
+        if any(
+            cell.row_index <= row < cell.row_index + cell.row_span
+            for row in relevant_rows
+        )
+        for identifier in cell.provenance_ids
+    )
+    values.extend(
+        identifier for block in context_blocks for identifier in block.provenance_ids
+    )
+    return tuple(dict.fromkeys(values))
+
+
 def _table_units(
     document: DocumentIR,
     block: Block,
@@ -385,84 +557,153 @@ def _table_units(
     heading: Block | None,
     tokenizer: Tokenizer,
     config: StructureChunkConfig,
-) -> tuple[_Unit, ...]:
+) -> tuple[_SemanticRetrievalUnit, ...]:
     blocks_by_id = _block_by_id(document)
-    source_blocks = _table_source_blocks(table, block, blocks_by_id)
-    prefix, _ = _heading_prefix(heading)
-    full_text = prefix + _render_table(table)
-    if len(tokenizer.encode(full_text)) <= config.target_tokens:
-        return (
-            _Unit(
-                text=full_text,
-                blocks=source_blocks,
-                chunk_type=ChunkType.TABLE,
-                table=table,
-            ),
-        )
-
+    section_prefix, _ = _heading_prefix(heading)
+    captions = _caption_blocks(table, blocks_by_id)
     header_rows = table.header_row_indices
-    data_rows = tuple(row for row in range(table.logical_row_count) if row not in header_rows)
-    bands = _row_bands(table, data_rows)
-    if not bands:
-        bands = (tuple(range(table.logical_row_count)),)
+    data_rows = tuple(
+        row for row in range(table.logical_row_count) if row not in header_rows
+    )
+    column_labels = _explicit_column_labels(table)
+    if not data_rows:
+        data_rows = tuple(range(table.logical_row_count))
         header_rows = ()
-    header_text = _render_table(table, header_rows)
-    units: list[_Unit] = []
+        column_labels = None
+    context_prefix = _table_context_prefix(
+        section_prefix,
+        captions,
+        table,
+        column_labels,
+        header_rows,
+    )
+    context_blocks = ((heading,) if heading is not None else ()) + captions
+    bands = _row_bands(table, data_rows)
+    units: list[_SemanticRetrievalUnit] = []
     current: list[int] = []
-
-    def render(rows: Sequence[int]) -> str:
-        parts = [prefix.rstrip(), header_text, _render_table(table, rows)]
-        return "\n".join(part for part in parts if part).strip()
 
     def flush() -> None:
         if not current:
             return
-        text = render(current)
+        rows = tuple(current)
+        segments = _table_segments_for_rows(table, rows)
+        blocks = _table_blocks_for_rows(table, rows, block, blocks_by_id)
         units.append(
-            _Unit(
-                text=text,
-                blocks=source_blocks,
+            _SemanticRetrievalUnit(
+                text=_render_table_unit(
+                    context_prefix, table, rows, column_labels
+                ),
+                blocks=blocks,
+                semantic_type=BlockType.TABLE,
+                protected_boundary=True,
+                overlap_eligible=False,
                 chunk_type=ChunkType.TABLE,
                 table=table,
-                row_start=min(current),
-                row_end=max(current) + 1,
+                row_indices=rows,
                 repeated_header_rows=header_rows,
+                context_blocks=context_blocks,
+                extra_provenance_ids=_table_provenance_for_rows(
+                    table, rows, header_rows, context_blocks
+                ),
+                table_header_aware=column_labels is not None,
+                segment_bboxes=tuple(
+                    ChunkBBox(page_number=segment.page_number, bbox=segment.bbox)
+                    for segment in segments
+                ),
+                table_segment_ids=tuple(str(segment.segment_id) for segment in segments),
             )
         )
         current.clear()
 
     for band in bands:
         candidate = (*current, *band)
-        candidate_text = render(candidate)
-        if current and len(tokenizer.encode(candidate_text)) > config.target_tokens:
+        candidate_text = _render_table_unit(
+            context_prefix, table, candidate, column_labels
+        )
+        candidate_tokens = len(tokenizer.encode(candidate_text))
+        if current and candidate_tokens > config.target_tokens:
             flush()
             candidate = band
-            candidate_text = render(candidate)
-        if len(tokenizer.encode(candidate_text)) > config.hard_max_tokens:
-            raise ChunkingError("a complete logical table row exceeds structure hard_max_tokens")
+            candidate_text = _render_table_unit(
+                context_prefix, table, candidate, column_labels
+            )
+            candidate_tokens = len(tokenizer.encode(candidate_text))
+        if candidate_tokens > config.hard_max_tokens:
+            raise ChunkingError(
+                "a complete logical table row band exceeds structure hard_max_tokens"
+            )
         current.extend(band)
     flush()
     return tuple(units)
 
 
+def _normal_unit(document: DocumentIR, block: Block) -> _SemanticRetrievalUnit | None:
+    rendered = _render_block(document, block).strip()
+    if not rendered:
+        return None
+    protected = block.block_type in {BlockType.FIGURE, BlockType.EQUATION}
+    return _SemanticRetrievalUnit(
+        text=rendered,
+        blocks=(block,),
+        semantic_type=block.block_type,
+        protected_boundary=protected,
+        overlap_eligible=not protected,
+    )
+
+
 def _split_normal_unit(
-    unit: _Unit,
+    unit: _SemanticRetrievalUnit,
     prefix: str,
     tokenizer: Tokenizer,
     config: StructureChunkConfig,
-) -> tuple[_Unit, ...]:
+) -> tuple[_SemanticRetrievalUnit, ...]:
     prefix_tokens = tokenizer.encode(prefix)
     capacity = config.target_tokens - len(prefix_tokens)
     if capacity <= 0:
         raise ChunkingError("section heading consumes the complete structure token budget")
     body_tokens = tokenizer.encode(unit.text)
-    result: list[_Unit] = []
+    result: list[_SemanticRetrievalUnit] = []
     for start in range(0, len(body_tokens), capacity):
-        text = prefix + tokenizer.decode(body_tokens[start : start + capacity])
-        if len(tokenizer.encode(text)) > config.hard_max_tokens:
-            raise ChunkingError("an oversized text split exceeds structure hard_max_tokens")
-        result.append(_Unit(text=text, blocks=unit.blocks))
+        result.append(
+            _SemanticRetrievalUnit(
+                text=tokenizer.decode(body_tokens[start : start + capacity]),
+                blocks=unit.blocks,
+                semantic_type=unit.semantic_type,
+                overlap_eligible=False,
+                oversized_split=True,
+            )
+        )
     return tuple(result)
+
+
+def _render_normal_units(prefix: str, units: Sequence[_SemanticRetrievalUnit]) -> str:
+    body = "\n\n".join(unit.text for unit in units)
+    return (prefix + body).strip()
+
+
+def _component_token_count(tokenizer: Tokenizer, parts: Sequence[str]) -> int:
+    """Count a non-embedding parent without encoding one model-oversized string."""
+
+    rendered = [part for part in parts if part]
+    return sum(
+        len(tokenizer.encode(part + ("\n\n" if index < len(rendered) - 1 else "")))
+        for index, part in enumerate(rendered)
+    )
+
+
+def _overlap_tail(
+    units: Sequence[_SemanticRetrievalUnit], limit: int
+) -> tuple[_SemanticRetrievalUnit, ...]:
+    if limit == 0:
+        return ()
+    selected: list[_SemanticRetrievalUnit] = []
+    for unit in reversed(units):
+        if not unit.overlap_eligible or unit.oversized_split:
+            break
+        selected.append(unit)
+        if len(selected) == limit:
+            break
+    return tuple(reversed(selected))
 
 
 def structure_aware_chunks(
@@ -470,7 +711,7 @@ def structure_aware_chunks(
     tokenizer: Tokenizer,
     config: StructureChunkConfig | None = None,
 ) -> tuple[Chunk, ...]:
-    """Pack section-owned units while preserving logical table rows and heading context."""
+    """Build relationship-bound semantic retrieval chunks from materialized Sections."""
 
     config = config or StructureChunkConfig()
     if not document.sections:
@@ -480,6 +721,9 @@ def structure_aware_chunks(
     config_hash = _config_hash(config)
     chunks: list[Chunk] = []
     seen_tables: set[ContentEntityId] = set()
+    bound_table_caption_ids = {
+        caption_id for table in document.tables for caption_id in table.caption_block_ids
+    }
     ordinal = 0
 
     for section in document.sections:
@@ -489,8 +733,9 @@ def structure_aware_chunks(
             else None
         )
         prefix, heading_path = _heading_prefix(heading)
-        units: list[_Unit] = []
+        units: list[_SemanticRetrievalUnit] = []
         parent_parts: list[str] = []
+        parent_count_parts: list[str] = []
         for block_id in section.content_block_ids:
             block = blocks_by_id[block_id]
             if (
@@ -498,22 +743,57 @@ def structure_aware_chunks(
                 or block.block_type not in RETRIEVAL_FLOW_BLOCK_TYPES
             ):
                 continue
+            if block.block_id in bound_table_caption_ids:
+                continue
             if block.block_type is BlockType.TABLE and block.content_ref is not None:
                 if block.content_ref in seen_tables:
                     continue
                 table = tables_by_id.get(block.content_ref)
                 if table is not None:
                     seen_tables.add(block.content_ref)
-                    parent_parts.append(_render_table(table))
-                    units.extend(_table_units(document, block, table, heading, tokenizer, config))
+                    table_units = _table_units(
+                        document, block, table, heading, tokenizer, config
+                    )
+                    units.extend(table_units)
+                    captions = _caption_blocks(table, blocks_by_id)
+                    labels = _explicit_column_labels(table)
+                    header_rows = table.header_row_indices
+                    data_rows = tuple(
+                        row
+                        for row in range(table.logical_row_count)
+                        if row not in header_rows
+                    )
+                    if not data_rows:
+                        data_rows = tuple(range(table.logical_row_count))
+                        header_rows = ()
+                        labels = None
+                    table_prefix = _table_context_prefix(
+                        "", captions, table, labels, header_rows
+                    )
+                    parent_parts.append(
+                        _render_table_unit(table_prefix, table, data_rows, labels)
+                    )
+                    parent_count_parts.extend(
+                        (
+                            table_prefix,
+                            *(
+                                _render_table_rows(table, (row,), labels)
+                                for row in data_rows
+                            ),
+                        )
+                    )
                     continue
-            rendered = _render_block(document, block).strip()
-            if rendered:
-                parent_parts.append(rendered)
-                units.append(_Unit(text=rendered, blocks=(block,)))
+            unit = _normal_unit(document, block)
+            if unit is not None:
+                units.append(unit)
+                parent_parts.append(unit.text)
+                parent_count_parts.append(unit.text)
 
         parent_blocks = (heading,) if heading is not None else ()
-        parent_blocks += tuple(block for unit in units for block in unit.blocks)
+        parent_blocks += tuple(
+            block for unit in units for block in (*unit.blocks, *unit.context_blocks)
+        )
+        parent_blocks = _unique_blocks(parent_blocks)
         if not parent_blocks:
             continue
         parent_text = (prefix + "\n\n".join(parent_parts)).strip()
@@ -528,33 +808,47 @@ def structure_aware_chunks(
             chunk_type=ChunkType.PARENT,
             section_id=section.section_id,
             heading_path=heading_path,
-            metadata={"policy": "STRUCTURE_AWARE", "context_scope": "SECTION"},
+            metadata={
+                "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
+                "context_scope": "SECTION",
+                "token_count_mode": "COMPONENT_SUM_NON_EMBEDDING",
+            },
             embedding_eligible=False,
+            token_count=_component_token_count(
+                tokenizer, (prefix.rstrip(), *parent_count_parts)
+            ),
         )
         chunks.append(parent)
         ordinal += 1
+        pending: list[_SemanticRetrievalUnit] = []
+        pending_overlap_count = 0
 
-        pending: list[_Unit] = []
-
-        def emit_pending(
-            pending_units: list[_Unit] = pending,
-            section_heading: Block | None = heading,
+        def emit_normal(
+            pending_units: list[_SemanticRetrievalUnit] = pending,
             section_prefix: str = prefix,
-            section_heading_path: tuple[str, ...] = heading_path,
-            section_id: SectionId = section.section_id,
+            section_heading: Block | None = heading,
             parent_id: ChunkId = parent.chunk_id,
-        ) -> None:
-            nonlocal ordinal
+            section_id: SectionId = section.section_id,
+            section_heading_path: tuple[str, ...] = heading_path,
+        ) -> tuple[_SemanticRetrievalUnit, ...]:
+            nonlocal ordinal, pending_overlap_count
             if not pending_units:
-                return
-            selected_blocks = (section_heading,) if section_heading is not None else ()
-            selected_blocks += tuple(block for unit in pending_units for block in unit.blocks)
-            text = section_prefix + "\n\n".join(unit.text for unit in pending_units)
+                return ()
+            text = _render_normal_units(section_prefix, pending_units)
+            token_count = len(tokenizer.encode(text))
+            if token_count > config.hard_max_tokens:
+                raise ChunkingError("a structure child exceeds structure hard_max_tokens")
+            overlap_units = tuple(pending_units[:pending_overlap_count])
+            context_blocks = (
+                (section_heading,) if section_heading is not None else ()
+            )
             chunks.append(
                 _chunk(
                     document,
                     text=text,
-                    blocks=selected_blocks,
+                    blocks=tuple(
+                        block for unit in pending_units for block in unit.blocks
+                    ),
                     tokenizer=tokenizer,
                     chunker_version=STRUCTURE_CHUNKER_VERSION,
                     config_hash=config_hash,
@@ -564,82 +858,179 @@ def structure_aware_chunks(
                     section_id=section_id,
                     heading_path=section_heading_path,
                     metadata={
-                        "policy": "STRUCTURE_AWARE",
+                        "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
+                        "semantic_unit_count": len(pending_units),
+                        "oversized_text_block_split": any(
+                            unit.oversized_split for unit in pending_units
+                        ),
                         "rendered_heading_prefix": bool(section_prefix),
+                        "context_source_block_ids": [
+                            str(block.block_id) for block in context_blocks
+                        ],
+                        "overlap_source_block_ids": [
+                            str(block.block_id)
+                            for unit in overlap_units
+                            for block in unit.blocks
+                        ],
                     },
+                    token_count=token_count,
+                    extra_provenance_ids=(
+                        identifier
+                        for block in context_blocks
+                        for identifier in block.provenance_ids
+                    ),
                 )
             )
             ordinal += 1
+            tail = _overlap_tail(pending_units, config.semantic_overlap_units)
             pending_units.clear()
+            pending_overlap_count = 0
+            return tail
+
+        def emit_protected(
+            unit: _SemanticRetrievalUnit,
+            section_prefix: str = prefix,
+            section_heading: Block | None = heading,
+            parent_id: ChunkId = parent.chunk_id,
+            section_id: SectionId = section.section_id,
+            section_heading_path: tuple[str, ...] = heading_path,
+        ) -> None:
+            nonlocal ordinal
+            text = _render_normal_units(section_prefix, (unit,))
+            token_count = len(tokenizer.encode(text))
+            if token_count > config.hard_max_tokens:
+                raise ChunkingError(
+                    f"a protected {unit.semantic_type.value} unit exceeds "
+                    "structure hard_max_tokens"
+                )
+            context_blocks = (
+                (section_heading,) if section_heading is not None else ()
+            )
+            chunks.append(
+                _chunk(
+                    document,
+                    text=text,
+                    blocks=unit.blocks,
+                    tokenizer=tokenizer,
+                    chunker_version=STRUCTURE_CHUNKER_VERSION,
+                    config_hash=config_hash,
+                    ordinal=ordinal,
+                    chunk_type=ChunkType.CHILD,
+                    parent_chunk_id=parent_id,
+                    section_id=section_id,
+                    heading_path=section_heading_path,
+                    metadata={
+                        "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
+                        "protected_unit": unit.semantic_type.value,
+                        "rendered_heading_prefix": bool(section_prefix),
+                        "context_source_block_ids": [
+                            str(block.block_id) for block in context_blocks
+                        ],
+                        "overlap_source_block_ids": [],
+                    },
+                    token_count=token_count,
+                    extra_provenance_ids=(
+                        identifier
+                        for block in context_blocks
+                        for identifier in block.provenance_ids
+                    ),
+                )
+            )
+            ordinal += 1
+
+        def emit_table(
+            unit: _SemanticRetrievalUnit,
+            section_prefix: str = prefix,
+            parent_id: ChunkId = parent.chunk_id,
+            section_id: SectionId = section.section_id,
+            section_heading_path: tuple[str, ...] = heading_path,
+        ) -> None:
+            nonlocal ordinal
+            assert unit.table is not None
+            token_count = len(tokenizer.encode(unit.text))
+            if token_count > config.hard_max_tokens:
+                raise ChunkingError("a table row group exceeds structure hard_max_tokens")
+            metadata: dict[str, JsonValue] = {
+                "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
+                "protected_unit": "TABLE",
+                "rendered_heading_prefix": bool(section_prefix),
+                "row_start": min(unit.row_indices),
+                "row_end_exclusive": max(unit.row_indices) + 1,
+                "data_row_indices": list(unit.row_indices),
+                "repeated_header_rows": list(unit.repeated_header_rows),
+                "caption_block_ids": [
+                    str(block.block_id)
+                    for block in unit.context_blocks
+                    if block.block_id in unit.table.caption_block_ids
+                ],
+                "table_segment_ids": list(unit.table_segment_ids),
+                "context_source_block_ids": [
+                    str(block.block_id) for block in unit.context_blocks
+                ],
+                "overlap_source_block_ids": [],
+                "table_rendering": (
+                    "HEADER_AWARE_KEY_VALUE"
+                    if unit.table_header_aware
+                    else "COMPACT_LOGICAL_ROWS"
+                ),
+            }
+            chunks.append(
+                _chunk(
+                    document,
+                    text=unit.text,
+                    blocks=unit.blocks,
+                    tokenizer=tokenizer,
+                    chunker_version=STRUCTURE_CHUNKER_VERSION,
+                    config_hash=config_hash,
+                    ordinal=ordinal,
+                    chunk_type=ChunkType.TABLE,
+                    parent_chunk_id=parent_id,
+                    section_id=section_id,
+                    heading_path=section_heading_path,
+                    metadata=metadata,
+                    token_count=token_count,
+                    additional_source_entity_ids=(unit.table.table_id,),
+                    extra_provenance_ids=unit.extra_provenance_ids,
+                    source_bboxes=unit.segment_bboxes or None,
+                )
+            )
+            ordinal += 1
 
         for unit in units:
             if unit.chunk_type is ChunkType.TABLE:
-                emit_pending()
-                table_blocks = (heading,) if heading is not None else ()
-                table_blocks += unit.blocks
-                metadata: dict[str, JsonValue] = {
-                    "policy": "STRUCTURE_AWARE",
-                    "protected_unit": "TABLE",
-                    "rendered_heading_prefix": bool(prefix),
-                }
-                if unit.row_start is not None:
-                    metadata.update(
-                        {
-                            "row_start": unit.row_start,
-                            "row_end_exclusive": unit.row_end,
-                            "repeated_header_rows": list(unit.repeated_header_rows),
-                        }
-                    )
-                chunks.append(
-                    _chunk(
-                        document,
-                        text=unit.text,
-                        blocks=table_blocks,
-                        tokenizer=tokenizer,
-                        chunker_version=STRUCTURE_CHUNKER_VERSION,
-                        config_hash=config_hash,
-                        ordinal=ordinal,
-                        chunk_type=ChunkType.TABLE,
-                        parent_chunk_id=parent.chunk_id,
-                        section_id=section.section_id,
-                        heading_path=heading_path,
-                        table=unit.table,
-                        metadata=metadata,
-                    )
-                )
-                ordinal += 1
+                emit_normal()
+                emit_table(unit)
+                continue
+            if unit.protected_boundary:
+                emit_normal()
+                emit_protected(unit)
                 continue
 
-            candidate = prefix + "\n\n".join(item.text for item in (*pending, unit))
+            candidate = _render_normal_units(prefix, (*pending, unit))
             if pending and len(tokenizer.encode(candidate)) > config.target_tokens:
-                emit_pending()
-            single = prefix + unit.text
-            if not pending and len(tokenizer.encode(single)) > config.target_tokens:
-                for split in _split_normal_unit(unit, prefix, tokenizer, config):
-                    selected_blocks = (heading,) if heading is not None else ()
-                    selected_blocks += split.blocks
-                    chunks.append(
-                        _chunk(
-                            document,
-                            text=split.text,
-                            blocks=selected_blocks,
-                            tokenizer=tokenizer,
-                            chunker_version=STRUCTURE_CHUNKER_VERSION,
-                            config_hash=config_hash,
-                            ordinal=ordinal,
-                            chunk_type=ChunkType.CHILD,
-                            parent_chunk_id=parent.chunk_id,
-                            section_id=section.section_id,
-                            heading_path=heading_path,
-                            metadata={
-                                "policy": "STRUCTURE_AWARE",
-                                "oversized_text_block_split": True,
-                                "rendered_heading_prefix": bool(prefix),
-                            },
-                        )
-                    )
-                    ordinal += 1
-            else:
-                pending.append(unit)
-        emit_pending()
+                overlap = emit_normal()
+                overlap_candidate = _render_normal_units(prefix, (*overlap, unit))
+                if overlap and len(tokenizer.encode(overlap_candidate)) <= config.target_tokens:
+                    pending.extend(overlap)
+                    pending_overlap_count = len(overlap)
+            single = _render_normal_units(prefix, (unit,))
+            if not pending:
+                single_tokens = len(tokenizer.encode(single))
+                if single_tokens > config.hard_max_tokens:
+                    for split in _split_normal_unit(unit, prefix, tokenizer, config):
+                        pending.append(split)
+                        emit_normal()
+                    continue
+                if single_tokens > config.target_tokens:
+                    pending.append(unit)
+                    emit_normal()
+                    continue
+            pending.append(unit)
+        emit_normal()
+
+    if any(
+        chunk.embedding_eligible and chunk.token_count > config.hard_max_tokens
+        for chunk in chunks
+    ):
+        raise ChunkingError("an embedding-eligible structure chunk exceeds the hard limit")
     return tuple(chunks)

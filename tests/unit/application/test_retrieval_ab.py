@@ -97,5 +97,32 @@ def test_synthetic_end_to_end_ab_writes_reproducible_artifacts(tmp_path: Path) -
     assert manifest["eligible_query_ids"] == ["revenue", "table", "risk"]
     assert manifest["excluded_query_ids"] == ["missing"]
     assert manifest["embedding_dtype"] == "float32"
+    assert manifest["fixed_embedding_chunk_count"] > 0
+    assert manifest["structure_embedding_chunk_count"] > 0
+    assert manifest["structure_average_tokens_per_chunk"] > 0
+    assert manifest["structure_median_tokens_per_chunk"] > 0
+    assert manifest["structure_table_chunk_count"] > 0
+    assert manifest["structure_normal_child_count"] > 0
     assert np.load(output / "fixed" / "embeddings.npy", allow_pickle=False).dtype == np.float32
-    assert "PageHitRate@1" in (output / "report.md").read_text(encoding="utf-8")
+    report = (output / "report.md").read_text(encoding="utf-8")
+    assert "PageHitRate@1" in report
+    assert "Structure average tokens/chunk" in report
+
+    repeated = run_retrieval_ab(
+        ir_root=ir_root,
+        queries_path=query_path,
+        output_dir=tmp_path / "repeated-run",
+        model_path=None,
+        fixed_config=FixedChunkConfig(target_tokens=64, overlap_tokens=8),
+        structure_config=StructureChunkConfig(target_tokens=80, hard_max_tokens=200),
+        top_k=10,
+        source_commit="synthetic-commit",
+        embedding_runtime=FakeEmbeddingRuntime(),
+    )
+    assert [chunk.chunk_id for chunk in repeated.fixed_chunks] == [
+        chunk.chunk_id for chunk in outcome.fixed_chunks
+    ]
+    assert [chunk.chunk_id for chunk in repeated.structure_chunks] == [
+        chunk.chunk_id for chunk in outcome.structure_chunks
+    ]
+    assert repeated.manifest == outcome.manifest

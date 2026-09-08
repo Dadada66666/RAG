@@ -7,6 +7,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import median
 
 from docparser.evaluation.ohr import RetrievalGroundTruth
 from docparser.evaluation.retrieval import (
@@ -15,6 +16,7 @@ from docparser.evaluation.retrieval import (
     evaluate_page_retrieval,
 )
 from docparser.ir.chunks import Chunk
+from docparser.ir.enums import ChunkType
 from docparser.ir.models import DocumentIR
 from docparser.ir.serialization import load_canonical_json, semantic_digest
 from docparser.retrieval.chunking import (
@@ -146,6 +148,12 @@ def _metric(value: float | None) -> str:
     return "N/A" if value is None else f"{value:.6f}"
 
 
+def _manifest_number(manifest: dict[str, object], key: str) -> float:
+    value = manifest[key]
+    assert isinstance(value, int | float)
+    return float(value)
+
+
 def _markdown_report(outcome: RetrievalABOutcome) -> str:
     manifest = outcome.manifest
     lines = [
@@ -158,6 +166,12 @@ def _markdown_report(outcome: RetrievalABOutcome) -> str:
         f"- Tokenizer: {manifest['tokenizer_id']}",
         f"- Fixed retrieval chunks: {manifest['fixed_embedding_chunk_count']}",
         f"- Structure retrieval chunks: {manifest['structure_embedding_chunk_count']}",
+        f"- Structure average tokens/chunk: "
+        f"{_manifest_number(manifest, 'structure_average_tokens_per_chunk'):.2f}",
+        f"- Structure median tokens/chunk: "
+        f"{_manifest_number(manifest, 'structure_median_tokens_per_chunk'):.2f}",
+        f"- Structure table chunks: {manifest['structure_table_chunk_count']}",
+        f"- Structure normal child chunks: {manifest['structure_normal_child_count']}",
         f"- Fixed config: `{json.dumps(manifest['fixed_config'], sort_keys=True)}`",
         f"- Structure config: `{json.dumps(manifest['structure_config'], sort_keys=True)}`",
         "",
@@ -241,6 +255,7 @@ def run_retrieval_ab(
     structure_pairs = [pair for pair in structure_all_pairs if pair[1].embedding_eligible]
     if not fixed_pairs or not structure_pairs:
         raise ValueError("both chunking systems must produce embedding-eligible chunks")
+    structure_token_counts = [chunk.token_count for _, chunk in structure_pairs]
 
     query_vectors = runtime.embed([query.question for query in eligible])
     fixed_vectors = runtime.embed([chunk.text for _, chunk in fixed_pairs])
@@ -309,6 +324,15 @@ def run_retrieval_ab(
         "structure_embedding_chunk_ids": [str(chunk.chunk_id) for _, chunk in structure_pairs],
         "fixed_embedding_chunk_count": len(fixed_pairs),
         "structure_embedding_chunk_count": len(structure_pairs),
+        "structure_average_tokens_per_chunk": sum(structure_token_counts)
+        / len(structure_token_counts),
+        "structure_median_tokens_per_chunk": float(median(structure_token_counts)),
+        "structure_table_chunk_count": sum(
+            chunk.chunk_type is ChunkType.TABLE for _, chunk in structure_pairs
+        ),
+        "structure_normal_child_count": sum(
+            chunk.chunk_type is ChunkType.CHILD for _, chunk in structure_pairs
+        ),
         "tokenizer_id": tokenizer.tokenizer_id,
         "embedding_model_id": runtime.model_id,
         "embedding_model_digest": str(runtime.model_digest),

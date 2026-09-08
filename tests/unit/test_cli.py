@@ -58,6 +58,8 @@ def test_retrieval_ab_accepts_external_paths_and_chunk_configs(
             "32",
             "--structure-target-tokens",
             "384",
+            "--structure-semantic-overlap-units",
+            "2",
         ],
     )
 
@@ -70,6 +72,7 @@ def test_retrieval_ab_accepts_external_paths_and_chunk_configs(
     assert isinstance(structure_config, StructureChunkConfig)
     assert fixed_config.target_tokens == 256
     assert structure_config.target_tokens == 384
+    assert structure_config.semantic_overlap_units == 2
 
 
 def test_version_succeeds() -> None:

@@ -399,6 +399,9 @@ def rag_retrieval_ab(
     structure_hard_max_tokens: Annotated[
         int, typer.Option("--structure-hard-max-tokens", min=1)
     ] = 8000,
+    structure_semantic_overlap_units: Annotated[
+        int, typer.Option("--structure-semantic-overlap-units", min=0)
+    ] = 1,
     top_k: Annotated[int, typer.Option("--top-k", min=10)] = 10,
     device: Annotated[str, typer.Option("--device", help="BGE-M3 torch device.")] = "cpu",
     batch_size: Annotated[int, typer.Option("--batch-size", min=1)] = 16,
@@ -419,6 +422,7 @@ def rag_retrieval_ab(
             structure_config=StructureChunkConfig(
                 target_tokens=structure_target_tokens,
                 hard_max_tokens=structure_hard_max_tokens,
+                semantic_overlap_units=structure_semantic_overlap_units,
             ),
             top_k=top_k,
             device=device,

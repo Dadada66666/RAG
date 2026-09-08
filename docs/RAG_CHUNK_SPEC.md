@@ -2,16 +2,18 @@
 
 | Field | Value |
 |---|---|
-| Status | Minimal fixed-token and structure-aware experiment implemented |
+| Status | Fixed-token control and relationship-bound structure-aware v2 implemented |
 | Chunk schema version | `1.0.0` |
-| Default chunker version | `1.0.0` |
+| Structure chunker version | `ir-structure-aware@2.0.0` |
 
 ## 1. Purpose
 
 Chunks are deterministic retrieval views over a specific immutable IR revision. They are not a second source of truth. Every chunk must be reconstructible from its ordered source blocks and must resolve to page/bbox/source provenance.
 
-The implemented experiment provides a Canonical-IR fixed-token control and a minimal
-section/table-aware treatment. It does not claim a globally optimal hierarchy or chunk policy.
+The implemented experiment provides an unchanged Canonical-IR fixed-token control and a
+relationship-bound semantic-packing treatment. Structure v2 uses explicit Section, Table caption,
+column-header, logical-row and TableSegment evidence; it does not claim a globally optimal
+hierarchy or chunk policy.
 
 Fixed-size character splitting is prohibited as the primary policy because it:
 
@@ -91,11 +93,13 @@ validated IR revision
 
 ### 3.2 Semantic units
 
+Structure v2 first constructs semantic retrieval units rather than packing the raw block stream.
 Atomic units:
 
 - heading plus following content ownership marker;
 - paragraph, quote, code block, list item (list may group children);
-- logical table or deterministic table row group;
+- logical table or deterministic table row band, with explicitly linked captions bound to the
+  table rather than emitted as competing independent candidates;
 - figure plus caption and nearby referring paragraph according to relationship policy;
 - equation plus label/caption and configurable adjacent paragraph context;
 - footnote attached to target when it fits, otherwise separate linked unit;
@@ -122,24 +126,22 @@ Paragraphs may only be split when one paragraph alone exceeds hard token limit. 
 
 ## 4. Token budgets and packing
 
-Example defaults, configuration not constants:
+Implemented defaults:
 
 ```yaml
-target_tokens: 600
-soft_max_tokens: 800
-hard_max_tokens: 1000
+target_tokens: 512
+hard_max_tokens: 8000
 semantic_overlap_units: 1
-max_heading_prefix_tokens: 96
-include_footnotes: attached
 ```
 
 Greedy ordered packing is deterministic:
 
 1. Start with section heading prefix cost.
 2. Append complete semantic units while <= target.
-3. Allow one unit to exceed target up to soft max to avoid a bad boundary.
-4. If an atomic unit exceeds soft max, invoke its type-specific splitter.
-5. Never emit above hard max; record a validation issue if no legal split exists.
+3. Preserve a single ordinary unit above target when it remains <= hard max.
+4. Split a single ordinary text unit only when that unit exceeds hard max.
+5. Never emit an embedding-eligible chunk above hard max; fail if a protected unit has no legal
+   split.
 
 The MVP stops at this deterministic greedy policy. It does not require a cost-function optimizer.
 Any later optimizer must specify its objective and demonstrate an improvement on the retrieval
@@ -157,11 +159,19 @@ evaluation set; stable source-block order remains the tie-break.
 
 Logical table atomicity means the structure is never flattened and arbitrarily cut mid-cell.
 
-- If table rendering fits hard max: one `TABLE` chunk with caption, headers and complete table.
-- If oversized: create a non-embedding parent table chunk and row-group child chunks. Every child repeats only rows identified by `COLUMN_HEADER`/`BOTH` cell roles, contains complete logical rows/cells, records `row_start/row_end`, and points to the same table entity. `ROW_HEADER` cells remain row stubs and `UNKNOWN` header roles are not promoted to column headers.
+- If table rendering fits the target: one `TABLE` chunk with its explicit caption, headers and
+  complete table.
+- If oversized: retain the non-embedding Section parent and emit row-group `TABLE` chunks. Every
+  table chunk repeats only rows identified by `COLUMN_HEADER`/`BOTH` cell roles, contains complete
+  logical rows/cells, records `row_start/row_end`, and points to the same table entity. `ROW_HEADER`
+  cells remain row stubs and `UNKNOWN` header roles are not promoted to column headers.
 - A merged cell crossing row-group boundary is carried as contextual header/stub metadata or forces the boundary to move; it is never split into contradictory values.
-- Cross-page segments do not force chunk breaks. Page/bbox lists retain all segment citations.
-- Markdown and compact text serializers are both derived views; selected serializer/version is in metadata.
+- Explicit column headers render deterministic key-value data rows; without complete explicit
+  column-header evidence, the serializer falls back to compact logical rows and does not guess.
+- Cross-page segments do not force chunk breaks. Each row group binds only intersecting
+  `TableSegment` blocks for page/bbox hit provenance; heading/caption sources remain declared
+  context metadata.
+- The selected serializer/version and repeated context are declared in metadata.
 
 ### 5.3 Figures
 
@@ -235,9 +245,11 @@ Before promotion, evaluate on the same versioned query/QA set:
 - **Experiment:** the same IR and tokenizer, with Section boundaries, heading context and protected
   logical Table row groups.
 
-Both representations use the exact BGE-M3 tokenizer. The first implementation emits retrieval
-chunks directly and does not add LLM summaries, hierarchy inference, semantic overlap, or a vector
-database.
+Both representations use the exact BGE-M3 tokenizer. Structure v2 adds one configurable complete
+semantic-unit overlap within a Section, explicit Table-caption binding, header-aware row rendering
+and precise row-segment provenance. It does not add LLM summaries, hierarchy inference, score
+fusion or a vector database. Non-embedding Section parents retain complete context and are counted
+component-wise so they are not sent through the tokenizer as one model-oversized input.
 
 Report retrieval, table retrieval, citation and latency deltas independently. Later optional
 experiments may add contextual heading/path enrichment. Late Chunking is allowed only when the

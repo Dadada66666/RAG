@@ -1,8 +1,8 @@
 # Incremental Implementation Plan
 
-> **CURRENT EXECUTION POINTER: Fixed-token vs structure-aware exact-dense retrieval A/B implemented**
+> **CURRENT EXECUTION POINTER: Relationship-bound Structure-aware v2 implemented**
 >
-> **NEXT: Run the frozen external OHR subset and locally provisioned BGE-M3 through `rag-retrieval-ab`**
+> **NEXT: Rerun the frozen 21-query development comparison without changing controls**
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
@@ -855,8 +855,10 @@ frozen predicate without collateral hard failure; fallback rate/cost/unresolved 
 
 ### Next 4 — Structure-aware parent-child chunker
 
-**Implementation status:** minimal experiment complete. It uses existing flat Sections and protects
-logical Table rows; broader hierarchy inference and semantic overlap remain deferred.
+**Implementation status:** relationship-bound semantic packing v2 complete. It uses existing flat
+Sections, binds explicit Table captions, renders explicit column-header relationships, greedily
+packs complete row bands with precise segment provenance, and overlaps one complete ordinary
+semantic unit. Broader hierarchy inference remains deferred.
 
 **Goal:** compare fixed-token baseline with deterministic IR-derived section/table-aware chunks.
 
