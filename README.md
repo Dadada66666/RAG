@@ -1,9 +1,21 @@
-# Enterprise Document Parsing & RAG Ingestion Platform
+# Complex PDF Evidence Retrieval and QA
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A production-oriented foundation for converting complex documents into a versioned,
-traceable, parser-independent representation suitable for downstream RAG ingestion.
+A development project for extracting traceable evidence from complex PDFs, retrieving it with
+exact dense search, and answering questions with source quotations. Structure is optional context;
+its presence and schema validity are not guarantees of factual correctness.
+
+The executable QA path now includes explicit local structure recovery, a persisted Fixed 512/64
+index, budgeted source context, SiliconFlow answers with checked quotations, and independent
+answer/citation evaluation. Fixed remains the retrieval default; Structure 2.1 is an experimental
+comparison. See the [server run guide](docs/EVIDENCE_QA_GUIDE.md) and
+[implementation plan](docs/EVIDENCE_QA_IMPLEMENTATION.md). Real answer quality remains to be measured.
+
+Next development follows the [complex-document QA specification](docs/COMPLEX_DOCUMENT_QA_SPEC.md).
+`rag-ask --document-id` restricts the corpus before ranking; `rag-batch` reuses one model session and
+records every provider failure for manifest-based evaluation. Table-row recovery and numeric answer
+verification remain subsequent milestones, not completed features.
 
 > Project status: Phases 0–2.6 are implemented. `docling-standard` remains the baseline and the
 > complete PaddleOCR-VL-1.6 pipeline is an optional GPU-first comparison candidate. Native PDF

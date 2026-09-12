@@ -16,14 +16,15 @@ relationship-bound semantic-packing treatment. Structure v2 uses explicit Sectio
 column-header, logical-row and TableSegment evidence; it does not claim a globally optimal
 hierarchy or chunk policy.
 
-Fixed-size character splitting is prohibited as the primary policy because it:
+The QA path currently uses **Fixed 512/64 with the pinned BGE-M3 tokenizer**. Structure v2.1
+remains an experimental treatment: structural boundaries do not imply better dense retrieval.
+Fixed windows may cut tables or separate supporting context; this is tested, not assumed to
+outweigh their retrieval strengths. Source intervals preserve citation reachability in either case.
+Character-count windows are not equivalent to model-token windows.
 
-- breaks headings from their content and loses hierarchy;
-- splits tables/cells and detaches repeated headers;
-- separates figures/equations from captions/context;
-- crosses column/section boundaries despite visual reading order;
-- measures characters rather than model tokens, especially poorly for Chinese/English mixtures;
-- makes citation geometry ambiguous and changes unpredictably with encoding/whitespace.
+QA uses structure after retrieval for bounded source, header and explicitly related caption
+expansion. This does not change chunk embeddings or ranking. See the
+[evidence QA guide](EVIDENCE_QA_GUIDE.md) for that separate implementation and its limitations.
 
 ## 2. Chunk model
 
@@ -62,7 +63,10 @@ Required constraints:
 
 ### `ParentChunk`
 
-A parent chunk is the retrievable/display context for one section or large semantic unit. It may be `embedding_eligible=false` if over the token limit. Child chunks point to exactly one parent. Parent text is assembled from the same IR revision; it is never an LLM summary in the core pipeline.
+In the Structure v2.1 experiment, parent chunks provide section context and are always
+`embedding_eligible=false`; they do not participate in dense ranking. Parent text is assembled
+from the same IR revision, never from an LLM summary. The current Fixed QA context builder
+resolves source spans and explicit relationships directly; it does not embed or score parents.
 
 ### `HeadingPath`
 
@@ -73,6 +77,8 @@ Ordered section headings from root to the chunk's owning section. The chunk rend
 `source_block_ids` identify exact IR blocks. `source_entity_ids` additionally references logical tables/figures/equations where the chunk represents them. Chunk provenance records operation `CHUNK_ASSEMBLY` with parent provenance IDs from all source blocks/entities.
 
 ## 3. Deterministic chunk pipeline
+
+The following describes the Structure experimental path, not a requirement imposed on Fixed QA.
 
 ```text
 validated IR revision

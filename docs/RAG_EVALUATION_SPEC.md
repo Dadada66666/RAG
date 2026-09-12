@@ -12,6 +12,11 @@ This specification measures whether parsing and retrieval improvements help real
 hiding regressions in a single score. Every experiment uses frozen corpora, queries, relevance
 judgments and exact pipeline manifests. Latency/cost are reported beside, never folded into, quality.
 
+The current QA commands add an independent answer-evaluation layer; they do not replace or modify
+the OHR retrieval A/B. Exact quotation validation checks submitted-source membership, not semantic
+support. `rag-evaluate` requires independent correctness and citation-support judgments. See
+[evidence QA evaluation and server validation](EVIDENCE_QA_GUIDE.md) for the implemented scope.
+
 ## 2. Dataset and split contract
 
 A RAG evaluation item records:
@@ -56,7 +61,12 @@ Report query macro averages with raw hit/query denominators and slice breakdowns
 questions also report all-required-source recall. Multiple hits from the same source do not inflate
 source recall.
 
-### 4.2 Mandatory incremental comparison
+### 4.2 Comparison design and current scope
+
+The active QA plan is [COMPLEX_DOCUMENT_QA_SPEC.md](COMPLEX_DOCUMENT_QA_SPEC.md). Its current
+experiment fixes retrieval and compares source-context construction. Stages D/E below are deferred
+historical experiment options, not mandatory next work. Batch QA scores require the fixed question
+manifest and include provider failures; legacy result-only scores are exploratory.
 
 Run the same frozen query set, embedding model, dense backend and retrieval budget:
 

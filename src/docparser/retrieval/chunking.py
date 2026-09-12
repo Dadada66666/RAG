@@ -143,7 +143,15 @@ def retrieval_evidence_view(document: DocumentIR) -> RetrievalEvidenceView:
         candidates = [
             block
             for block in page.blocks
-            if block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES
+            if (
+                block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES
+                or (
+                    block.block_type is BlockType.UNKNOWN
+                    and isinstance(recovery := block.extensions.get("org.docparser.recovery"), dict)
+                    and recovery.get("retrievable_text") is True
+                    and block.reading_order_status is ReadingOrderStatus.UNRESOLVED
+                )
+            )
             and block.reading_order_status
             in {ReadingOrderStatus.IN_FLOW, ReadingOrderStatus.UNRESOLVED}
         ]

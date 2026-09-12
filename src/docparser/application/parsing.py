@@ -39,6 +39,7 @@ from docparser.normalization import (
     NormalizationContext,
     normalize_neutral_result,
 )
+from docparser.normalization.recovery import normalize_recoverable_result
 from docparser.ports.parsers import DocumentParser
 from docparser.preflight import DocumentProfile, extract_numeric_tokens, inspect_pdf
 
@@ -54,6 +55,7 @@ class ParsingConfig(StrictIRModel):
     device: RuntimeDevice = RuntimeDevice.AUTO
     tenant_scope: str = "local"
     namespace: UUID = DEFAULT_NAMESPACE
+    recover_structure: bool = False
 
 
 class NumericDisagreement(StrictIRModel):
@@ -129,6 +131,8 @@ def _config_digest(config: ParsingConfig, result: ParseResult) -> Sha256Digest:
         "parser_version": result.descriptor.parser_version,
         "profile": result.descriptor.profile,
     }
+    if config.recover_structure:
+        payload["recovery"] = "local-structure-recovery@1.0.0"
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return Sha256Digest(f"sha256:{hashlib.sha256(encoded).hexdigest()}")
 
@@ -246,9 +250,7 @@ def _diagnostics(
         for page in result.pages
         for element in page.elements
     )
-    eligible_blocks = [
-        block for block in blocks if block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES
-    ]
+    eligible_blocks = [block for block in blocks if block.block_type in RETRIEVAL_FLOW_BLOCK_TYPES]
     section_block_ids = {
         block_id
         for section in document.sections
@@ -368,6 +370,11 @@ def parse_document_with_diagnostics(
     profile = profile_provider(path)
     digest = _source_digest(path)
     document_id: DocumentId = generate_document_id(config.namespace, config.tenant_scope, digest)
+    if raw_output_dir is not None:
+        raw_output_dir.mkdir(parents=True, exist_ok=True)
+        (raw_output_dir / "preflight.json").write_text(
+            profile.model_dump_json(indent=2), encoding="utf-8"
+        )
     result = parser.parse(
         ParseRequest(
             source_path=path,
@@ -376,6 +383,11 @@ def parse_document_with_diagnostics(
             raw_output_dir=raw_output_dir,
         )
     )
+    if raw_output_dir is not None:
+        # Retain usable parser observations even when canonical normalization fails.
+        (raw_output_dir / "parse-result.json").write_text(
+            result.model_dump_json(indent=2), encoding="utf-8"
+        )
     now = clock()
     revision_factory = revision_id_factory or RevisionIdGenerator().new
     context = NormalizationContext(
@@ -392,8 +404,20 @@ def parse_document_with_diagnostics(
         config_digest=_config_digest(config, result),
         profile=profile,
     )
-    document = normalize_neutral_result(result, context)
+    recovery_warnings: tuple[str, ...] = ()
+    if config.recover_structure:
+        recovery = normalize_recoverable_result(result, context)
+        document = recovery.document
+        recovery_warnings = recovery.warnings
+    else:
+        document = normalize_neutral_result(result, context)
     diagnostics = _diagnostics(document, result, profile, elapsed_seconds=perf_counter() - started)
+    if recovery_warnings:
+        diagnostics = diagnostics.model_copy(
+            update={
+                "normalization_warnings": diagnostics.normalization_warnings + recovery_warnings
+            }
+        )
     return ParseOutcome(
         document=document,
         parse_result=result,

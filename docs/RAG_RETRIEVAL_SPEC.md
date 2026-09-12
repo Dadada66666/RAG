@@ -2,11 +2,16 @@
 
 | Field | Value |
 |---|---|
-| Status | Authoritative MVP contract; not implemented |
+| Status | Historical broader design; exact dense QA implemented, sparse/fusion/reranking deferred |
 | Contract version | `rag-retrieval/1.0.0` |
 | Principle | Local, reproducible baseline first; replaceable backends |
 
 ## 1. Scope and pipeline
+
+The active implementation contract is [COMPLEX_DOCUMENT_QA_SPEC.md](COMPLEX_DOCUMENT_QA_SPEC.md).
+It uses Fixed/BGE-M3/exact cosine, user-supplied document prefilters, and source context after
+retrieval. The broader pipeline below is historical design; it is not a prerequisite or a current
+implementation claim. In particular, it does not authorize adding sparse retrieval or score fusion.
 
 ```text
 Query

@@ -1,5 +1,9 @@
 # Incremental Implementation Plan
 
+Current development follows [COMPLEX_DOCUMENT_QA_SPEC.md](COMPLEX_DOCUMENT_QA_SPEC.md).
+The phases below are historical design context; the active spec's milestone status and acceptance
+criteria govern the evidence-QA work authorized by the user.
+
 > **CURRENT EXECUTION POINTER: Retrieval evidence contract closure implemented**
 >
 > **NEXT: Rerun the same 3-document / 21-query comparison without changing controls**

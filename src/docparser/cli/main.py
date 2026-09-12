@@ -13,6 +13,13 @@ from docparser.application.parsing import (
     parse_document_with_diagnostics,
     write_parse_outputs,
 )
+from docparser.application.qa import QAResult, ask_document
+from docparser.application.qa_batch import (
+    QABatchConfig,
+    QAQuestion,
+    load_qa_batch,
+    run_qa_batch,
+)
 from docparser.application.retrieval_ab import run_retrieval_ab
 from docparser.application.robust import robust_parse_document, write_robust_outputs
 from docparser.config import load_config
@@ -39,6 +46,7 @@ from docparser.evaluation.parsebench.subset import (
     prepare_subset_manifests,
     write_subset_manifest,
 )
+from docparser.evaluation.qa import QAJudgment, evaluate_qa
 from docparser.evaluation.schema import (
     DEFAULT_EVALUATION_SCHEMA,
     evaluation_schema_is_current,
@@ -52,18 +60,212 @@ from docparser.ir.schema import (
     schema_is_current,
     write_document_ir_schema,
 )
+from docparser.ir.serialization import load_canonical_json
 from docparser.ir.types import Sha256Digest
 from docparser.quality import CalibrationProfile
 from docparser.retrieval import FixedChunkConfig, StructureChunkConfig
+from docparser.retrieval.answering import SiliconFlowChatModel, SiliconFlowConfig
+from docparser.retrieval.context import ContextConfig
+from docparser.retrieval.dense import BgeM3Runtime
+from docparser.retrieval.index import build_evidence_index, load_evidence_index
 from docparser.version import __version__
 
 app = typer.Typer(
     name="docparser",
-    help="Enterprise document parsing and RAG ingestion platform.",
+    help="Complex PDF parsing, evidence retrieval and cited question answering.",
     no_args_is_help=True,
 )
 schema_app = typer.Typer(help="Generate and verify committed wire schemas.")
 app.add_typer(schema_app, name="schema")
+
+
+@app.command("rag-evaluate")
+def rag_evaluate(
+    results_dir: Annotated[Path, typer.Option("--results", exists=True, file_okay=False)],
+    judgments: Annotated[Path, typer.Option("--judgments", exists=True, dir_okay=False)],
+    output: Annotated[Path, typer.Option("--output", dir_okay=False)],
+) -> None:
+    """Evaluate QA JSON files with independent JSONL correctness/citation judgments."""
+    try:
+        questions = None
+        if (results_dir / "run.json").exists():
+            manifest, results = load_qa_batch(results_dir)
+            questions = manifest.questions
+        else:
+            results = tuple(
+                QAResult.model_validate_json(path.read_bytes())
+                for path in sorted(results_dir.glob("*.qa.json"))
+            )
+            typer.echo(
+                "Exploratory evaluation: no manifest to verify planned question coverage.", err=True
+            )
+        annotations = tuple(
+            QAJudgment.model_validate_json(line)
+            for line in judgments.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+        metrics = evaluate_qa(results, annotations, questions=questions)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(metrics.model_dump_json(indent=2), encoding="utf-8")
+    except (OSError, ValueError) as error:
+        typer.echo(f"QA evaluation failed: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(metrics.model_dump_json(indent=2))
+
+
+@app.command("rag-batch")
+def rag_batch(
+    questions_path: Annotated[Path, typer.Option("--questions", exists=True, dir_okay=False)],
+    index_path: Annotated[Path, typer.Option("--index", exists=True, file_okay=False)],
+    model_path: Annotated[Path, typer.Option("--model-path", exists=True, file_okay=False)],
+    output: Annotated[Path, typer.Option("--output", file_okay=False)],
+    device: Annotated[str, typer.Option("--device")] = "cpu",
+    top_k: Annotated[int, typer.Option("--top-k", min=1)] = 5,
+    context_tokens: Annotated[int, typer.Option("--context-tokens", min=1)] = 4096,
+    expand_context: Annotated[bool, typer.Option("--expand-context/--no-expand-context")] = True,
+    table_context: Annotated[
+        bool,
+        typer.Option("--table-context", help="Restore logical table rows after retrieval (M2)."),
+    ] = False,
+    model: Annotated[str, typer.Option("--chat-model")] = "Qwen/Qwen3.8-27B",
+    base_url: Annotated[str, typer.Option("--base-url")] = "https://api.siliconflow.cn/v1",
+) -> None:
+    """Run a fixed question manifest with one model session and retain every provider failure."""
+    try:
+        questions = tuple(
+            QAQuestion.model_validate_json(line)
+            for line in questions_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+        config = QABatchConfig(
+            top_k=top_k,
+            context=ContextConfig(
+                max_tokens=context_tokens,
+                expand_source_tokens=768 if expand_context else 0,
+                include_related=expand_context,
+                table_policy="LOGICAL_ROWS" if table_context else "SOURCE_SPANS",
+            ),
+            generation=SiliconFlowConfig(model=model, base_url=base_url),
+        )
+        session = load_evidence_index(index_path).session(BgeM3Runtime(model_path, device=device))
+        run_qa_batch(questions, session, SiliconFlowChatModel(config.generation), output, config)
+        _, results = load_qa_batch(output)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"batch failed: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    errors = sum(result.execution_error is not None for result in results)
+    invalid = sum(
+        result.answer is not None and result.answer.status == "INVALID_RESPONSE"
+        for result in results
+    )
+    typer.echo(
+        f"completed {len(results)} requests; provider errors={errors}, "
+        f"invalid answers={invalid}: {output}"
+    )
+    if errors:
+        raise typer.Exit(code=2)
+    if invalid:
+        raise typer.Exit(code=3)
+
+
+@app.command("rag-index")
+def rag_index(
+    ir_root: Annotated[Path, typer.Option("--ir-root", exists=True, file_okay=False)],
+    model_path: Annotated[Path, typer.Option("--model-path", exists=True, file_okay=False)],
+    output: Annotated[Path, typer.Option("--output", file_okay=False)],
+    device: Annotated[str, typer.Option("--device")] = "cpu",
+) -> None:
+    """Embed Fixed 512/64 once and save a reusable exact dense index."""
+    try:
+        documents = tuple(
+            load_canonical_json(path.read_bytes())
+            for path in sorted(ir_root.rglob("document.ir.json"))
+        )
+        index = build_evidence_index(documents, BgeM3Runtime(model_path, device=device), output)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"index failed: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(f"indexed {len(documents)} documents, {index.manifest.chunk_count} chunks: {output}")
+    if index.manifest.table_alignment_counts:
+        typer.echo(
+            "table source maps: "
+            + ", ".join(
+                f"{status}={count}"
+                for status, count in sorted(index.manifest.table_alignment_counts.items())
+            )
+        )
+
+
+@app.command("rag-ask")
+def rag_ask(
+    question: Annotated[str, typer.Argument(help="Document question.")],
+    index_path: Annotated[Path, typer.Option("--index", exists=True, file_okay=False)],
+    model_path: Annotated[Path, typer.Option("--model-path", exists=True, file_okay=False)],
+    output: Annotated[Path, typer.Option("--output", dir_okay=False)],
+    device: Annotated[str, typer.Option("--device")] = "cpu",
+    top_k: Annotated[int, typer.Option("--top-k", min=1)] = 5,
+    context_tokens: Annotated[int, typer.Option("--context-tokens", min=1)] = 4096,
+    expand_context: Annotated[
+        bool,
+        typer.Option(
+            "--expand-context/--no-expand-context",
+            help="Restore bounded source/context; disable for a controlled ablation.",
+        ),
+    ] = True,
+    context_only: Annotated[
+        bool, typer.Option("--context-only", help="Inspect local evidence without calling an API.")
+    ] = False,
+    table_context: Annotated[
+        bool,
+        typer.Option("--table-context", help="Restore logical table rows after retrieval (M2)."),
+    ] = False,
+    model: Annotated[str, typer.Option("--chat-model")] = "Qwen/Qwen3.8-27B",
+    base_url: Annotated[str, typer.Option("--base-url")] = "https://api.siliconflow.cn/v1",
+    document_ids: Annotated[list[str] | None, typer.Option("--document-id")] = None,
+) -> None:
+    """Answer from cited evidence using SiliconFlow and SILICONFLOW_API_KEY."""
+    try:
+        index = load_evidence_index(index_path)
+        session = index.session(BgeM3Runtime(model_path, device=device))
+        chat = (
+            None
+            if context_only
+            else SiliconFlowChatModel(SiliconFlowConfig(model=model, base_url=base_url))
+        )
+        result = ask_document(
+            question,
+            session,
+            model=chat,
+            top_k=top_k,
+            document_ids=tuple(document_ids or ()),
+            context_config=ContextConfig(
+                max_tokens=context_tokens,
+                expand_source_tokens=768 if expand_context else 0,
+                include_related=expand_context,
+                table_policy="LOGICAL_ROWS" if table_context else "SOURCE_SPANS",
+            ),
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"question failed: {error}", err=True)
+        raise typer.Exit(code=2) from error
+    if result.execution_error is not None:
+        typer.echo(f"{result.execution_error.code}: {result.execution_error.message}", err=True)
+        typer.echo(f"retrieved evidence retained: {output}")
+        raise typer.Exit(code=2)
+    if result.answer is None:
+        typer.echo(result.context.text)
+    else:
+        typer.echo(result.answer.status)
+        for claim in result.answer.claims:
+            refs = ", ".join(dict.fromkeys(citation.evidence_id for citation in claim.citations))
+            typer.echo(f"{claim.text} [{refs}]")
+        if result.answer.reason:
+            typer.echo(result.answer.reason)
+    typer.echo(f"evidence and citations: {output}")
+    if result.answer is not None and result.answer.status == "INVALID_RESPONSE":
+        raise typer.Exit(code=3)
 
 
 def _version_callback(value: bool) -> None:
@@ -135,13 +337,20 @@ def parse_local(
         Path,
         typer.Option("--output", file_okay=False, resolve_path=True),
     ] = Path("./output"),
+    recover_structure: Annotated[
+        bool,
+        typer.Option(
+            "--recover-structure",
+            help="Keep partial source evidence when pages or logical table structures fail.",
+        ),
+    ] = False,
 ) -> None:
     """Parse a local PDF through the Phase 2.6 development/evaluation slice."""
 
     try:
         outcome = parse_document_with_diagnostics(
             input_pdf,
-            ParsingConfig(parser=parser, device=device),
+            ParsingConfig(parser=parser, device=device, recover_structure=recover_structure),
             raw_output_dir=output / "raw",
         )
         write_parse_outputs(outcome, output)
@@ -387,15 +596,9 @@ def rag_retrieval_ab(
         Path,
         typer.Option("--output", file_okay=False, resolve_path=True),
     ],
-    fixed_target_tokens: Annotated[
-        int, typer.Option("--fixed-target-tokens", min=1)
-    ] = 512,
-    fixed_overlap_tokens: Annotated[
-        int, typer.Option("--fixed-overlap-tokens", min=0)
-    ] = 64,
-    structure_target_tokens: Annotated[
-        int, typer.Option("--structure-target-tokens", min=1)
-    ] = 512,
+    fixed_target_tokens: Annotated[int, typer.Option("--fixed-target-tokens", min=1)] = 512,
+    fixed_overlap_tokens: Annotated[int, typer.Option("--fixed-overlap-tokens", min=0)] = 64,
+    structure_target_tokens: Annotated[int, typer.Option("--structure-target-tokens", min=1)] = 512,
     structure_hard_max_tokens: Annotated[
         int, typer.Option("--structure-hard-max-tokens", min=1)
     ] = 8000,

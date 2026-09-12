@@ -1,9 +1,14 @@
 # Architecture and Implementation Contracts
 
-This directory is the authoritative design contract for the Enterprise Document Parsing & RAG
-Ingestion Platform. The repository has completed the Phase 2.6 parsing-accuracy foundation, but the
-Quality Gate, selective fallback, structure-aware/parent-child chunking, retrieval and RAG evaluation
-runtime are not implemented.
+The active delivery contract is [COMPLEX_DOCUMENT_QA_SPEC.md](COMPLEX_DOCUMENT_QA_SPEC.md):
+document-scoped and corpus-wide evidence QA, complete experiment accounting, table context recovery,
+numeric evidence checks, and measured runtime quality. Its milestone table separates implemented
+code from future work. [EVIDENCE_QA_GUIDE.md](EVIDENCE_QA_GUIDE.md) contains executable server commands.
+
+Current code includes parsing, a deterministic quality gate, selective fallback, section materialization,
+Fixed/Structure experimental chunkers, exact dense A/B, persisted evidence indexing and cited QA.
+Real end-to-end answer quality remains unverified on this local machine. Historical platform and
+hybrid-retrieval designs below are references, not a requirement to implement every module.
 
 ## Reading order
 
@@ -31,13 +36,13 @@ runtime are not implemented.
 - Docling and PaddleOCR-VL 1.6 are candidates; neither is permanently promoted without corrected local evidence.
 - Native PDF text is evidence, not ground truth.
 - Official ParseBench, ParseBench-derived subset and Project Golden Dataset metrics are never mixed.
-- Parent-child and structure-aware chunking are planned experiments, not implemented capabilities.
-- Retrieval is evaluated incrementally: fixed/dense → structure-aware/dense → hybrid RRF → reranker/context.
+- Parent-child and structure-aware chunking are implemented experiments, without a superiority claim.
+- Current QA keeps Fixed/dense retrieval and tests structural context after retrieval. Hybrid and
+  reranking are deferred; they are not part of the current controlled experiment.
 - Core parsing, validation and chunking do not depend on an external LLM.
 
 ## Current implementation boundary
 
-Runtime implementation is complete through Phase 2.6 parsing/evaluation foundations. The prioritized
-Next 1–8 track in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) needs separate coding authorization,
-one increment at a time. No accuracy claim is valid until a real adjudicated benchmark corpus is run.
-
+Use the milestone/acceptance table in [COMPLEX_DOCUMENT_QA_SPEC.md](COMPLEX_DOCUMENT_QA_SPEC.md)
+for current work. The older implementation plan records previous phases. No accuracy claim is valid
+until independently judged real model/document experiments have run.

@@ -1,9 +1,18 @@
-# 企业级文档解析与 RAG 摄取平台
+# 复杂 PDF 证据检索与问答
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-这是一个面向生产环境的基础项目，目标是把复杂文档转换为版本化、可追踪、与解析器解耦，
-并适合后续 RAG 摄取的统一文档表示。
+这是一个面向复杂 PDF 的开发与实验项目，目标是找到可追踪的证据，并生成附原文引用的回答。
+结构用于提供上下文；结构存在、schema 合法或引用可达，都不等于事实已经正确。
+
+当前可执行问答链路包括：显式局部结构恢复、持久化 Fixed 512/64 索引、有预算的来源上下文、
+硅基流动问答与摘录校验，以及独立的答案/引用评估。Fixed 是默认检索表示，Structure 2.1
+保留为实验对照。请按[服务器运行指南](docs/EVIDENCE_QA_GUIDE.md)操作，
+具体改动见[实施计划](docs/EVIDENCE_QA_IMPLEMENTATION.md)。真实答案质量仍待实验测量。
+
+后续按[复杂文档库问答开发规范](docs/COMPLEX_DOCUMENT_QA_SPEC.md)推进。
+`rag-ask --document-id` 在检索前限定文档；`rag-batch` 复用运行时并把模型失败保留在评估分母中。
+完整逻辑行恢复和数值答案核验属于后续里程碑，尚未完成。
 
 > 当前状态：已完成 Phase 0–2.6。`docling-standard` 仍是基线，完整的 PaddleOCR-VL-1.6
 > 产线是可选的、GPU 优先的对比候选。系统已保留原生 PDF 证据，并提供本地 Golden Dataset

@@ -14,6 +14,7 @@ from docparser.ir.chunks import Chunk
 from docparser.ir.ids import ChunkId
 from docparser.ir.types import NonEmptyNfcString, Sha256Digest
 from docparser.retrieval.chunking import Tokenizer
+from docparser.retrieval.table_context import SourceEncoding
 
 
 class RetrievalRuntimeError(RuntimeError):
@@ -67,6 +68,21 @@ class _SentenceTransformerTokenizer:
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=False,
             )
+        )
+
+    def encode_with_offsets(self, text: str) -> SourceEncoding | None:
+        if not getattr(self._tokenizer, "is_fast", False):
+            return None
+        encoded = self._tokenizer(
+            text,
+            add_special_tokens=False,
+            truncation=False,
+            return_offsets_mapping=True,
+            return_attention_mask=False,
+        )
+        return SourceEncoding(
+            tuple(int(value) for value in encoded["input_ids"]),
+            tuple((int(start), int(end)) for start, end in encoded["offset_mapping"]),
         )
 
 
@@ -214,9 +230,7 @@ def exact_cosine_retrieval(
                 document_name=chunk_document_names[index],
                 rank=rank,
                 score=float(scores[query_index, index]),
-                page_numbers=tuple(
-                    sorted({bbox.page_number for bbox in chunks[index].bboxes})
-                ),
+                page_numbers=tuple(sorted({bbox.page_number for bbox in chunks[index].bboxes})),
             )
             for rank, index in enumerate(ordered, start=1)
         )

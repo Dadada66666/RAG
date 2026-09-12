@@ -69,8 +69,7 @@ class SourceRichParseSparseRule:
             native_chars = source_page.text_char_count
             parsed_chars = len(_page_text(context, source_page.page_number).strip())
             applicable = (
-                source_page.native_text_evidence.reliability
-                is NativeTextReliability.RELIABLE
+                source_page.native_text_evidence.reliability is NativeTextReliability.RELIABLE
                 and native_chars > 0
             )
             ratio = parsed_chars / native_chars if applicable else None
@@ -120,8 +119,7 @@ class NumericDisagreementRule:
         signals: list[QualitySignal] = []
         for source_page in context.profile.pages:
             applicable = (
-                source_page.native_text_evidence.reliability
-                is NativeTextReliability.RELIABLE
+                source_page.native_text_evidence.reliability is NativeTextReliability.RELIABLE
             )
             native = (
                 Counter(
@@ -265,7 +263,33 @@ class DegenerateTableRule:
         return tuple(signals)
 
 
+class RecoveredStructureRule:
+    """Recovered evidence is usable for QA, not a fully accepted structural document."""
+
+    rule_id = "INTEGRITY.RECOVERED_STRUCTURE"
+
+    def evaluate(self, context: ValidationRequest) -> tuple[QualitySignal, ...]:
+        recovery = context.document.extensions.get("org.docparser.recovery")
+        if not isinstance(recovery, dict):
+            return ()
+        return (
+            QualitySignal(
+                rule_id=self.rule_id,
+                signal_kind=SignalKind.INTEGRITY,
+                severity=SignalSeverity.ERROR,
+                outcome=SignalOutcome.TRIGGERED,
+                target=QualityTarget(scope=QualityScope.DOCUMENT),
+                predicted_failure_type="KNOWN_PARTIAL_STRUCTURE",
+                action=RuleAction.REJECT,
+                calibrated=False,
+                evidence=recovery,
+                message="Local recovery retained evidence but did not certify complete structure.",
+            ),
+        )
+
+
 DEFAULT_RULES: tuple[QualityRule, ...] = (
+    RecoveredStructureRule(),
     SourceRichParseSparseRule(),
     NumericDisagreementRule(),
     UnresolvedReadingOrderRule(),

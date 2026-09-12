@@ -294,7 +294,11 @@ def _normalize_blocks(
                 provenance_ids=(provenance.provenance_id,),
                 content_ref=content_ref,
                 style=None,
-                extensions={},
+                extensions=(
+                    {"org.docparser.recovery": element.metadata["org.docparser.recovery"]}
+                    if "org.docparser.recovery" in element.metadata
+                    else {}
+                ),
             )
         )
     return tuple(blocks)
