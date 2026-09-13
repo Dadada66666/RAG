@@ -119,6 +119,19 @@ def rag_batch(
     index_path: Annotated[Path, typer.Option("--index", exists=True, file_okay=False)],
     model_path: Annotated[Path, typer.Option("--model-path", exists=True, file_okay=False)],
     output: Annotated[Path, typer.Option("--output", file_okay=False)],
+    resume: Annotated[
+        bool,
+        typer.Option(
+            "--resume", help="Continue an interrupted batch without retrying recorded results."
+        ),
+    ] = False,
+    caption_context: Annotated[
+        bool,
+        typer.Option(
+            "--caption-context",
+            help="Expand auditable caption/table associations; requires a rebuilt index.",
+        ),
+    ] = False,
     device: Annotated[str, typer.Option("--device")] = "cpu",
     top_k: Annotated[int, typer.Option("--top-k", min=1)] = 5,
     context_tokens: Annotated[int, typer.Option("--context-tokens", min=1)] = 4096,
@@ -140,6 +153,7 @@ def rag_batch(
         config = QABatchConfig(
             top_k=top_k,
             context=ContextConfig(
+                caption_context=caption_context,
                 max_tokens=context_tokens,
                 expand_source_tokens=768 if expand_context else 0,
                 include_related=expand_context,
@@ -148,7 +162,14 @@ def rag_batch(
             generation=SiliconFlowConfig(model=model, base_url=base_url),
         )
         session = load_evidence_index(index_path).session(BgeM3Runtime(model_path, device=device))
-        run_qa_batch(questions, session, SiliconFlowChatModel(config.generation), output, config)
+        run_qa_batch(
+            questions,
+            session,
+            SiliconFlowChatModel(config.generation),
+            output,
+            config,
+            resume=resume,
+        )
         _, results = load_qa_batch(output)
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"batch failed: {error}", err=True)
@@ -202,6 +223,13 @@ def rag_ask(
     index_path: Annotated[Path, typer.Option("--index", exists=True, file_okay=False)],
     model_path: Annotated[Path, typer.Option("--model-path", exists=True, file_okay=False)],
     output: Annotated[Path, typer.Option("--output", dir_okay=False)],
+    caption_context: Annotated[
+        bool,
+        typer.Option(
+            "--caption-context",
+            help="Expand auditable caption/table associations; requires a rebuilt index.",
+        ),
+    ] = False,
     device: Annotated[str, typer.Option("--device")] = "cpu",
     top_k: Annotated[int, typer.Option("--top-k", min=1)] = 5,
     context_tokens: Annotated[int, typer.Option("--context-tokens", min=1)] = 4096,
@@ -239,6 +267,7 @@ def rag_ask(
             top_k=top_k,
             document_ids=tuple(document_ids or ()),
             context_config=ContextConfig(
+                caption_context=caption_context,
                 max_tokens=context_tokens,
                 expand_source_tokens=768 if expand_context else 0,
                 include_related=expand_context,

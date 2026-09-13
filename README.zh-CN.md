@@ -2,6 +2,9 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+**当前服务器无 GPU：先从 [CPU 检查与启动手册](docs/SERVER_CPU_RUNBOOK.md) 开始。**
+其中列出了已核实的服务器路径、可直接运行的命令和仍需真实模型验证的部分。
+
 这是一个面向复杂 PDF 的开发与实验项目，目标是找到可追踪的证据，并生成附原文引用的回答。
 结构用于提供上下文；结构存在、schema 合法或引用可达，都不等于事实已经正确。
 
@@ -12,7 +15,7 @@
 
 后续按[复杂文档库问答开发规范](docs/COMPLEX_DOCUMENT_QA_SPEC.md)推进。
 `rag-ask --document-id` 在检索前限定文档；`rag-batch` 复用运行时并把模型失败保留在评估分母中。
-完整逻辑行恢复和数值答案核验属于后续里程碑，尚未完成。
+`--table-context` 已实现 M2 逻辑行恢复；真实问答增益仍待对照实验。数值答案核验属于待实现的 M3。
 
 > 当前状态：已完成 Phase 0–2.6。`docling-standard` 仍是基线，完整的 PaddleOCR-VL-1.6
 > 产线是可选的、GPU 优先的对比候选。系统已保留原生 PDF 证据，并提供本地 Golden Dataset

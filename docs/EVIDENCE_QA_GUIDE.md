@@ -1,5 +1,8 @@
 # PDF 证据问答：运行与验证
 
+当前 0.5 CPU / 2 GiB 的服务器请先按 [CPU 检查与启动手册](SERVER_CPU_RUNBOOK.md) 操作。
+本页 `/data/rag/qa-ir` 等是通用示例；本实例实际已有 IR/model 路径见该手册，不能直接假定示例目录存在。
+
 这条链路使用现有 Parser / Canonical IR、Fixed 512/64、BGE-M3 和 exact NumPy cosine。
 结构用于命中后的上下文恢复，不参与评分。它已经有可执行代码与离线回归测试；真实答案质量
 仍需要服务器上的模型和文档实验，不能由测试通过或引用校验通过推出。
@@ -296,5 +299,29 @@ docparser rag-batch \
 没有新增独立数值检查器；算术与条件一致性属于 M3。
 
 如果大多数表仍为未知 header、缺失 caption 或 Parser 读错数字，M2 不能补造这些事实。
-记录实际错误类别与来源，再决定是否实施 spec 的条件性派生关联；本轮没有引入这些猜测。
+记录实际错误类别与来源；可选择下述独立开关验证条件性派生关联，不能把它当成 parser fact。
 79 条 holdout 继续保持不读取、不用于调优；算法冻结后的最终报告规则仍按主 spec 执行。
+
+## 8. 表格关联与可靠恢复（2026-09-13）
+
+开发规范：[EVIDENCE_RELIABILITY_SPEC.md](EVIDENCE_RELIABILITY_SPEC.md)。
+新建索引版本为 `fixed-evidence-index@1.2.0`，保存显式/派生 caption links。旧索引仍可用于
+原有问答；启用关联时必须新建索引，不手改 manifest 版本。分块和 embedding 输入不变。
+
+在 `rag-ask` 或 `rag-batch` 原命令上增加 `--table-context --caption-context` 即可启用。
+与 M2 对比时，两组都使用 `--table-context`，只切换 `--caption-context`，核对排名/分数一致。
+候选必须同页、caption 类型、表号前缀、空间邻近且双向唯一；歧义不推断。派生关系会在
+sources 的 `caption_links` 中保留依据，并在提交给模型的 evidence 中明确标注。
+表格/标题补充同受 context budget 限制；不足时记录遗漏，不承诺恢复所有大表。
+
+中断后，使用完全相同参数和 output 目录增加 `--resume`：先验证已有结果摘要、问题、索引、
+prompt、配置，再继续缺失题。已记录的失败不重试；完整运行重入不发请求。单个目录仅允许
+一个运行进程；中断前已发出但未落盘的远程请求可能重复计费，不能保证 exactly-once。
+若结果文件已写入但 manifest 尚未更新，会拒绝覆盖，要求先核对产物。
+
+INVALID_RESPONSE 的 `answer.diagnostic` 保存模型原始输出、错误位置与错误类型，便于定位
+格式/引用失败；CLI 不打印该内容。该字段可能包含文档原文，应按 QA 产物管理，分享前脱敏。
+不能从旧结果重建当时未保存的 raw completion，也不自动放宽原文匹配。
+
+本轮离线回归 494 passed、2 skipped、10 deselected；类型检查 157 文件通过。
+新关联的真实问答收益尚未验证，不能沿用之前的 M1/M2 指标宣称提升。

@@ -2,6 +2,9 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+**For the current CPU-only server, start with the [CPU runbook](docs/SERVER_CPU_RUNBOOK.md).**
+It records verified server paths, runnable checks, and the remaining model-validation boundary.
+
 A development project for extracting traceable evidence from complex PDFs, retrieving it with
 exact dense search, and answering questions with source quotations. Structure is optional context;
 its presence and schema validity are not guarantees of factual correctness.
@@ -14,8 +17,8 @@ comparison. See the [server run guide](docs/EVIDENCE_QA_GUIDE.md) and
 
 Next development follows the [complex-document QA specification](docs/COMPLEX_DOCUMENT_QA_SPEC.md).
 `rag-ask --document-id` restricts the corpus before ranking; `rag-batch` reuses one model session and
-records every provider failure for manifest-based evaluation. Table-row recovery and numeric answer
-verification remain subsequent milestones, not completed features.
+records every provider failure for manifest-based evaluation. M2 table-row recovery is implemented
+behind `--table-context`; answer-quality gains remain unverified. Numeric verification remains M3.
 
 > Project status: Phases 0–2.6 are implemented. `docling-standard` remains the baseline and the
 > complete PaddleOCR-VL-1.6 pipeline is an optional GPU-first comparison candidate. Native PDF

@@ -5,6 +5,12 @@
 本文是接下来开发的执行规范。`MUST` 是验收要求，`DEFER` 不进入本轮实现。
 本文不代表以下所有能力已实现；各阶段状态见最后的交付表。
 
+2026-09-12 服务器 CPU 实测和实际路径见 [SERVER_CPU_RUNBOOK.md](SERVER_CPU_RUNBOOK.md)：
+独立 CPU 环境 481 项测试通过、真实 BGE tokenizer 验证通过；M2 行对齐已在 DEV IR 上执行。
+GPU/API 首轮已完成，失败与结论见 [SERVER_GPU_VALIDATION.md](SERVER_GPU_VALIDATION.md)。
+已发现当前 Fixed 重建与历史 87-chunk artifact 不完全一致，
+后续 M1/M2 必须基于同一个新索引重新建立 baseline，不能直接继承历史指标或向量。
+
 ## 1. 用户目标与产品边界
 
 目标：用户选择一份或一组复杂 PDF，或搜索整个文档库，得到条件完整、有原文依据的回答。
@@ -93,6 +99,8 @@ manifest 保存题目、索引、上下文配置、生成配置、prompt 版本/
 程序缺陷、损坏索引、错误运行配置 MUST 报错；不能用 `except Exception: continue` 伪造成功运行。
 进程中断留下未完成 run；评分必须拒绝把部分产物当完整实验。
 M1 不实现自动重试、并发、调度、复杂断点恢复；新一轮运行写新目录，避免覆盖付费结果。
+后续可靠性增量新增显式 `--resume`，仅续跑未持久化结果，不重试已有失败。
+执行规范及范围见 [EVIDENCE_RELIABILITY_SPEC.md](EVIDENCE_RELIABILITY_SPEC.md)。
 
 ### 5.3 评估
 
@@ -248,12 +256,13 @@ TABLE slice 不等于 canonical table ground truth；PageHit 不等于 Recall；
 | 增量 | 修改位置 | 当前状态 |
 |---|---|---|
 | 原始 QA 基础 | recovery/index/context/answering、独立评估 | 已离线验证；452 passed 的历史记录见 EVIDENCE_QA_IMPLEMENTATION |
-| M1 范围＋完整运行 | index.py, application/qa.py, 新 qa_batch.py, evaluation/qa.py, CLI | 已实现并离线验证；真实模型基线待服务器运行 |
-| M2 表格证据恢复 | context.py、table_context.py、索引/CLI/引用字段、相关测试 | 已实现并离线验证；真实 tokenizer、M1 基线与 M2 效果验证待服务器运行 |
+| M1 范围＋完整运行 | index.py, application/qa.py, 新 qa_batch.py, evaluation/qa.py, CLI | 已实现；DEV-21 真实模型运行完成，含 3 次超时，独立答案判分待完成 |
+| M2 表格证据恢复 | context.py、table_context.py、索引/CLI/引用字段、相关测试 | 已实现；DEV-21 与 M1 检索完全一致，真实上下文/问答完成，尚无答案质量提升证据 |
 | M3 条件与计算 | answering.py、有限算术模块、独立评估 | 待实现，不能称语义已验证 |
 | M4 效率/导入/演示 | 已测热点、导入编排、轻量界面 | 待真实测量后实现 |
 
-服务器 BGE/PDF 资产不在本机；本机只运行离线契约测试。密钥仅用环境变量，不入 Git/日志。
+服务器 GPU 实验记录见 [SERVER_GPU_VALIDATION.md](SERVER_GPU_VALIDATION.md)。
+本机只运行离线契约测试；真实模型运行在服务器。密钥仅用环境变量，不入 Git/日志。
 M1 历史回归：463 passed、1 skipped、10 deselected；Mypy 152 文件通过。
 M2 本轮回归：480 passed、2 skipped、10 deselected；Mypy 155 文件通过，Ruff 与 schema check
 通过，新增/修改的 9 个 M2 Python 文件通过格式检查。默认配置覆盖门槛通过（86.41%，仅指原有

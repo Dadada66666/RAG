@@ -47,3 +47,17 @@ def test_unreadable_pdf_fails_preflight(tmp_path: Path) -> None:
 
     with pytest.raises(PreflightError, match="unreadable PDF"):
         inspect_pdf(path)
+
+
+def test_cyclic_image_reference_is_a_document_preflight_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pypdf.errors import LimitReachedError
+
+    def broken_image_resources(page: object) -> int:
+        raise LimitReachedError("Detected loop with self reference")
+
+    monkeypatch.setattr("docparser.preflight.pdf._count_images", broken_image_resources)
+    path = write_tiny_pdf(tmp_path / "cyclic-images.pdf")
+    with pytest.raises(PreflightError, match="page 1: cannot inspect PDF image resources"):
+        inspect_pdf(path)

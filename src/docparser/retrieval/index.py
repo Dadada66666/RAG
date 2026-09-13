@@ -37,9 +37,9 @@ class IndexedChunk(StrictIRModel):
 
 
 class IndexManifest(StrictIRModel):
-    version: Literal["fixed-evidence-index@1.0.0", "fixed-evidence-index@1.1.0"] = (
-        "fixed-evidence-index@1.1.0"
-    )
+    version: Literal[
+        "fixed-evidence-index@1.0.0", "fixed-evidence-index@1.1.0", "fixed-evidence-index@1.2.0"
+    ] = "fixed-evidence-index@1.2.0"
     chunker_version: str = FIXED_CHUNKER_VERSION
     chunk_config: FixedChunkConfig
     model_id: str
@@ -140,6 +140,10 @@ class QASearchSession:
         document_ids: tuple[str, ...] = (),
     ) -> EvidenceContext:
         manifest = self.index.manifest
+        if config and config.caption_context and manifest.version != "fixed-evidence-index@1.2.0":
+            raise ValueError(
+                "caption context requires rebuilding the index with caption associations"
+            )
         warnings = manifest.warnings
         if document_ids:
             warnings = tuple(

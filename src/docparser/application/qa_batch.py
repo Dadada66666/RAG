@@ -12,6 +12,7 @@ from docparser.application.qa import QAResult, ask_document
 from docparser.ir.base import StrictIRModel
 from docparser.ir.types import NonEmptyNfcString
 from docparser.retrieval.answering import (
+    ANSWER_VALIDATION_VERSION,
     PROMPT_VERSION,
     SYSTEM_PROMPT,
     ChatModel,
@@ -41,7 +42,10 @@ class QABatchManifest(StrictIRModel):
     config: QABatchConfig
     prompt_version: str = PROMPT_VERSION
     prompt_digest: str
+    # Missing in historical manifests: retain their original validation contract.
+    answer_validation_version: str = "answer-validation@1.0.0"
     result_digests: dict[str, str] = Field(default_factory=dict)
+    resume_count: int = Field(default=0, ge=0)
 
 
 def _write_record(path: Path, record: StrictIRModel) -> None:
@@ -63,12 +67,14 @@ def run_qa_batch(
     model: ChatModel,
     output: Path,
     config: QABatchConfig,
+    *,
+    resume: bool = False,
 ) -> QABatchManifest:
     """Use one session; unexpected program errors leave a visibly incomplete run."""
     _validate_questions(questions)
     if any(set(item.document_ids) - session.document_ids for item in questions):
         raise ValueError("batch contains document IDs not present in this index")
-    if output.exists() and any(output.iterdir()):
+    if not resume and output.exists() and any(output.iterdir()):
         raise FileExistsError("batch output is not empty; use a new directory")
     output.mkdir(parents=True, exist_ok=True)
     manifest = QABatchManifest(
@@ -76,10 +82,46 @@ def run_qa_batch(
         questions=questions,
         index_manifest=session.index.manifest,
         config=config,
+        answer_validation_version=ANSWER_VALIDATION_VERSION,
         prompt_digest="sha256:" + hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest(),
     )
+    completed = 0
+    if resume:
+        existing = QABatchManifest.model_validate_json((output / "run.json").read_bytes())
+        if any(
+            getattr(existing, key) != getattr(manifest, key)
+            for key in (
+                "questions",
+                "index_manifest",
+                "config",
+                "prompt_version",
+                "prompt_digest",
+                "answer_validation_version",
+            )
+        ):
+            raise ValueError("resume inputs/configuration differ from the recorded run")
+        completed = len(existing.result_digests)
+        expected = {q.query_id for q in questions[:completed]}
+        if set(existing.result_digests) != expected:
+            raise ValueError("resume requires a contiguous recorded result prefix")
+        # Validate all persisted records before any paid request. A result written before
+        # an interrupted manifest update is deliberately not overwritten or retried.
+        files = {p.name for p in output.glob("*.qa.json")}
+        if files != {f"{i:05}.qa.json" for i in range(completed)}:
+            raise ValueError("uncommitted or missing QA result; reconcile artifacts before resume")
+        for ordinal, item in enumerate(questions[:completed]):
+            file = output / f"{ordinal:05}.qa.json"
+            if _file_digest(file) != existing.result_digests[item.query_id]:
+                raise ValueError("recorded result changed; cannot resume")
+            result = QAResult.model_validate_json(file.read_bytes())
+            _validate_result(result, item, existing)
+        if existing.status == "COMPLETE":
+            load_qa_batch(output)
+            return existing
+        manifest = existing.model_copy(update={"resume_count": existing.resume_count + 1})
     _write_record(output / "run.json", manifest)
-    for ordinal, item in enumerate(questions):
+    for ordinal in range(completed, len(questions)):
+        item = questions[ordinal]
         result = ask_document(
             str(item.question),
             session,
@@ -102,6 +144,19 @@ def run_qa_batch(
     return manifest
 
 
+def _validate_result(result: QAResult, item: QAQuestion, manifest: QABatchManifest) -> None:
+    if (
+        result.retrieval.benchmark_query_id != item.query_id
+        or result.question != item.question
+        or result.document_ids != tuple(sorted(set(item.document_ids)))
+        or result.index_manifest != manifest.index_manifest
+        or result.context.config != manifest.config.context
+    ):
+        raise ValueError("batch result identity, scope or configuration differs from manifest")
+    if result.answer is None and result.execution_error is None:
+        raise ValueError("context-only output is not a completed batch answer")
+
+
 def load_qa_batch(path: Path) -> tuple[QABatchManifest, tuple[QAResult, ...]]:
     """Only complete, unchanged batches qualify for manifest-based evaluation."""
     manifest = QABatchManifest.model_validate_json((path / "run.json").read_bytes())
@@ -118,15 +173,6 @@ def load_qa_batch(path: Path) -> tuple[QABatchManifest, tuple[QAResult, ...]]:
         if _file_digest(file) != manifest.result_digests[item.query_id]:
             raise ValueError("batch result changed after completion")
         result = QAResult.model_validate_json(file.read_bytes())
-        if (
-            result.retrieval.benchmark_query_id != item.query_id
-            or result.question != item.question
-            or result.document_ids != tuple(sorted(set(item.document_ids)))
-            or result.index_manifest != manifest.index_manifest
-            or result.context.config != manifest.config.context
-        ):
-            raise ValueError("batch result identity, scope or configuration differs from manifest")
-        if result.answer is None and result.execution_error is None:
-            raise ValueError("context-only output is not a completed batch answer")
+        _validate_result(result, item, manifest)
         results.append(result)
     return manifest, tuple(results)

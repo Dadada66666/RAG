@@ -13,6 +13,7 @@ markdown-it-py==2.2.0
 mdurl==0.1.0
 mypy==1.11.2
 mypy-extensions==1.0.0
+numpy==2.2.6
 packaging==24.1
 pluggy==1.6.0
 pypdf==6.16.2
@@ -21,7 +22,7 @@ pydantic_core==2.20.1
 Pygments==2.15.1
 pytest==9.1.1
 pytest-cov==7.1.0
-PyYAML==6.0.1
+PyYAML==6.0.2
 referencing==0.37.0
 rich==15.0.0
 rpds-py==2026.6.3

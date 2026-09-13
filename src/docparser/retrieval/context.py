@@ -14,6 +14,7 @@ from docparser.ir.chunks import Chunk
 from docparser.ir.enums import BlockType, ReadingOrderStatus, RelationshipType, TableCellHeaderRole
 from docparser.ir.geometry import BBox
 from docparser.ir.models import DocumentIR
+from docparser.retrieval.caption_links import CaptionLink, associate_table_captions
 from docparser.retrieval.chunking import Tokenizer, _render_block, _render_table_row
 from docparser.retrieval.dense import QueryRetrieval
 from docparser.retrieval.table_context import TableRowMap, TableSourceMap, build_table_source_maps
@@ -43,6 +44,7 @@ class EvidenceSource(StrictIRModel):
     required_context_source_ids: tuple[str, ...] = ()
     table_map: TableSourceMap | None = None
     warnings: tuple[str, ...] = ()
+    caption_links: tuple[CaptionLink, ...] = ()
 
 
 class SourceSpan(StrictIRModel):
@@ -57,6 +59,7 @@ class ContextConfig(StrictIRModel):
     expand_source_tokens: int = Field(default=768, ge=0)
     include_related: bool = True
     table_policy: Literal["SOURCE_SPANS", "LOGICAL_ROWS"] = "SOURCE_SPANS"
+    caption_context: bool = False
 
 
 class ContextEvidence(StrictIRModel):
@@ -251,6 +254,8 @@ def prepare_sources(
                 text=block.text or "",
                 ordered=False,
             )
+    for identifier, links in associate_table_captions(document, frozenset(sources)).items():
+        sources[identifier] = sources[identifier].model_copy(update={"caption_links": links})
     table_sources: dict[str, dict[str, tuple[str, bool]]] = defaultdict(dict)
     for source in sources.values():
         if source.kind == "TABLE" and source.entity_id in tables:
@@ -562,6 +567,35 @@ class ContextBuilder:
         for piece in core:
             is_table = self.sources[piece.source_id].kind == "TABLE"
             bundle = self._table_pieces(piece) if is_table else [piece]
+            if config.caption_context:
+                for link in self.sources[piece.source_id].caption_links:
+                    identifier = link.target_source_id
+                    related = _Piece(
+                        identifier, 0, len(self._tokens[identifier]), piece.rank, "RELATED"
+                    )
+                    addition = (
+                        self._table_pieces(related, whole=True)
+                        if self.sources[identifier].kind == "TABLE"
+                        else [related]
+                    )
+                    if link.basis != "EXPLICIT":
+                        addition = [
+                            replace(
+                                p,
+                                warnings=(
+                                    *p.warnings,
+                                    "DERIVED_CAPTION_ASSOCIATION: "
+                                    "spatial evidence, not parser fact",
+                                ),
+                            )
+                            for p in addition
+                        ]
+                    candidate = _merge_pieces([*selected, *bundle, *addition])
+                    if fits(candidate):
+                        bundle.extend(addition)
+                    else:
+                        omitted.append(identifier)
+                        events.append("CAPTION_ASSOCIATION_BUDGET_EXCEEDED")
             candidate = _merge_pieces([*selected, *bundle])
             if fits(candidate):
                 selected = candidate
@@ -668,7 +702,7 @@ class ContextBuilder:
                     )
         source_order = {identifier: index for index, identifier in enumerate(intervals)}
         core.sort(key=lambda piece: (piece.rank, source_order[piece.source_id], piece.start))
-        if config.table_policy == "LOGICAL_ROWS":
+        if config.table_policy == "LOGICAL_ROWS" or config.caption_context:
             return self._build_rows(core, config, warnings)
         selected: list[_Piece] = []
         omitted: list[str] = []

@@ -69,6 +69,41 @@ def test_saved_index_reuses_document_embeddings_and_answers_with_sources(tmp_pat
     assert index.manifest.chunk_count == len(session.chunks)
 
 
+@pytest.mark.parametrize("bad_quote", [False, True])
+def test_answer_can_omit_reason_without_weakening_citations(
+    tmp_path: Path, bad_quote: bool
+) -> None:
+    class WithoutReason(CitingModel):
+        def complete(self, system: str, user: str) -> Completion:
+            completion = super().complete(system, user)
+            payload = json.loads(completion.text)
+            del payload["reason"]
+            return Completion(json.dumps(payload), completion.model, completion.usage)
+
+    runtime = FakeEmbeddingRuntime()
+    session = build_evidence_index((make_retrieval_document(),), runtime, tmp_path).session(runtime)
+    model = WithoutReason(quote="Revenue ... invented continuation" if bad_quote else None)
+    result = ask_document("Revenue?", session, model=model)
+    assert result.answer is not None
+    assert result.answer.status == ("INVALID_RESPONSE" if bad_quote else "ANSWERED")
+    if bad_quote:
+        assert result.answer.reason == "QUOTE_NOT_IN_SUBMITTED_EVIDENCE"
+        assert not result.answer.claims
+    else:
+        assert result.answer.reason is None
+        assert result.answer.source_validation == "EXACT_QUOTES_CHECKED"
+
+
+@pytest.mark.parametrize("reason", [{}, {"reason": None}, {"reason": ""}, {"reason": " "}])
+def test_abstention_still_requires_a_meaningful_reason(reason: dict[str, Any]) -> None:
+    from pydantic import ValidationError
+
+    from docparser.retrieval.answering import AnswerDraft
+
+    with pytest.raises(ValidationError):
+        AnswerDraft.model_validate({"status": "INSUFFICIENT_EVIDENCE", "claims": [], **reason})
+
+
 @pytest.mark.parametrize(
     ("identifier", "quote", "reason"),
     [
@@ -87,6 +122,25 @@ def test_invalid_model_citations_are_not_published(
     assert result.answer.status == "INVALID_RESPONSE"
     assert not result.answer.claims
     assert result.answer.reason == reason
+    assert result.answer.diagnostic is not None
+    assert result.answer.diagnostic.error_types == (reason,)
+    assert json.loads(result.answer.diagnostic.raw_completion)["claims"]
+
+
+@pytest.mark.parametrize("raw", ["not JSON", '{"status":"ANSWERED","claims":[],"reason":null}'])
+def test_invalid_response_preserves_raw_and_validation_details(tmp_path: Path, raw: str) -> None:
+    runtime = FakeEmbeddingRuntime()
+    session = build_evidence_index((make_retrieval_document(),), runtime, tmp_path).session(runtime)
+
+    class InvalidModel:
+        def complete(self, system: str, user: str) -> Completion:
+            return Completion(raw, "fixture", {})
+
+    result = ask_document("Revenue?", session, model=InvalidModel())
+    assert result.answer is not None and result.answer.diagnostic is not None
+    assert result.answer.status == "INVALID_RESPONSE"
+    assert result.answer.diagnostic.raw_completion == raw
+    assert result.answer.diagnostic.error_types
 
 
 def test_empty_context_abstains_without_a_remote_call(tmp_path: Path) -> None:

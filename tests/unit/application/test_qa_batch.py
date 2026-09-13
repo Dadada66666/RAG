@@ -34,6 +34,58 @@ def questions() -> tuple[QAQuestion, ...]:
     return tuple(QAQuestion(query_id=f"query-{number}", question="Revenue?") for number in range(3))
 
 
+def test_legacy_batch_is_readable_but_cannot_resume_with_new_validation(tmp_path: Path) -> None:
+    from docparser.retrieval.answering import ANSWER_VALIDATION_VERSION
+
+    runtime = FakeEmbeddingRuntime()
+    session = build_evidence_index(
+        (make_retrieval_document(),), runtime, tmp_path / "index"
+    ).session(runtime)
+    output = tmp_path / "run"
+    model = FailsSecondQuestion()
+    manifest = run_qa_batch(questions(), session, model, output, QABatchConfig())
+    assert manifest.answer_validation_version == ANSWER_VALIDATION_VERSION
+    data = json.loads((output / "run.json").read_text(encoding="utf-8"))
+    del data["answer_validation_version"]
+    (output / "run.json").write_text(json.dumps(data), encoding="utf-8")
+    historical, results = load_qa_batch(output)
+    assert historical.answer_validation_version == "answer-validation@1.0.0"
+    assert len(results) == 3
+    with pytest.raises(ValueError, match="differ"):
+        run_qa_batch(questions(), session, model, output, QABatchConfig(), resume=True)
+    assert model.calls == 3
+
+
+def test_resume_preserves_recorded_failure_and_is_noop_when_complete(tmp_path: Path) -> None:
+    runtime = FakeEmbeddingRuntime()
+    session = build_evidence_index(
+        (make_retrieval_document(),), runtime, tmp_path / "index"
+    ).session(runtime)
+
+    class Interrupted(FailsSecondQuestion):
+        def complete(self, system: str, user: str) -> Completion:
+            if self.calls == 2:
+                raise ValueError("interrupted")
+            return super().complete(system, user)
+
+    output = tmp_path / "run"
+    with pytest.raises(ValueError, match="interrupted"):
+        run_qa_batch(questions(), session, Interrupted(), output, QABatchConfig())
+    original = (output / "00001.qa.json").read_bytes()
+    model = FailsSecondQuestion()
+    manifest = run_qa_batch(questions(), session, model, output, QABatchConfig(), resume=True)
+    assert model.calls == 1 and manifest.resume_count == 1
+    assert (output / "00001.qa.json").read_bytes() == original
+    assert load_qa_batch(output)[1][1].execution_error is not None
+    run_qa_batch(questions(), session, model, output, QABatchConfig(), resume=True)
+    assert model.calls == 1
+    with pytest.raises(ValueError, match="differ"):
+        run_qa_batch(questions(), session, model, output, QABatchConfig(top_k=2), resume=True)
+    (output / "00000.qa.json").write_text("{}")
+    with pytest.raises(ValueError, match="changed"):
+        run_qa_batch(questions(), session, model, output, QABatchConfig(), resume=True)
+
+
 def test_document_scope_prefilters_candidates_and_preserves_explicit_query_id(
     tmp_path: Path,
 ) -> None:

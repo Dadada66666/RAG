@@ -9,7 +9,7 @@ from typing import Any, Self
 
 from pydantic import Field, model_validator
 from pypdf import PdfReader
-from pypdf.errors import PdfReadError
+from pypdf.errors import PdfReadError, PyPdfError
 
 from docparser.ir.base import PageNumber, StrictIRModel
 from docparser.ir.geometry import AffineTransform, BBox
@@ -179,7 +179,12 @@ def inspect_pdf(path: Path) -> DocumentProfile:
             text,
             extraction_status,
         )
-        image_count = _count_images(page)
+        try:
+            image_count = _count_images(page)
+        except PyPdfError as exc:
+            raise PreflightError(
+                f"page {page_number}: cannot inspect PDF image resources: {exc}"
+            ) from exc
         text_coverage, image_coverage = _coverage_estimates(char_count, image_count, width * height)
         profiles.append(
             PageProfile(

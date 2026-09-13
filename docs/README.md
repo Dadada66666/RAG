@@ -1,5 +1,8 @@
 # Architecture and Implementation Contracts
 
+For hands-on use of the current CPU-only server, start with [SERVER_CPU_RUNBOOK.md](SERVER_CPU_RUNBOOK.md).
+The documents below describe contracts and history; they are not a sequential installation checklist.
+
 The active delivery contract is [COMPLEX_DOCUMENT_QA_SPEC.md](COMPLEX_DOCUMENT_QA_SPEC.md):
 document-scoped and corpus-wide evidence QA, complete experiment accounting, table context recovery,
 numeric evidence checks, and measured runtime quality. Its milestone table separates implemented
