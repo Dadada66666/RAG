@@ -1,0 +1,76 @@
+{
+  "_backend": "hybrid",
+  "_effort": "high",
+  "_ocr_enable": true,
+  "_version_name": "3.4.5",
+  "pdf_info": [
+    {
+      "page_idx": 0,
+      "page_size": [600, 800],
+      "preproc_blocks": [
+        {
+          "type": "table",
+          "index": 0,
+          "bbox": [20, 40, 280, 130],
+          "blocks": [
+            {"type": "table_caption", "index": 0, "bbox": [20, 20, 280, 38], "lines": [{"bbox": [20, 20, 280, 38], "spans": [{"type": "text", "content": "Table 701 Synthetic alpha", "bbox": [20, 20, 190, 38]}]}]},
+            {"type": "table_body", "index": 1, "bbox": [20, 40, 280, 130], "lines": [{"bbox": [20, 40, 280, 130], "spans": [{"type": "table", "html": "<table><tr><td colspan=\"2\">A</td></tr><tr><td>A1</td><td>1</td></tr></table>", "bbox": [20, 40, 280, 130]}]}]}
+          ]
+        },
+        {
+          "type": "table",
+          "index": 1,
+          "bbox": [320, 60, 580, 150],
+          "blocks": [
+            {"type": "table_caption", "index": 0, "bbox": [320, 20, 580, 38], "lines": [{"bbox": [320, 20, 580, 38], "spans": [{"type": "text", "content": "Table 702 Synthetic beta", "bbox": [320, 20, 490, 38]}]}]},
+            {"type": "table_caption", "index": 1, "bbox": [320, 40, 580, 58], "lines": [{"bbox": [320, 40, 580, 58], "spans": [{"type": "text", "content": "Table 702 continued note", "bbox": [320, 40, 500, 58]}]}]},
+            {"type": "table_body", "index": 2, "bbox": [320, 60, 580, 150], "lines": [{"bbox": [320, 60, 580, 150], "spans": [{"type": "table", "html": "<table><tr><td>B</td><td>2</td></tr></table>", "bbox": [320, 60, 580, 150]}]}]}
+          ]
+        },
+        {
+          "type": "table",
+          "index": 2,
+          "bbox": [20, 210, 280, 300],
+          "blocks": [
+            {"type": "table_caption", "index": 0, "bbox": [20, 170, 280, 188], "lines": [{"bbox": [20, 170, 280, 188], "spans": [{"type": "text", "content": "Table 703 Synthetic gamma", "bbox": [20, 170, 190, 188]}]}]},
+            {"type": "table_caption", "index": 1, "bbox": [20, 190, 280, 208], "lines": [{"bbox": [20, 190, 280, 208], "spans": [{"type": "text", "content": "Table 704 Synthetic delta", "bbox": [20, 190, 190, 208]}]}]},
+            {"type": "table_body", "index": 2, "bbox": [20, 210, 280, 300], "lines": [{"bbox": [20, 210, 280, 300], "spans": [{"type": "table", "html": "<table><tr><td>C</td><td>3</td></tr></table>", "bbox": [20, 210, 280, 300]}]}]}
+          ]
+        },
+        {
+          "type": "table",
+          "index": 3,
+          "bbox": [320, 190, 580, 280],
+          "blocks": [
+            {"type": "table_caption", "index": 0, "bbox": [320, 170, 580, 188], "lines": [{"bbox": [320, 170, 580, 188], "spans": [{"type": "text", "content": "Table 705 and Table 706 combined caption", "bbox": [320, 170, 560, 188]}]}]},
+            {"type": "table_body", "index": 1, "bbox": [320, 190, 580, 280], "lines": [{"bbox": [320, 190, 580, 280], "spans": [{"type": "table", "html": "<table><tr><td>D</td><td>4</td></tr></table>", "bbox": [320, 190, 580, 280]}]}]}
+          ]
+        },
+        {
+          "type": "code",
+          "index": 4,
+          "bbox": [20, 340, 580, 440],
+          "blocks": [
+            {"type": "code_caption", "index": 0, "bbox": [20, 320, 580, 338], "lines": [{"bbox": [20, 320, 580, 338], "spans": [{"type": "text", "content": "Synthetic procedure caption", "bbox": [20, 320, 220, 338]}]}]},
+            {"type": "code_body", "index": 1, "bbox": [20, 340, 580, 440], "lines": [{"bbox": [20, 340, 580, 440], "spans": [{"type": "text", "content": "return synthetic_value", "bbox": [20, 340, 220, 360]}]}]}
+          ]
+        },
+        {
+          "type": "image",
+          "index": 5,
+          "bbox": [20, 480, 580, 650],
+          "blocks": [
+            {"type": "image_body", "index": 0, "bbox": [20, 480, 580, 650], "lines": [{"bbox": [20, 480, 580, 650], "spans": [{"type": "image", "content": "SYNTHETIC_VISUAL_INTERPRETATION_TOKEN_9F2A", "image_path": "images/synthetic.png", "bbox": [20, 480, 580, 650]}]}]},
+            {"type": "image_caption", "index": 1, "bbox": [20, 652, 580, 670], "lines": [{"bbox": [20, 652, 580, 670], "spans": [{"type": "text", "content": "Synthetic source-grounded figure caption", "bbox": [20, 652, 300, 670]}]}]}
+          ]
+        }
+      ],
+      "discarded_blocks": [
+        {"type": "header", "index": 0, "bbox": [20, 2, 580, 18], "lines": [{"bbox": [20, 2, 580, 18], "spans": [{"type": "text", "content": "Decorative header", "bbox": [20, 2, 160, 18]}]}]},
+        {"type": "page_footnote", "index": 1, "bbox": [20, 700, 580, 718], "lines": [{"bbox": [20, 700, 580, 718], "spans": [{"type": "text", "content": "Semantic discarded footnote", "bbox": [20, 700, 220, 718]}]}]},
+        {"type": "aside_text", "index": 2, "bbox": [20, 720, 580, 740], "lines": [{"bbox": [20, 720, 580, 740], "spans": [{"type": "text", "content": "Semantic discarded aside", "bbox": [20, 720, 220, 740]}]}]}
+      ],
+      "para_blocks": []
+    }
+  ]
+}

@@ -52,6 +52,15 @@ _COMPOSITE_FOOTNOTES = {
     "image_footnote",
     "chart_footnote",
 }
+_COMPOSITE_CHILD_TYPES = {
+    "table": {"table_body", "table_caption", "table_footnote"},
+    "image": {"image_body", "image_caption", "image_footnote"},
+    "chart": {"chart_body", "chart_caption", "chart_footnote"},
+}
+_DISCARDED_SEMANTIC_TYPES: dict[str, ExtractedElementType] = {
+    "page_footnote": ExtractedElementType.FOOTNOTE,
+    "aside_text": ExtractedElementType.PARAGRAPH,
+}
 
 
 def _object(value: object, label: str) -> JsonObject:
@@ -301,9 +310,10 @@ class _PageElements:
         parent: str | None = None,
         caption_for: str | None = None,
         decorative: bool = False,
+        resolved: bool = True,
     ) -> None:
-        order = None if decorative else self.next_order
-        if not decorative:
+        order = self.next_order if resolved and not decorative else None
+        if resolved and not decorative:
             self.next_order += 1
         self.elements.append(
             _element(
@@ -380,13 +390,13 @@ def _match_fragment(
     rows: tuple[tuple[str, ...], ...],
     merged_rows: tuple[tuple[str, ...], ...],
     offset: int,
-) -> int | None:
+) -> tuple[int, int] | None:
     for repeated in range(len(rows)):
         if repeated and rows[:repeated] != merged_rows[:repeated]:
             continue
         remaining = rows[repeated:]
         if remaining and merged_rows[offset : offset + len(remaining)] == remaining:
-            return offset + len(remaining)
+            return offset + len(remaining), repeated
     return None
 
 
@@ -439,36 +449,41 @@ def _apply_continuations(
                     f"{page_number}: MinerU merged table did not identify one exact local start"
                 )
                 continue
-            chain = [starts[0]]
+            chain = [(starts[0], 0)]
             offset = len(starts[0].rows)
             current_page = page_number
             while offset < len(merged_rows):
                 current_page += 1
-                candidates: list[tuple[_Fragment, int]] = []
+                candidates: list[tuple[_Fragment, int, int]] = []
                 for fragment in by_page.get(current_page, []):
                     if fragment.source_object_id in linked:
                         continue
-                    if fragment.table.column_count != chain[0].table.column_count:
+                    if fragment.table.column_count != chain[0][0].table.column_count:
                         continue
-                    next_offset = _match_fragment(fragment.rows, merged_rows, offset)
-                    if next_offset is not None:
-                        candidates.append((fragment, next_offset))
+                    match = _match_fragment(fragment.rows, merged_rows, offset)
+                    if match is not None:
+                        next_offset, repeated_count = match
+                        candidates.append((fragment, next_offset, repeated_count))
                 if len(candidates) != 1:
                     break
-                fragment, offset = candidates[0]
-                chain.append(fragment)
+                fragment, offset, repeated_count = candidates[0]
+                chain.append((fragment, repeated_count))
             if offset != len(merged_rows) or len(chain) < 2:
                 warnings.append(
                     f"page {page_number}: MinerU merged table failed exact page-fragment alignment"
                 )
                 continue
-            for index, fragment in enumerate(chain):
-                previous = chain[index - 1].source_object_id if index else None
-                following = chain[index + 1].source_object_id if index + 1 < len(chain) else None
+            for index, (fragment, repeated_count) in enumerate(chain):
+                previous = chain[index - 1][0].source_object_id if index else None
+                following = chain[index + 1][0].source_object_id if index + 1 < len(chain) else None
+                metadata = dict(fragment.table.metadata)
+                if repeated_count:
+                    metadata["org.mineru.repeated_leading_row_count"] = repeated_count
                 replacements[fragment.source_object_id] = fragment.table.model_copy(
                     update={
                         "continuation_from_source_object_id": previous,
                         "continuation_to_source_object_id": following,
+                        "metadata": metadata,
                     }
                 )
                 linked.add(fragment.source_object_id)
@@ -550,6 +565,10 @@ def map_mineru_middle(
                 )
                 for child_index, raw_child in enumerate(_array(block.get("blocks"), "list.blocks")):
                     child = _object(raw_child, "list item")
+                    if child.get("type") != "list_item":
+                        raise ValueError(
+                            f"unsupported MinerU list child type: {child.get('type')!r}"
+                        )
                     child_id = f"{source_id}/item/{child_index}"
                     text, spans = _text_and_spans(child, source_prefix=child_id)
                     append(
@@ -565,23 +584,61 @@ def map_mineru_middle(
                 children = [
                     _object(raw, "code child") for raw in _array(block.get("blocks"), "code.blocks")
                 ]
+                unsupported = {
+                    child.get("type")
+                    for child in children
+                    if child.get("type") not in {"code_body", "code_caption"}
+                }
+                if unsupported:
+                    raise ValueError(
+                        f"unsupported MinerU code child types: {sorted(map(str, unsupported))}"
+                    )
                 bodies = [child for child in children if child.get("type") == "code_body"]
                 if len(bodies) != 1:
                     raise ValueError("MinerU code block must contain one code_body")
-                text, spans = _text_and_spans(bodies[0], source_prefix=source_id)
-                append(
-                    source_id,
-                    ExtractedElementType.CODE,
-                    block,
-                    text=text,
-                    spans=spans,
-                    metadata=metadata,
-                )
+                for child_index, child in enumerate(children):
+                    if child.get("type") == "code_body":
+                        text, spans = _text_and_spans(child, source_prefix=source_id)
+                        append(
+                            source_id,
+                            ExtractedElementType.CODE,
+                            block,
+                            text=text,
+                            spans=spans,
+                            metadata=metadata,
+                        )
+                        continue
+                    child_id = f"{source_id}/caption/{child_index}"
+                    caption_text, caption_spans = _text_and_spans(
+                        child,
+                        source_prefix=child_id,
+                    )
+                    caption_metadata = _metadata(child, source_layer="preproc_blocks")
+                    caption_metadata["org.mineru.composite_parent_source_object_id"] = source_id
+                    append(
+                        child_id,
+                        ExtractedElementType.PARAGRAPH,
+                        child,
+                        text=caption_text,
+                        spans=caption_spans,
+                        metadata=caption_metadata,
+                        parent=source_id,
+                    )
             elif block_type in {"table", "image", "chart"}:
                 children = [
                     _object(raw, f"{block_type} child")
                     for raw in _array(block.get("blocks"), f"{block_type}.blocks")
                 ]
+                unsupported = {
+                    child.get("type")
+                    for child in children
+                    if child.get("type") not in _COMPOSITE_CHILD_TYPES[block_type]
+                }
+                if unsupported:
+                    raise ValueError(
+                        "unsupported MinerU "
+                        f"{block_type} child types: {sorted(map(str, unsupported))}"
+                    )
                 body_type = f"{block_type}_body"
                 bodies = [child for child in children if child.get("type") == body_type]
                 if len(bodies) != 1:
@@ -602,13 +659,7 @@ def map_mineru_middle(
                     caption_payloads.append((child_index, child, child_id, text, spans))
                 identities = _table_identities(caption_texts) if block_type == "table" else set()
                 ambiguous = block_type == "table" and len(identities) > 1
-                safe_caption_ids = (
-                    {caption_payloads[0][2]}
-                    if block_type == "table" and len(caption_payloads) == 1 and not ambiguous
-                    else (
-                        {item[2] for item in caption_payloads} if block_type != "table" else set()
-                    )
-                )
+                safe_caption_ids = set() if ambiguous else {item[2] for item in caption_payloads}
                 if ambiguous:
                     metadata["org.docparser.structural_ambiguity"] = "MULTIPLE_TABLE_IDENTITIES"
                 body = bodies[0]
@@ -687,26 +738,34 @@ def map_mineru_middle(
                             item for item in caption_payloads if item[0] == child_index
                         )
                         _, _, child_id, text, spans = payload_item
+                        child_metadata = _metadata(child, source_layer="preproc_blocks")
+                        child_metadata["org.mineru.composite_parent_source_object_id"] = source_id
+                        if ambiguous:
+                            child_metadata["org.docparser.structural_ambiguity"] = (
+                                "MULTIPLE_TABLE_IDENTITIES"
+                            )
                         append(
                             child_id,
                             ExtractedElementType.FIGURE_CAPTION,
                             child,
                             text=text,
                             spans=spans,
-                            metadata=_metadata(child, source_layer="preproc_blocks"),
-                            parent=source_id,
+                            metadata=child_metadata,
+                            parent=(source_id if child_id in safe_caption_ids else None),
                             caption_for=(source_id if child_id in safe_caption_ids else None),
                         )
                     elif child_type in _COMPOSITE_FOOTNOTES:
                         child_id = f"{source_id}/footnote/{child_index}"
                         text, spans = _text_and_spans(child, source_prefix=child_id)
+                        child_metadata = _metadata(child, source_layer="preproc_blocks")
+                        child_metadata["org.mineru.composite_parent_source_object_id"] = source_id
                         append(
                             child_id,
                             ExtractedElementType.FOOTNOTE,
                             child,
                             text=text,
                             spans=spans,
-                            metadata=_metadata(child, source_layer="preproc_blocks"),
+                            metadata=child_metadata,
                             parent=source_id,
                         )
             else:
@@ -726,18 +785,29 @@ def map_mineru_middle(
         ):
             block = _object(raw_block, "discarded block")
             block_type = block.get("type")
-            if block_type not in _DECORATIVE_TYPES:
+            if block_type not in _DECORATIVE_TYPES and block_type not in _DISCARDED_SEMANTIC_TYPES:
                 raise ValueError(f"unsupported MinerU discarded block type: {block_type}")
             source_id = f"mineru:{page_number}:discarded:{discarded_position}"
             text, spans = _text_and_spans(block, source_prefix=source_id)
+            if block_type in _DECORATIVE_TYPES:
+                append(
+                    source_id,
+                    _DECORATIVE_TYPES[cast(str, block_type)],
+                    block,
+                    text=text,
+                    spans=spans,
+                    metadata=_metadata(block, source_layer="discarded_blocks"),
+                    decorative=True,
+                )
+                continue
             append(
                 source_id,
-                _DECORATIVE_TYPES[cast(str, block_type)],
+                _DISCARDED_SEMANTIC_TYPES[cast(str, block_type)],
                 block,
                 text=text,
                 spans=spans,
                 metadata=_metadata(block, source_layer="discarded_blocks"),
-                decorative=True,
+                resolved=False,
             )
         page_elements[page_number] = elements
         page_tables[page_number] = tables

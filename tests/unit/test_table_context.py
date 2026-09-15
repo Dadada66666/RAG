@@ -32,6 +32,7 @@ from docparser.retrieval.context import (
     SourceSpan,
     prepare_sources,
 )
+from docparser.retrieval.dense import QueryRetrieval
 from docparser.retrieval.index import build_evidence_index, load_evidence_index
 from docparser.retrieval.table_context import SourceEncoding
 
@@ -159,6 +160,74 @@ def hit_row(
         ),
         **config,
     )
+
+
+def starvation_case() -> tuple[
+    ContextBuilder,
+    QueryRetrieval,
+    dict[str, tuple[SourceSpan, ...]],
+    str,
+    str,
+]:
+    """Six ranked direct hits where table restoration is much costlier than each hit."""
+    document = long_table()
+    page = document.pages[0]
+    caption = page.blocks[2].model_copy(
+        update={
+            "block_type": BlockType.FIGURE_CAPTION,
+            "text": "Table 17: Synthetic allocation matrix",
+        }
+    )
+    fact = page.blocks[4].model_copy(update={"text": "Operation Zebra | Role Beta | Denied"})
+    table = document.tables[0].model_copy(update={"caption_block_ids": (caption.block_id,)})
+    document = document.model_copy(
+        update={
+            "tables": (table,),
+            "pages": (
+                page.model_copy(
+                    update={"blocks": (*page.blocks[:2], caption, page.blocks[3], fact)}
+                ),
+                document.pages[1],
+            ),
+        }
+    )
+    builder = setup(document)
+    chunks = tuple(
+        chunk
+        for chunk in fixed_token_chunks(
+            document,
+            builder.tokenizer,
+            FixedChunkConfig(target_tokens=32, overlap_tokens=4),
+        )
+        if chunk.embedding_eligible
+    )
+    assert len(chunks) >= 6
+    table_source_id = str(table.segments[0].block_id)
+    fact_source_id = str(fact.block_id)
+    mapping = builder.sources[table_source_id].table_map
+    assert mapping is not None
+    rows = [
+        next(row for row in mapping.rows if row.row_index == index)
+        for index in (2, 4, 6, 8, 10)
+    ]
+    spans: dict[str, tuple[SourceSpan, ...]] = {
+        str(chunk.chunk_id): (
+            SourceSpan(
+                source_id=table_source_id,
+                token_start=row.token_end - 3,
+                token_end=row.token_end - 2,
+            ),
+        )
+        for chunk, row in zip(chunks[:5], rows, strict=True)
+    }
+    spans[str(chunks[5].chunk_id)] = (
+        SourceSpan(
+            source_id=fact_source_id,
+            token_start=0,
+            token_end=len(builder.tokenizer.encode(builder.sources[fact_source_id].text)),
+        ),
+    )
+    return builder, retrieved(chunks[:6]), spans, fact_source_id, str(caption.block_id)
 
 
 @pytest.mark.parametrize("tokenizer", [OffsetCharacters(), PairTokenizer()])
@@ -361,6 +430,114 @@ def test_oversized_rowspan_budget_falls_back_explicitly_or_omits() -> None:
     assert not context.evidence[0].covered_cell_ids
     empty = hit_row(builder, document, 8, max_tokens=1)
     assert not empty.evidence and empty.omitted_source_ids
+
+
+def test_direct_core_reservation_prevents_table_enrichment_starvation() -> None:
+    builder, retrieval, spans, fact_source_id, _ = starvation_case()
+    direct = builder.build(
+        retrieval,
+        spans,
+        ContextConfig(
+            max_tokens=10000,
+            max_excerpt_tokens=64,
+            expand_source_tokens=0,
+            include_related=False,
+        ),
+    )
+    context = builder.build(
+        retrieval,
+        spans,
+        ContextConfig(
+            max_tokens=direct.token_count,
+            max_excerpt_tokens=64,
+            expand_source_tokens=0,
+            include_related=False,
+            table_policy="LOGICAL_ROWS",
+            caption_context=True,
+        ),
+    )
+    fact = next(item for item in context.evidence if item.source_id == fact_source_id)
+    assert fact.text == "Operation Zebra | Role Beta | Denied"
+    assert fact.retrieval_rank == 6
+    assert context.token_count <= direct.token_count
+    assert "TABLE_RESTORATION_BUDGET_EXCEEDED" in context.warnings
+
+
+def test_direct_core_budget_impossibility_stops_by_rank_deterministically() -> None:
+    builder, retrieval, spans, _, _ = starvation_case()
+    first_hit = retrieval.model_copy(update={"hits": retrieval.hits[:1]})
+    first_spans = {str(first_hit.hits[0].chunk_id): spans[str(first_hit.hits[0].chunk_id)]}
+    first = builder.build(
+        first_hit,
+        first_spans,
+        ContextConfig(
+            max_tokens=10000,
+            max_excerpt_tokens=64,
+            expand_source_tokens=0,
+            include_related=False,
+        ),
+    )
+    config = ContextConfig(
+        max_tokens=first.token_count,
+        max_excerpt_tokens=64,
+        expand_source_tokens=0,
+        include_related=False,
+        table_policy="LOGICAL_ROWS",
+        caption_context=True,
+    )
+    actual = builder.build(retrieval, spans, config)
+    assert actual.token_count <= config.max_tokens
+    assert actual.evidence
+    assert {item.retrieval_rank for item in actual.evidence} == {1}
+    assert actual == builder.build(retrieval, spans, config)
+
+
+def test_direct_reservation_does_not_disable_table_or_caption_enrichment() -> None:
+    builder, retrieval, spans, fact_source_id, caption_source_id = starvation_case()
+    context = builder.build(
+        retrieval,
+        spans,
+        ContextConfig(
+            max_tokens=10000,
+            max_excerpt_tokens=64,
+            expand_source_tokens=0,
+            include_related=False,
+            table_policy="LOGICAL_ROWS",
+            caption_context=True,
+        ),
+    )
+    assert any(item.row_indices for item in context.evidence)
+    assert any(item.source_id == caption_source_id for item in context.evidence)
+    assert any(item.source_id == fact_source_id for item in context.evidence)
+
+
+def test_context_build_does_not_mutate_retrieval_hits() -> None:
+    builder, retrieval, spans, _, _ = starvation_case()
+    before = retrieval.model_dump_json()
+    builder.build(
+        retrieval,
+        spans,
+        ContextConfig(table_policy="LOGICAL_ROWS", caption_context=True),
+    )
+    assert retrieval.model_dump_json() == before
+
+
+def test_starvation_regression_output_is_deterministic() -> None:
+    builder, retrieval, spans, _, _ = starvation_case()
+    config = ContextConfig(
+        max_tokens=700,
+        max_excerpt_tokens=64,
+        expand_source_tokens=0,
+        include_related=False,
+        table_policy="LOGICAL_ROWS",
+        caption_context=True,
+    )
+    first = builder.build(retrieval, spans, config)
+    second = builder.build(retrieval, spans, config)
+    assert first.text == second.text
+    assert first.evidence == second.evidence
+    assert first.warnings == second.warnings
+    assert first.omitted_source_ids == second.omitted_source_ids
 
 
 def test_explicit_caption_and_footnote_are_required_before_optional_heading() -> None:

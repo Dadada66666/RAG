@@ -19,7 +19,7 @@ from docparser.retrieval.chunking import Tokenizer, _render_block, _render_table
 from docparser.retrieval.dense import QueryRetrieval
 from docparser.retrieval.table_context import TableRowMap, TableSourceMap, build_table_source_maps
 
-CONTEXT_VERSION = "source-context@1.1.0"
+CONTEXT_VERSION = "source-context@1.2.0"
 
 
 class SourceLocation(StrictIRModel):
@@ -557,18 +557,54 @@ class ContextBuilder:
         self, core: list[_Piece], config: ContextConfig, warnings: tuple[str, ...]
     ) -> EvidenceContext:
         selected: list[_Piece] = []
+        reserved: list[_Piece] = []
         omitted: list[str] = []
         events: list[str] = []
 
         def fits(candidate: list[_Piece]) -> bool:
             return len(self.tokenizer.encode(self._render(candidate)[0])) <= config.max_tokens
 
-        # A table's rows and explicit conditions are one budget decision, ahead of topic context.
+        # Phase 1: reserve direct retrieval spans before any structural enrichment.
         for piece in core:
-            is_table = self.sources[piece.source_id].kind == "TABLE"
-            bundle = self._table_pieces(piece) if is_table else [piece]
-            if config.caption_context:
+            if fits([*selected, piece]):
+                selected.append(piece)
+                reserved.append(piece)
+            else:
+                omitted.append(piece.source_id)
+
+        # Phase 2: replace a reserved table excerpt only when its complete row bundle also fits.
+        for piece in reserved:
+            if self.sources[piece.source_id].kind != "TABLE":
+                continue
+            bundle = self._table_pieces(piece)
+            if any(value.rows for value in bundle):
+                candidate = _merge_pieces([*selected, *bundle])
+            else:
+                replacement = bundle[0]
+                candidate = [replacement if value == piece else value for value in selected]
+            if fits(candidate):
+                selected = candidate
+                continue
+            events.append("TABLE_RESTORATION_BUDGET_EXCEEDED")
+            selected = [
+                replace(current, row_band_complete=False)
+                if current.source_id == piece.source_id
+                and not current.rows
+                and current.start < piece.end
+                and piece.start < current.end
+                else current
+                for current in selected
+            ]
+
+        # Phase 3: caption association, whole-source expansion and related context are optional.
+        if config.caption_context:
+            seen_links: set[tuple[str, str, str]] = set()
+            for piece in reserved:
                 for link in self.sources[piece.source_id].caption_links:
+                    identity = (piece.source_id, link.target_source_id, link.basis)
+                    if identity in seen_links:
+                        continue
+                    seen_links.add(identity)
                     identifier = link.target_source_id
                     related = _Piece(
                         identifier, 0, len(self._tokens[identifier]), piece.rank, "RELATED"
@@ -581,45 +617,30 @@ class ContextBuilder:
                     if link.basis != "EXPLICIT":
                         addition = [
                             replace(
-                                p,
+                                value,
                                 warnings=(
-                                    *p.warnings,
+                                    *value.warnings,
                                     "DERIVED_CAPTION_ASSOCIATION: "
                                     "spatial evidence, not parser fact",
                                 ),
                             )
-                            for p in addition
+                            for value in addition
                         ]
-                    candidate = _merge_pieces([*selected, *bundle, *addition])
+                    candidate = _merge_pieces([*selected, *addition])
                     if fits(candidate):
-                        bundle.extend(addition)
+                        selected = candidate
+                        omitted = [value for value in omitted if value != identifier]
                     else:
                         omitted.append(identifier)
                         events.append("CAPTION_ASSOCIATION_BUDGET_EXCEEDED")
-            candidate = _merge_pieces([*selected, *bundle])
-            if fits(candidate):
-                selected = candidate
-                continue
-            if is_table:
-                events.append("TABLE_RESTORATION_BUDGET_EXCEEDED")
-                fallback = replace(
-                    piece,
-                    row_band_complete=False,
-                    warnings=(
-                        "TABLE_RESTORATION_BUDGET_EXCEEDED: row/header/condition bundle omitted",
-                    ),
-                )
-                candidate = _merge_pieces([*selected, fallback])
-                if fits(candidate):
-                    selected = candidate
-                    continue
-            omitted.append(piece.source_id)
-        # Full short sources are optional; do not displace another retrieved evidence bundle.
-        for identifier in tuple(dict.fromkeys(piece.source_id for piece in selected)):
+
+        for identifier in tuple(dict.fromkeys(piece.source_id for piece in reserved)):
             count = len(self._tokens[identifier])
             if count > config.expand_source_tokens:
                 continue
             matching = [piece for piece in selected if piece.source_id == identifier]
+            if not matching:
+                continue
             expanded = _Piece(
                 identifier, 0, count, min(piece.rank for piece in matching), "EXPANDED"
             )
