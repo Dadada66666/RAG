@@ -175,6 +175,20 @@ class ParserExecutionError(RuntimeError):
         )
 
 
+class ExtractedTextSpan(NeutralModel):
+    source_object_id: NonEmptyNfcString
+    start: int = Field(strict=True, ge=0)
+    end: int = Field(strict=True, gt=0)
+    bbox: SourceBBox
+    confidence: Confidence | None = None
+
+    @model_validator(mode="after")
+    def _validate_range(self) -> Self:
+        if self.start >= self.end:
+            raise ValueError("text span requires start < end")
+        return self
+
+
 class ExtractedElement(NeutralModel):
     source_object_id: NonEmptyNfcString
     element_type: ExtractedElementType
@@ -197,12 +211,23 @@ class ExtractedElement(NeutralModel):
     ]
     parent_source_object_id: NfcString | None = None
     caption_for_source_object_id: NfcString | None = None
+    text_spans: tuple[ExtractedTextSpan, ...] = ()
     metadata: BoundedJsonObject = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_resolved_order(self) -> Self:
         if self.reading_order_resolved and self.reading_order is None:
             raise ValueError("resolved reading order requires an explicit rank")
+        if self.text_spans:
+            if self.text is None:
+                raise ValueError("text spans require element text")
+            previous_end = 0
+            for span in self.text_spans:
+                if span.start < previous_end:
+                    raise ValueError("text spans must be ordered and non-overlapping")
+                if span.end > len(self.text):
+                    raise ValueError("text span exceeds element text")
+                previous_end = span.end
         return self
 
 
@@ -236,6 +261,7 @@ class ExtractedTable(NeutralModel):
     continuation_from_source_object_id: NfcString | None = None
     continuation_to_source_object_id: NfcString | None = None
     confidence: Confidence | None = None
+    metadata: BoundedJsonObject = Field(default_factory=dict)
 
 
 class PageParseResult(NeutralModel):

@@ -3,6 +3,9 @@
 For hands-on use of the current CPU-only server, start with [SERVER_CPU_RUNBOOK.md](SERVER_CPU_RUNBOOK.md).
 The documents below describe contracts and history; they are not a sequential installation checklist.
 
+Latest GPU evidence: [TABLE_REGION_GPU_VALIDATION_20260913.md](TABLE_REGION_GPU_VALIDATION_20260913.md)
+separates table localization failures from recognition limits and verifies updated dense ranking.
+
 The active delivery contract is [COMPLEX_DOCUMENT_QA_SPEC.md](COMPLEX_DOCUMENT_QA_SPEC.md):
 document-scoped and corpus-wide evidence QA, complete experiment accounting, table context recovery,
 numeric evidence checks, and measured runtime quality. Its milestone table separates implemented

@@ -1,0 +1,36 @@
+{
+  "_backend": "hybrid",
+  "_effort": "high",
+  "_ocr_enable": true,
+  "_version_name": "3.4.5",
+  "pdf_info": [
+    {
+      "page_idx": 0,
+      "page_size": [612, 792],
+      "preproc_blocks": [
+        {
+          "type": "table",
+          "index": 0,
+          "bbox": [40, 100, 570, 300],
+          "blocks": [
+            {"type": "table_caption", "index": 0, "bbox": [40, 40, 570, 55], "lines": [{"bbox": [40, 40, 570, 55], "spans": [{"type": "text", "content": "Table 3 Results", "bbox": [40, 40, 200, 55]}]}]},
+            {"type": "table_caption", "index": 1, "bbox": [40, 60, 570, 75], "lines": [{"bbox": [40, 60, 570, 75], "spans": [{"type": "text", "content": "Table 4 Results", "bbox": [40, 60, 200, 75]}]}]},
+            {"type": "table_caption", "index": 2, "bbox": [40, 80, 570, 95], "lines": [{"bbox": [40, 80, 570, 95], "spans": [{"type": "text", "content": "Table 5 Results", "bbox": [40, 80, 200, 95]}]}]},
+            {"type": "table_body", "index": 3, "bbox": [40, 100, 570, 300], "lines": [{"bbox": [40, 100, 570, 300], "spans": [{"type": "table", "html": "<table><tr><td>A</td><td>B</td></tr></table>", "bbox": [40, 100, 570, 300]}]}]}
+          ]
+        },
+        {
+          "type": "table",
+          "index": 1,
+          "bbox": [40, 400, 570, 600],
+          "blocks": [
+            {"type": "table_caption", "index": 4, "bbox": [40, 360, 570, 395], "lines": [{"bbox": [40, 360, 570, 395], "spans": [{"type": "text", "content": "Table 10 Table 11 Table 12 Table 13", "bbox": [40, 360, 400, 395]}]}]},
+            {"type": "table_body", "index": 5, "bbox": [40, 400, 570, 600], "lines": [{"bbox": [40, 400, 570, 600], "spans": [{"type": "table", "html": "<table><tr><td>C</td><td>D</td></tr></table>", "bbox": [40, 400, 570, 600]}]}]}
+          ]
+        }
+      ],
+      "discarded_blocks": [],
+      "para_blocks": []
+    }
+  ]
+}

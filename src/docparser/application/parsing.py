@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -339,11 +340,23 @@ def build_parser(config: ParsingConfig) -> DocumentParser:
 
         return PaddleOCRVLParserAdapter(PaddleOCRVLOptions(device=config.device))
 
+    def mineru() -> DocumentParser:
+        from docparser.adapters.parsers.mineru import MinerUOptions, MinerUParserAdapter
+
+        return MinerUParserAdapter(
+            MinerUOptions(
+                executable=os.environ.get("DOCPARSER_MINERU_EXECUTABLE", "mineru"),
+                device=config.device,
+            )
+        )
+
     builders: dict[str, Callable[[], DocumentParser]] = {
         "docling": docling,
         "docling-standard": docling,
         "paddleocr-vl": paddle,
         "paddleocr-vl-1.6": paddle,
+        "mineru": mineru,
+        "mineru-hybrid-high": mineru,
     }
     try:
         return builders[config.parser]()

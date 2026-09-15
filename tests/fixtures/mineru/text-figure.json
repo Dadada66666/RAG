@@ -1,0 +1,65 @@
+{
+  "_backend": "hybrid",
+  "_effort": "high",
+  "_ocr_enable": true,
+  "_version_name": "3.4.5",
+  "pdf_info": [
+    {
+      "page_idx": 0,
+      "page_size": [612, 792],
+      "preproc_blocks": [
+        {
+          "type": "title",
+          "level": 1,
+          "index": 0,
+          "bbox": [40, 40, 500, 90],
+          "lines": [
+            {
+              "bbox": [40, 40, 500, 90],
+              "spans": [
+                {"type": "text", "content": "Hybrid ", "bbox": [40, 40, 140, 90], "score": 0.99},
+                {"type": "inline_equation", "content": "E=mc^2", "bbox": [145, 40, 240, 90], "score": 0.95}
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "index": 1,
+          "bbox": [40, 110, 500, 170],
+          "lines": [
+            {"bbox": [40, 110, 500, 130], "spans": [{"type": "text", "content": "First line", "bbox": [40, 110, 180, 130], "score": 0.98}]},
+            {"bbox": [40, 140, 500, 170], "spans": [{"type": "text", "content": "Second line", "bbox": [40, 140, 190, 170], "score": 0.97}]}
+          ]
+        },
+        {
+          "type": "image",
+          "index": 2,
+          "bbox": [50, 200, 550, 500],
+          "blocks": [
+            {
+              "type": "image_body",
+              "index": 2,
+              "bbox": [50, 230, 550, 500],
+              "lines": [{"bbox": [50, 230, 550, 500], "spans": [{"type": "image", "content": "```mermaid\ngraph TD; Fake-->Claim\n```", "image_path": "images/figure-1.jpg", "bbox": [50, 230, 550, 500]}]}]
+            },
+            {
+              "type": "image_caption",
+              "index": 3,
+              "bbox": [50, 200, 550, 225],
+              "lines": [{"bbox": [50, 200, 550, 225], "spans": [{"type": "text", "content": "Figure 1: Observed system", "bbox": [50, 200, 300, 225]}]}]
+            }
+          ]
+        }
+      ],
+      "discarded_blocks": [
+        {"type": "header", "index": 10, "bbox": [20, 10, 590, 30], "lines": [{"bbox": [20, 10, 590, 30], "spans": [{"type": "text", "content": "Header", "bbox": [20, 10, 100, 30]}]}]},
+        {"type": "footer", "index": 11, "bbox": [20, 750, 590, 770], "lines": [{"bbox": [20, 750, 590, 770], "spans": [{"type": "text", "content": "Footer", "bbox": [20, 750, 100, 770]}]}]},
+        {"type": "page_number", "index": 12, "bbox": [290, 770, 320, 790], "lines": [{"bbox": [290, 770, 320, 790], "spans": [{"type": "text", "content": "1", "bbox": [290, 770, 320, 790]}]}]}
+      ],
+      "para_blocks": [
+        {"type": "title", "level": 1, "index": 0, "bbox": [40, 40, 500, 90], "lines": []}
+      ]
+    }
+  ]
+}

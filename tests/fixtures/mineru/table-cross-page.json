@@ -1,0 +1,61 @@
+{
+  "_backend": "hybrid",
+  "_effort": "high",
+  "_ocr_enable": false,
+  "_version_name": "3.4.5",
+  "pdf_info": [
+    {
+      "page_idx": 0,
+      "page_size": [612, 792],
+      "preproc_blocks": [
+        {
+          "type": "table",
+          "index": 0,
+          "bbox": [40, 100, 570, 740],
+          "blocks": [
+            {"type": "table_caption", "index": 0, "bbox": [40, 70, 570, 95], "lines": [{"bbox": [40, 70, 570, 95], "spans": [{"type": "text", "content": "Table 4-1 Capacity", "bbox": [40, 70, 250, 95]}]}]},
+            {"type": "table_body", "index": 1, "bbox": [40, 100, 570, 720], "lines": [{"bbox": [40, 100, 570, 720], "spans": [{"type": "table", "html": "<table><tr><th rowspan=\"2\">Metric</th><th>Value</th></tr><tr><td>A</td></tr><tr><td>Revenue</td><td>120</td></tr></table>", "image_path": "images/table-1.jpg", "bbox": [40, 100, 570, 720]}]}]},
+            {"type": "table_footnote", "index": 2, "bbox": [40, 725, 570, 745], "lines": [{"bbox": [40, 725, 570, 745], "spans": [{"type": "text", "content": "Source: audited report", "bbox": [40, 725, 250, 745]}]}]}
+          ]
+        }
+      ],
+      "discarded_blocks": [],
+      "para_blocks": [
+        {
+          "type": "table",
+          "index": 0,
+          "bbox": [40, 100, 570, 740],
+          "blocks": [
+            {"type": "table_caption", "index": 0, "bbox": [40, 70, 570, 95], "lines": [{"bbox": [40, 70, 570, 95], "spans": [{"type": "text", "content": "Table 4-1 Capacity", "bbox": [40, 70, 250, 95]}]}]},
+            {"type": "table_body", "index": 1, "bbox": [40, 100, 570, 720], "lines": [{"bbox": [40, 100, 570, 720], "spans": [{"type": "table", "html": "<table><tr><th rowspan=\"2\">Metric</th><th>Value</th></tr><tr><td>A</td></tr><tr><td>Revenue</td><td>120</td></tr><tr><td>Profit</td><td>30</td></tr></table>", "bbox": [40, 100, 570, 720]}]}]}
+          ]
+        }
+      ]
+    },
+    {
+      "page_idx": 1,
+      "page_size": [612, 792],
+      "preproc_blocks": [
+        {
+          "type": "table",
+          "index": 0,
+          "bbox": [40, 40, 570, 400],
+          "blocks": [
+            {"type": "table_body", "index": 0, "bbox": [40, 40, 570, 400], "lines": [{"bbox": [40, 40, 570, 400], "spans": [{"type": "table", "html": "<table><tr><th rowspan=\"2\">Metric</th><th>Value</th></tr><tr><td>A</td></tr><tr><td>Profit</td><td>30</td></tr></table>", "bbox": [40, 40, 570, 400]}]}]}
+          ]
+        }
+      ],
+      "discarded_blocks": [],
+      "para_blocks": [
+        {
+          "type": "table",
+          "index": 0,
+          "bbox": [40, 40, 570, 400],
+          "blocks": [
+            {"type": "table_body", "index": 0, "bbox": [40, 40, 570, 400], "lines": [], "lines_deleted": true}
+          ]
+        }
+      ]
+    }
+  ]
+}

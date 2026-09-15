@@ -62,7 +62,11 @@ INVALID_RESPONSE 变为 ANSWERED；`00002.qa.json` 的非逐字引用仍被拒�
 这是同一原始输出的契约验证，不是新模型运行、语义正确性判定或更新后的端到端准确率。
 旧实验文件保持原样。
 
-## 下一步：并排表格区域解析验证（待实施、待 GPU 验证）
+## 并排表格区域解析验证（首轮 GPU 诊断已完成，自动修复未实现）
+
+结果见 [TABLE_REGION_GPU_VALIDATION_20260913.md](TABLE_REGION_GPU_VALIDATION_20260913.md)：
+独立裁剪恢复了 Table 4 的六列及 24 个数值，但 Table 3 在两种分辨率下仍丢失条件列区别。
+因此当前不满足自动裁剪替换的上线条件；下列协议中的独立结构样本验收仍待完成。
 
 依据：真实原始 PDF 的两张并排表，在保存的 layout 输出中已经合并为一个 bbox；HTML 随后
 混合两表列，neutral 到 Canonical 的映射没有引入该错误。不能通过问答 prompt 或 IR 改列

@@ -5,9 +5,12 @@ from __future__ import annotations
 from typing import cast
 from uuid import UUID
 
+from pydantic import JsonValue
+
 from docparser.domain.parser_contract import (
     CoordinateOrigin,
     ExtractedElementType,
+    ExtractedTable,
     PageParseResult,
     ParseResult,
     SourceBBox,
@@ -21,6 +24,7 @@ from docparser.ir.enums import (
     ExtractionMethod,
     QualityStatus,
     ReadingOrderStatus,
+    RelationshipType,
     TableCellHeaderRole,
     TextDirection,
 )
@@ -30,6 +34,7 @@ from docparser.ir.ids import (
     EquationId,
     FigureId,
     ProvenanceId,
+    RelationshipId,
     TableCellId,
     TableId,
     TableSegmentId,
@@ -39,6 +44,7 @@ from docparser.ir.ids import (
 from docparser.ir.migrations import CURRENT_SCHEMA_VERSION
 from docparser.ir.models import (
     Block,
+    CharacterRange,
     DocumentIR,
     DocumentMetadata,
     ModelIdentifier,
@@ -48,11 +54,13 @@ from docparser.ir.models import (
     ProcessingManifest,
     ProvenanceRecord,
     SourceDocument,
+    TextSpan,
 )
+from docparser.ir.relationships import Relationship
 from docparser.ir.tables import Table, TableCell, TableSegment
 from docparser.normalization.base import NormalizationContext, NormalizationError
 
-NORMALIZER_VERSION = "neutral-normalizer@0.3.0"
+NORMALIZER_VERSION = "neutral-normalizer@0.4.0"
 
 _BLOCK_TYPES = {kind.value: BlockType(kind.value) for kind in ExtractedElementType}
 
@@ -98,6 +106,19 @@ def _provenance_id(namespace: UUID, *parts: str) -> ProvenanceId:
 
 def _block_id(namespace: UUID, parser_name: str, source_object_id: str) -> BlockId:
     return generate_uuid5_id(BlockId, namespace, parser_name, "block", source_object_id)
+
+
+def _parser_extensions(metadata: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    extensions: dict[str, JsonValue] = {}
+    recovery = metadata.get("org.docparser.recovery")
+    if recovery is not None:
+        extensions["org.docparser.recovery"] = recovery
+    parser_metadata = {
+        key: value for key, value in metadata.items() if key != "org.docparser.recovery"
+    }
+    if parser_metadata:
+        extensions["org.docparser.parser_metadata"] = parser_metadata
+    return extensions
 
 
 def _make_page_provenance(
@@ -155,6 +176,8 @@ def _make_entity_provenance(
     confidence: float | None,
     method: str,
     parent_id: ProvenanceId,
+    char_range: CharacterRange | None = None,
+    operation: str | None = None,
 ) -> ProvenanceRecord:
     profile = context.profile.pages[page.page_number - 1]
     bbox: BBox | None = None
@@ -189,22 +212,71 @@ def _make_entity_provenance(
         extraction_method=ExtractionMethod(method),
         original_object_id=source_object_id,
         confidence=confidence,
-        char_range=None,
+        char_range=char_range,
         parent_provenance_ids=(parent_id,),
-        operation="NORMALIZE_ENTITY" if source_bbox is not None else "NORMALIZE_PARENT_REGION",
+        operation=operation
+        or ("NORMALIZE_ENTITY" if source_bbox is not None else "NORMALIZE_PARENT_REGION"),
     )
+
+
+def _table_chains(pages: tuple[PageParseResult, ...]) -> tuple[tuple[ExtractedTable, ...], ...]:
+    registry: dict[str, ExtractedTable] = {}
+    for page in pages:
+        for table in page.tables:
+            if table.source_object_id in registry:
+                raise NormalizationError("extracted table source IDs must be unique")
+            registry[table.source_object_id] = table
+    for table in registry.values():
+        previous = table.continuation_from_source_object_id
+        following = table.continuation_to_source_object_id
+        if previous is not None:
+            linked = registry.get(previous)
+            if linked is None or linked.continuation_to_source_object_id != table.source_object_id:
+                raise NormalizationError("table continuation_from must resolve reciprocally")
+        if following is not None:
+            linked = registry.get(following)
+            if (
+                linked is None
+                or linked.continuation_from_source_object_id != table.source_object_id
+            ):
+                raise NormalizationError("table continuation_to must resolve reciprocally")
+    chains: list[tuple[ExtractedTable, ...]] = []
+    visited: set[str] = set()
+    for head in registry.values():
+        if head.continuation_from_source_object_id is not None:
+            continue
+        chain: list[ExtractedTable] = []
+        current: ExtractedTable | None = head
+        while current is not None:
+            if current.source_object_id in visited:
+                raise NormalizationError("table continuation graph contains a cycle")
+            visited.add(current.source_object_id)
+            chain.append(current)
+            following = current.continuation_to_source_object_id
+            current = registry.get(following) if following is not None else None
+        if len({table.column_count for table in chain}) != 1:
+            raise NormalizationError("continued table fragments require equal column counts")
+        chains.append(tuple(chain))
+    if len(visited) != len(registry):
+        raise NormalizationError("table continuation graph contains a cycle")
+    return tuple(chains)
 
 
 def _content_ids(
     namespace: UUID, pages: tuple[PageParseResult, ...], parser_name: str
-) -> tuple[dict[str, TableId], dict[str, FigureId], dict[str, EquationId]]:
-    table_ids = {
-        table.source_object_id: generate_uuid5_id(
-            TableId, namespace, parser_name, "table", table.source_object_id
+) -> tuple[
+    dict[str, TableId],
+    dict[str, FigureId],
+    dict[str, EquationId],
+    tuple[tuple[ExtractedTable, ...], ...],
+]:
+    table_chains = _table_chains(pages)
+    table_ids: dict[str, TableId] = {}
+    for chain in table_chains:
+        table_id = generate_uuid5_id(
+            TableId, namespace, parser_name, "table", chain[0].source_object_id
         )
-        for page in pages
-        for table in page.tables
-    }
+        table_ids.update((table.source_object_id, table_id) for table in chain)
     figure_ids = {
         element.source_object_id: generate_uuid5_id(
             FigureId, namespace, parser_name, "figure", element.source_object_id
@@ -221,7 +293,7 @@ def _content_ids(
         for element in page.elements
         if element.element_type is ExtractedElementType.EQUATION
     }
-    return table_ids, figure_ids, equation_ids
+    return table_ids, figure_ids, equation_ids, table_chains
 
 
 def _normalize_blocks(
@@ -272,6 +344,21 @@ def _normalize_blocks(
             reading_order = None
         if provenance.bbox is None:
             raise NormalizationError("element provenance requires canonical bbox")
+        text_spans: list[TextSpan] = []
+        for extracted_span in element.text_spans:
+            span_provenance = provenance_by_source[extracted_span.source_object_id]
+            if span_provenance.bbox is None:
+                raise NormalizationError("text span provenance requires canonical bbox")
+            text_spans.append(
+                TextSpan(
+                    start=extracted_span.start,
+                    end=extracted_span.end,
+                    bbox=span_provenance.bbox,
+                    style=None,
+                    language=element.language,
+                    provenance_ids=(span_provenance.provenance_id,),
+                )
+            )
         blocks.append(
             Block(
                 block_id=block_ids[element.source_object_id],
@@ -282,7 +369,7 @@ def _normalize_blocks(
                 reading_order=reading_order,
                 reading_order_status=order_status,
                 text=element.text,
-                text_spans=(),
+                text_spans=tuple(text_spans),
                 text_direction=TextDirection.UNKNOWN,
                 language=element.language,
                 confidence=element.confidence,
@@ -294,18 +381,14 @@ def _normalize_blocks(
                 provenance_ids=(provenance.provenance_id,),
                 content_ref=content_ref,
                 style=None,
-                extensions=(
-                    {"org.docparser.recovery": element.metadata["org.docparser.recovery"]}
-                    if "org.docparser.recovery" in element.metadata
-                    else {}
-                ),
+                extensions=_parser_extensions(element.metadata),
             )
         )
     return tuple(blocks)
 
 
 def _normalize_tables(
-    pages: tuple[PageParseResult, ...],
+    table_chains: tuple[tuple[ExtractedTable, ...], ...],
     *,
     namespace: UUID,
     table_ids: dict[str, TableId],
@@ -315,37 +398,60 @@ def _normalize_tables(
     parser_name: str,
 ) -> tuple[Table, ...]:
     result: list[Table] = []
-    for page in pages:
-        for extracted in page.tables:
-            table_id = table_ids[extracted.source_object_id]
+    for chain in table_chains:
+        table_id = table_ids[chain[0].source_object_id]
+        segment_ids = tuple(
+            generate_uuid5_id(
+                TableSegmentId, namespace, parser_name, "segment", extracted.source_object_id
+            )
+            for extracted in chain
+        )
+        segments: list[TableSegment] = []
+        cells: list[TableCell] = []
+        table_provenance_ids: list[ProvenanceId] = []
+        caption_ids: list[BlockId] = []
+        header_rows: set[int] = set()
+        row_offset = 0
+        for fragment_index, extracted in enumerate(chain):
             table_provenance = provenance_by_source[extracted.source_object_id]
             if table_provenance.bbox is None:
                 raise NormalizationError("table provenance requires canonical bbox")
-            segment_id = generate_uuid5_id(
-                TableSegmentId, namespace, parser_name, "segment", extracted.source_object_id
+            table_provenance_ids.append(table_provenance.provenance_id)
+            segments.append(
+                TableSegment(
+                    segment_id=segment_ids[fragment_index],
+                    page_number=extracted.page_number,
+                    bbox=table_provenance.bbox,
+                    block_id=block_ids[extracted.source_object_id],
+                    row_start=row_offset,
+                    row_end_exclusive=row_offset + extracted.row_count,
+                    continued_from_segment_id=(
+                        segment_ids[fragment_index - 1] if fragment_index else None
+                    ),
+                    continues_to_segment_id=(
+                        segment_ids[fragment_index + 1] if fragment_index + 1 < len(chain) else None
+                    ),
+                    provenance_ids=(table_provenance.provenance_id,),
+                    extensions={},
+                )
             )
-            cells: list[TableCell] = []
             for cell in extracted.cells:
                 cell_id = generate_uuid5_id(
                     TableCellId, namespace, parser_name, "cell", cell.source_object_id
                 )
                 cell_provenance = provenance_by_source[cell.source_object_id]
-                cell_bbox = None
-                if cell.bbox is not None:
-                    profile = provenance_by_source[cell.source_object_id]
-                    cell_bbox = profile.bbox
                 cells.append(
                     TableCell(
                         cell_id=cell_id,
-                        row_index=cell.row_index,
+                        row_index=row_offset + cell.row_index,
                         column_index=cell.column_index,
                         row_span=cell.row_span,
                         column_span=cell.column_span,
                         text=cell.text,
                         is_header=cell.is_header,
                         header_role=cell.header_role,
-                        page_number=page.page_number,
-                        bbox=cell_bbox,
+                        page_number=extracted.page_number,
+                        bbox=cell_provenance.bbox if cell.bbox is not None else None,
                         source_block_ids=(),
                         confidence=cell.confidence,
                         provenance_ids=(cell_provenance.provenance_id,),
@@ -353,50 +459,111 @@ def _normalize_tables(
                         extensions={},
                     )
                 )
-            result.append(
-                Table(
-                    table_id=table_id,
-                    logical_row_count=extracted.row_count,
-                    logical_column_count=extracted.column_count,
-                    segments=(
-                        TableSegment(
-                            segment_id=segment_id,
-                            page_number=page.page_number,
-                            bbox=table_provenance.bbox,
-                            block_id=block_ids[extracted.source_object_id],
-                            row_start=0,
-                            row_end_exclusive=extracted.row_count,
-                            continued_from_segment_id=None,
-                            continues_to_segment_id=None,
-                            provenance_ids=(table_provenance.provenance_id,),
-                            extensions={},
-                        ),
-                    ),
-                    cells=tuple(cells),
-                    caption_block_ids=tuple(
-                        caption_block_ids[caption]
-                        for caption in extracted.caption_source_object_ids
-                        if caption in caption_block_ids
-                    ),
-                    header_row_indices=tuple(
-                        sorted(
-                            {
-                                cell.row_index
-                                for cell in extracted.cells
-                                if cell.header_role
-                                in {
-                                    TableCellHeaderRole.COLUMN_HEADER,
-                                    TableCellHeaderRole.BOTH,
-                                }
-                            }
-                        )
-                    ),
-                    provenance_ids=(table_provenance.provenance_id,),
-                    confidence=extracted.confidence,
+                if cell.header_role in {
+                    TableCellHeaderRole.COLUMN_HEADER,
+                    TableCellHeaderRole.BOTH,
+                }:
+                    header_rows.add(row_offset + cell.row_index)
+            for caption in extracted.caption_source_object_ids:
+                caption_id = caption_block_ids.get(caption)
+                if caption_id is not None and caption_id not in caption_ids:
+                    caption_ids.append(caption_id)
+            row_offset += extracted.row_count
+        parser_metadata: dict[str, JsonValue]
+        if len(chain) == 1:
+            parser_metadata = dict(chain[0].metadata)
+        else:
+            parser_metadata = {
+                "org.docparser.table_fragment_metadata": [
+                    {
+                        "source_object_id": fragment.source_object_id,
+                        "metadata": fragment.metadata,
+                    }
+                    for fragment in chain
+                ]
+            }
+        result.append(
+            Table(
+                table_id=table_id,
+                logical_row_count=row_offset,
+                logical_column_count=chain[0].column_count,
+                segments=tuple(segments),
+                cells=tuple(cells),
+                caption_block_ids=tuple(caption_ids),
+                header_row_indices=tuple(sorted(header_rows)),
+                provenance_ids=tuple(table_provenance_ids),
+                confidence=chain[0].confidence,
+                extensions=(
+                    {"org.docparser.parser_metadata": parser_metadata} if parser_metadata else {}
+                ),
+            )
+        )
+    return tuple(result)
+
+
+def _normalize_relationships(
+    result: ParseResult,
+    *,
+    namespace: UUID,
+    block_ids: dict[str, BlockId],
+    table_ids: dict[str, TableId],
+    figure_ids: dict[str, FigureId],
+    equation_ids: dict[str, EquationId],
+    provenance_by_source: dict[str, ProvenanceRecord],
+) -> tuple[tuple[Relationship, ...], dict[BlockId, tuple[RelationshipId, ...]]]:
+    relationships: list[Relationship] = []
+    by_block: dict[BlockId, list[RelationshipId]] = {}
+    for page in result.pages:
+        for element in page.elements:
+            relationship_type: RelationshipType | None = None
+            target_source_id: str | None = None
+            if (
+                element.element_type is ExtractedElementType.FIGURE_CAPTION
+                and element.caption_for_source_object_id is not None
+            ):
+                relationship_type = RelationshipType.CAPTION_OF
+                target_source_id = element.caption_for_source_object_id
+            elif (
+                element.element_type is ExtractedElementType.FOOTNOTE
+                and element.parent_source_object_id is not None
+            ):
+                relationship_type = RelationshipType.FOOTNOTE_OF
+                target_source_id = element.parent_source_object_id
+            if relationship_type is None or target_source_id is None:
+                continue
+            target = (
+                table_ids.get(target_source_id)
+                or figure_ids.get(target_source_id)
+                or equation_ids.get(target_source_id)
+                or block_ids.get(target_source_id)
+            )
+            if target is None:
+                continue
+            source = block_ids[element.source_object_id]
+            relationship_id = generate_uuid5_id(
+                RelationshipId,
+                namespace,
+                "relationship",
+                relationship_type.value,
+                str(source),
+                str(target),
+            )
+            relationships.append(
+                Relationship(
+                    relationship_id=relationship_id,
+                    type=relationship_type,
+                    source_id=source,
+                    target_id=target,
+                    confidence=None,
+                    provenance_ids=(provenance_by_source[element.source_object_id].provenance_id,),
+                    metadata={"source": "EXPLICIT_PARSER_RELATION"},
                     extensions={},
                 )
             )
-    return tuple(result)
+            by_block.setdefault(source, []).append(relationship_id)
+    return tuple(relationships), {
+        block_id: tuple(relationship_ids) for block_id, relationship_ids in by_block.items()
+    }
 
 
 def normalize_neutral_result(result: ParseResult, context: NormalizationContext) -> DocumentIR:
@@ -410,7 +577,9 @@ def normalize_neutral_result(result: ParseResult, context: NormalizationContext)
         )
     namespace = _document_namespace(str(context.document_id))
     parser_name = result.descriptor.parser_name
-    table_ids, figure_ids, equation_ids = _content_ids(namespace, result.pages, parser_name)
+    table_ids, figure_ids, equation_ids, table_chains = _content_ids(
+        namespace, result.pages, parser_name
+    )
     block_ids = {
         element.source_object_id: _block_id(namespace, parser_name, element.source_object_id)
         for page in result.pages
@@ -444,6 +613,22 @@ def normalize_neutral_result(result: ParseResult, context: NormalizationContext)
             )
             provenance_by_source[element.source_object_id] = record
             provenance.append(record)
+            for span in element.text_spans:
+                span_record = _make_entity_provenance(
+                    context,
+                    result,
+                    namespace=namespace,
+                    page=page,
+                    source_object_id=span.source_object_id,
+                    source_bbox=span.bbox,
+                    confidence=span.confidence,
+                    method=element.extraction_method,
+                    parent_id=record.provenance_id,
+                    char_range=CharacterRange((span.start, span.end)),
+                    operation="NORMALIZE_TEXT_SPAN",
+                )
+                provenance_by_source[span.source_object_id] = span_record
+                provenance.append(span_record)
         for table in page.tables:
             for cell in table.cells:
                 record = _make_entity_provenance(
@@ -490,7 +675,7 @@ def normalize_neutral_result(result: ParseResult, context: NormalizationContext)
         for page in result.pages
     )
     tables = _normalize_tables(
-        result.pages,
+        table_chains,
         namespace=namespace,
         table_ids=table_ids,
         provenance_by_source=provenance_by_source,
@@ -532,6 +717,30 @@ def normalize_neutral_result(result: ParseResult, context: NormalizationContext)
         for page in result.pages
         for element in page.elements
         if element.element_type is ExtractedElementType.EQUATION
+    )
+    relationships, relationship_ids_by_block = _normalize_relationships(
+        result,
+        namespace=namespace,
+        block_ids=block_ids,
+        table_ids=table_ids,
+        figure_ids=figure_ids,
+        equation_ids=equation_ids,
+        provenance_by_source=provenance_by_source,
+    )
+    pages = tuple(
+        page.model_copy(
+            update={
+                "blocks": tuple(
+                    block.model_copy(
+                        update={
+                            "relationship_ids": relationship_ids_by_block.get(block.block_id, ())
+                        }
+                    )
+                    for block in page.blocks
+                )
+            }
+        )
+        for page in pages
     )
     title = next(
         (
@@ -609,7 +818,7 @@ def normalize_neutral_result(result: ParseResult, context: NormalizationContext)
         equations=equations,
         references=(),
         chunks=(),
-        relationships=(),
+        relationships=relationships,
         provenance=tuple(provenance),
         quality_summary=QualitySummary(
             quality_report_id=None,
