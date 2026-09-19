@@ -40,6 +40,9 @@ class RetrievedChunk(StrictIRModel):
     rank: int = Field(strict=True, ge=1)
     score: float
     page_numbers: tuple[int, ...]
+    dense_rank: int | None = Field(default=None, strict=True, ge=1)
+    dense_score: float | None = None
+    reranker_score: float | None = None
 
 
 class QueryRetrieval(StrictIRModel):

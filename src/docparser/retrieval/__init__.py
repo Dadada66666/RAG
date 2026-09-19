@@ -21,10 +21,16 @@ from docparser.retrieval.dense import (
     RetrievedChunk,
     exact_cosine_retrieval,
 )
+from docparser.retrieval.rerank import (
+    BgeRerankerV2M3Runtime,
+    RerankerRuntime,
+    rerank_retrieval,
+)
 
 __all__ = [
     "ChunkingError",
     "BgeM3Runtime",
+    "BgeRerankerV2M3Runtime",
     "EmbeddingRuntime",
     "FIXED_CHUNKER_VERSION",
     "FixedChunkConfig",
@@ -36,8 +42,10 @@ __all__ = [
     "QueryRetrieval",
     "RetrievalRuntimeError",
     "RetrievedChunk",
+    "RerankerRuntime",
     "exact_cosine_retrieval",
     "fixed_token_chunks",
     "retrieval_evidence_view",
+    "rerank_retrieval",
     "structure_aware_chunks",
 ]

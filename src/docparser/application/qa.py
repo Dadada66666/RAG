@@ -38,13 +38,18 @@ def ask_document(
     *,
     model: ChatModel | None = None,
     top_k: int = 5,
+    reranker_candidate_k: int = 20,
     context_config: ContextConfig | None = None,
     document_ids: tuple[str, ...] = (),
     query_id: str | None = None,
 ) -> QAResult:
     start = perf_counter()
     retrieval = session.retrieve(
-        question, top_k=top_k, document_ids=document_ids, query_id=query_id
+        question,
+        top_k=top_k,
+        reranker_candidate_k=reranker_candidate_k,
+        document_ids=document_ids,
+        query_id=query_id,
     )
     retrieved = perf_counter()
     context = session.context(retrieval, context_config, document_ids=document_ids)

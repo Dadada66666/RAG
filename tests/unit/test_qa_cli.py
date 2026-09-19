@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,16 @@ from typer.testing import CliRunner
 
 from docparser.cli.main import app
 from docparser.ir.serialization import dump_canonical_json
+
+
+class _CliReranker:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def score(self, query: str, passages: Sequence[str]) -> tuple[float, ...]:
+        values = tuple(passages)
+        self.calls.append((query, values))
+        return tuple(float(index) for index in range(len(values)))
 
 
 def test_batch_command_preserves_failed_question_and_manifest_evaluation(
@@ -151,6 +162,55 @@ def test_index_ask_context_and_evaluation_commands(
     restored = json.loads(output.read_text(encoding="utf-8"))
     assert restored["context"]["config"]["table_policy"] == "LOGICAL_ROWS"
     assert restored["retrieval"] == result["retrieval"]
+
+
+def test_rag_ask_opt_in_reranker_and_candidate_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docparser.retrieval.chunking import FixedChunkConfig
+    from docparser.retrieval.index import build_evidence_index
+
+    runtime = FakeEmbeddingRuntime()
+    build_evidence_index(
+        (make_retrieval_document(),),
+        runtime,
+        tmp_path / "index",
+        FixedChunkConfig(target_tokens=32, overlap_tokens=0),
+    )
+    reranker = _CliReranker()
+    monkeypatch.setattr("docparser.cli.main.BgeM3Runtime", lambda *args, **kwargs: runtime)
+    monkeypatch.setattr(
+        "docparser.cli.main.BgeRerankerV2M3Runtime",
+        lambda *args, **kwargs: reranker,
+    )
+    output = tmp_path / "reranked.qa.json"
+    base = [
+        "rag-ask",
+        "Synthetic question?",
+        "--index",
+        str(tmp_path / "index"),
+        "--model-path",
+        str(tmp_path),
+        "--output",
+        str(output),
+        "--context-only",
+        "--reranker-model-path",
+        str(tmp_path),
+        "--top-k",
+        "2",
+    ]
+    runner = CliRunner()
+    result = runner.invoke(app, [*base, "--reranker-candidate-k", "3"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert len(payload["retrieval"]["hits"]) == 2
+    assert payload["retrieval"]["hits"][0]["dense_rank"] == 3
+    assert payload["retrieval"]["hits"][0]["reranker_score"] == 2.0
+    assert len(reranker.calls) == 1 and len(reranker.calls[0][1]) == 3
+
+    invalid = runner.invoke(app, [*base, "--reranker-candidate-k", "1"])
+    assert invalid.exit_code == 2
+    assert "reranker_candidate_k must be >= top_k" in invalid.output
 
 
 def test_invalid_citations_exit_nonzero_and_keep_auditable_result(

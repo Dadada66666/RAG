@@ -30,6 +30,7 @@ class QAQuestion(StrictIRModel):
 
 class QABatchConfig(StrictIRModel):
     top_k: int = Field(default=5, ge=1)
+    reranker_candidate_k: int = Field(default=20, ge=1)
     context: ContextConfig = Field(default_factory=ContextConfig)
     generation: SiliconFlowConfig = Field(default_factory=SiliconFlowConfig)
 
@@ -127,6 +128,7 @@ def run_qa_batch(
             session,
             model=model,
             top_k=config.top_k,
+            reranker_candidate_k=config.reranker_candidate_k,
             context_config=config.context,
             document_ids=item.document_ids,
             query_id=str(item.query_id),

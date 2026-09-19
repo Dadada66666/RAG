@@ -68,6 +68,7 @@ from docparser.retrieval.answering import SiliconFlowChatModel, SiliconFlowConfi
 from docparser.retrieval.context import ContextConfig
 from docparser.retrieval.dense import BgeM3Runtime
 from docparser.retrieval.index import build_evidence_index, load_evidence_index
+from docparser.retrieval.rerank import BgeRerankerV2M3Runtime
 from docparser.version import __version__
 
 app = typer.Typer(
@@ -134,6 +135,14 @@ def rag_batch(
     ] = False,
     device: Annotated[str, typer.Option("--device")] = "cpu",
     top_k: Annotated[int, typer.Option("--top-k", min=1)] = 5,
+    reranker_model_path: Annotated[
+        Path | None,
+        typer.Option("--reranker-model-path", exists=True, file_okay=False),
+    ] = None,
+    reranker_candidate_k: Annotated[
+        int, typer.Option("--reranker-candidate-k", min=1)
+    ] = 20,
+    reranker_device: Annotated[str | None, typer.Option("--reranker-device")] = None,
     context_tokens: Annotated[int, typer.Option("--context-tokens", min=1)] = 4096,
     expand_context: Annotated[bool, typer.Option("--expand-context/--no-expand-context")] = True,
     table_context: Annotated[
@@ -145,6 +154,8 @@ def rag_batch(
 ) -> None:
     """Run a fixed question manifest with one model session and retain every provider failure."""
     try:
+        if reranker_model_path is not None and reranker_candidate_k < top_k:
+            raise ValueError("reranker_candidate_k must be >= top_k")
         questions = tuple(
             QAQuestion.model_validate_json(line)
             for line in questions_path.read_text(encoding="utf-8").splitlines()
@@ -152,6 +163,7 @@ def rag_batch(
         )
         config = QABatchConfig(
             top_k=top_k,
+            reranker_candidate_k=reranker_candidate_k,
             context=ContextConfig(
                 caption_context=caption_context,
                 max_tokens=context_tokens,
@@ -161,7 +173,17 @@ def rag_batch(
             ),
             generation=SiliconFlowConfig(model=model, base_url=base_url),
         )
-        session = load_evidence_index(index_path).session(BgeM3Runtime(model_path, device=device))
+        reranker = (
+            BgeRerankerV2M3Runtime(
+                reranker_model_path,
+                device=reranker_device or device,
+            )
+            if reranker_model_path is not None
+            else None
+        )
+        session = load_evidence_index(index_path).session(
+            BgeM3Runtime(model_path, device=device), reranker
+        )
         run_qa_batch(
             questions,
             session,
@@ -232,6 +254,14 @@ def rag_ask(
     ] = False,
     device: Annotated[str, typer.Option("--device")] = "cpu",
     top_k: Annotated[int, typer.Option("--top-k", min=1)] = 5,
+    reranker_model_path: Annotated[
+        Path | None,
+        typer.Option("--reranker-model-path", exists=True, file_okay=False),
+    ] = None,
+    reranker_candidate_k: Annotated[
+        int, typer.Option("--reranker-candidate-k", min=1)
+    ] = 20,
+    reranker_device: Annotated[str | None, typer.Option("--reranker-device")] = None,
     context_tokens: Annotated[int, typer.Option("--context-tokens", min=1)] = 4096,
     expand_context: Annotated[
         bool,
@@ -253,8 +283,18 @@ def rag_ask(
 ) -> None:
     """Answer from cited evidence using SiliconFlow and SILICONFLOW_API_KEY."""
     try:
+        if reranker_model_path is not None and reranker_candidate_k < top_k:
+            raise ValueError("reranker_candidate_k must be >= top_k")
         index = load_evidence_index(index_path)
-        session = index.session(BgeM3Runtime(model_path, device=device))
+        reranker = (
+            BgeRerankerV2M3Runtime(
+                reranker_model_path,
+                device=reranker_device or device,
+            )
+            if reranker_model_path is not None
+            else None
+        )
+        session = index.session(BgeM3Runtime(model_path, device=device), reranker)
         chat = (
             None
             if context_only
@@ -265,6 +305,7 @@ def rag_ask(
             session,
             model=chat,
             top_k=top_k,
+            reranker_candidate_k=reranker_candidate_k,
             document_ids=tuple(document_ids or ()),
             context_config=ContextConfig(
                 caption_context=caption_context,

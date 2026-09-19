@@ -29,6 +29,7 @@ from docparser.retrieval.dense import (
     _numpy,
     exact_cosine_retrieval,
 )
+from docparser.retrieval.rerank import RerankerRuntime, rerank_retrieval
 
 
 class IndexedChunk(StrictIRModel):
@@ -69,28 +70,37 @@ class DenseEvidenceIndex:
     sources: dict[str, EvidenceSource]
     vectors: Any
 
-    def session(self, runtime: EmbeddingRuntime) -> QASearchSession:
+    def session(
+        self, runtime: EmbeddingRuntime, reranker: RerankerRuntime | None = None
+    ) -> QASearchSession:
         if (
             runtime.model_id != self.manifest.model_id
             or str(runtime.model_digest) != self.manifest.model_digest
             or runtime.tokenizer.tokenizer_id != self.manifest.tokenizer_id
         ):
             raise ValueError("index embedding model/tokenizer differs; rebuild the index")
-        return QASearchSession(self, runtime)
+        return QASearchSession(self, runtime, reranker)
 
 
 class QASearchSession:
     """One corpus/model/context runtime for many questions; only queries are embedded."""
 
-    def __init__(self, index: DenseEvidenceIndex, runtime: EmbeddingRuntime) -> None:
+    def __init__(
+        self,
+        index: DenseEvidenceIndex,
+        runtime: EmbeddingRuntime,
+        reranker: RerankerRuntime | None = None,
+    ) -> None:
         self.index = index
         self.runtime = runtime
+        self.reranker = reranker
         self.builder = ContextBuilder(index.sources, runtime.tokenizer)
         self.spans = {str(entry.chunk.chunk_id): entry.source_spans for entry in index.entries}
         self.chunks = tuple(entry.chunk for entry in index.entries)
         self.names = tuple(
             index.sources[entry.source_spans[0].source_id].document_name for entry in index.entries
         )
+        self._chunk_text_by_id = {str(chunk.chunk_id): chunk.text for chunk in self.chunks}
         self.document_ids = frozenset(document[0] for document in index.manifest.documents)
         document_rows: dict[str, list[int]] = {identifier: [] for identifier in self.document_ids}
         for row, chunk in enumerate(self.chunks):
@@ -102,6 +112,7 @@ class QASearchSession:
         question: str,
         *,
         top_k: int = 5,
+        reranker_candidate_k: int = 20,
         document_ids: tuple[str, ...] = (),
         query_id: str | None = None,
     ) -> QueryRetrieval:
@@ -109,6 +120,8 @@ class QASearchSession:
             raise ValueError("question must contain text")
         if top_k < 1:
             raise ValueError("top_k must be >= 1")
+        if self.reranker is not None and reranker_candidate_k < top_k:
+            raise ValueError("reranker_candidate_k must be >= top_k")
         scope = tuple(sorted(set(document_ids)))
         if set(scope) - self.document_ids:
             raise ValueError("requested document IDs are not present in this index")
@@ -122,15 +135,24 @@ class QASearchSession:
         )
         if scope and not rows:
             return QueryRetrieval(benchmark_query_id=query_id, document_name="corpus", hits=())
-        return exact_cosine_retrieval(
+        dense = exact_cosine_retrieval(
             query_ids=(query_id,),
             query_document_names=("corpus",),
             query_vectors=self.runtime.embed((question,)),
             chunks=tuple(self.chunks[row] for row in rows) if scope else self.chunks,
             chunk_document_names=tuple(self.names[row] for row in rows) if scope else self.names,
             chunk_vectors=self.index.vectors[list(rows)] if scope else self.index.vectors,
-            top_k=top_k,
+            top_k=reranker_candidate_k if self.reranker is not None else top_k,
         )[0]
+        if self.reranker is None:
+            return dense
+        return rerank_retrieval(
+            question=question,
+            candidates=dense,
+            chunk_text_by_id=self._chunk_text_by_id,
+            runtime=self.reranker,
+            top_k=top_k,
+        )
 
     def context(
         self,
