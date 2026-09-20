@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,27 @@ class FailsSecondQuestion(CitingModel):
         return super().complete(system, user)
 
 
+class IdentityReranker:
+    def __init__(self, model_id: str, model_digest: str) -> None:
+        self.model_id = model_id
+        self.model_digest = model_digest
+
+    def score(self, query: str, passages: Sequence[str]) -> tuple[float, ...]:
+        return (0.0,) * len(passages)
+
+
+class InterruptsSecondQuestion(CitingModel):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def complete(self, system: str, user: str) -> Completion:
+        self.calls += 1
+        if self.calls == 2:
+            raise ValueError("synthetic interruption")
+        return super().complete(system, user)
+
+
 def questions() -> tuple[QAQuestion, ...]:
     # The same wording may represent independent items; preserve supplied identities.
     return tuple(QAQuestion(query_id=f"query-{number}", question="Revenue?") for number in range(3))
@@ -47,9 +69,13 @@ def test_legacy_batch_is_readable_but_cannot_resume_with_new_validation(tmp_path
     assert manifest.answer_validation_version == ANSWER_VALIDATION_VERSION
     data = json.loads((output / "run.json").read_text(encoding="utf-8"))
     del data["answer_validation_version"]
+    del data["reranker_model_id"]
+    del data["reranker_model_digest"]
     (output / "run.json").write_text(json.dumps(data), encoding="utf-8")
     historical, results = load_qa_batch(output)
     assert historical.answer_validation_version == "answer-validation@1.0.0"
+    assert historical.reranker_model_id is None
+    assert historical.reranker_model_digest is None
     assert len(results) == 3
     with pytest.raises(ValueError, match="differ"):
         run_qa_batch(questions(), session, model, output, QABatchConfig(), resume=True)
@@ -207,3 +233,100 @@ def test_batch_rejects_unknown_scope_before_calls_or_outputs(tmp_path: Path) -> 
         run_qa_batch(bad, session, CitingModel(), tmp_path / "run", QABatchConfig())
     assert not (tmp_path / "run").exists()
     assert len(runtime.calls) == 1
+
+
+def test_batch_manifest_records_reranker_identity(tmp_path: Path) -> None:
+    runtime = FakeEmbeddingRuntime()
+    reranker = IdentityReranker("test/reranker", "sha256:" + "a" * 64)
+    session = build_evidence_index(
+        (make_retrieval_document(),), runtime, tmp_path / "index"
+    ).session(runtime, reranker)
+    run_qa_batch(questions(), session, CitingModel(), tmp_path / "run", QABatchConfig())
+    payload = json.loads((tmp_path / "run" / "run.json").read_text(encoding="utf-8"))
+    assert payload["reranker_model_id"] == reranker.model_id
+    assert payload["reranker_model_digest"] == reranker.model_digest
+
+
+def test_batch_manifest_records_no_reranker(tmp_path: Path) -> None:
+    runtime = FakeEmbeddingRuntime()
+    session = build_evidence_index(
+        (make_retrieval_document(),), runtime, tmp_path / "index"
+    ).session(runtime)
+    manifest = run_qa_batch(
+        questions(), session, CitingModel(), tmp_path / "run", QABatchConfig()
+    )
+    assert manifest.reranker_model_id is None
+    assert manifest.reranker_model_digest is None
+
+
+def test_batch_resume_accepts_same_reranker_identity(tmp_path: Path) -> None:
+    runtime = FakeEmbeddingRuntime()
+    reranker = IdentityReranker("test/reranker-a", "sha256:" + "a" * 64)
+    index = build_evidence_index((make_retrieval_document(),), runtime, tmp_path / "index")
+    output = tmp_path / "run"
+    with pytest.raises(ValueError, match="synthetic interruption"):
+        run_qa_batch(
+            questions(),
+            index.session(runtime, reranker),
+            InterruptsSecondQuestion(),
+            output,
+            QABatchConfig(),
+        )
+    manifest = run_qa_batch(
+        questions(),
+        index.session(runtime, reranker),
+        CitingModel(),
+        output,
+        QABatchConfig(),
+        resume=True,
+    )
+    assert manifest.status == "COMPLETE" and manifest.resume_count == 1
+
+
+def test_batch_resume_rejects_missing_reranker(tmp_path: Path) -> None:
+    runtime = FakeEmbeddingRuntime()
+    reranker = IdentityReranker("test/reranker-a", "sha256:" + "a" * 64)
+    index = build_evidence_index((make_retrieval_document(),), runtime, tmp_path / "index")
+    output = tmp_path / "run"
+    with pytest.raises(ValueError, match="synthetic interruption"):
+        run_qa_batch(
+            questions(),
+            index.session(runtime, reranker),
+            InterruptsSecondQuestion(),
+            output,
+            QABatchConfig(),
+        )
+    with pytest.raises(ValueError, match="differ"):
+        run_qa_batch(
+            questions(),
+            index.session(runtime),
+            CitingModel(),
+            output,
+            QABatchConfig(),
+            resume=True,
+        )
+
+
+def test_batch_resume_rejects_changed_reranker_digest(tmp_path: Path) -> None:
+    runtime = FakeEmbeddingRuntime()
+    first = IdentityReranker("test/reranker-a", "sha256:" + "a" * 64)
+    changed = IdentityReranker("test/reranker-a", "sha256:" + "b" * 64)
+    index = build_evidence_index((make_retrieval_document(),), runtime, tmp_path / "index")
+    output = tmp_path / "run"
+    with pytest.raises(ValueError, match="synthetic interruption"):
+        run_qa_batch(
+            questions(),
+            index.session(runtime, first),
+            InterruptsSecondQuestion(),
+            output,
+            QABatchConfig(),
+        )
+    with pytest.raises(ValueError, match="differ"):
+        run_qa_batch(
+            questions(),
+            index.session(runtime, changed),
+            CitingModel(),
+            output,
+            QABatchConfig(),
+            resume=True,
+        )

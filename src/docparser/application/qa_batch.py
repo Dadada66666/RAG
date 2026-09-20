@@ -43,6 +43,8 @@ class QABatchManifest(StrictIRModel):
     config: QABatchConfig
     prompt_version: str = PROMPT_VERSION
     prompt_digest: str
+    reranker_model_id: str | None = None
+    reranker_model_digest: str | None = None
     # Missing in historical manifests: retain their original validation contract.
     answer_validation_version: str = "answer-validation@1.0.0"
     result_digests: dict[str, str] = Field(default_factory=dict)
@@ -83,6 +85,10 @@ def run_qa_batch(
         questions=questions,
         index_manifest=session.index.manifest,
         config=config,
+        reranker_model_id=session.reranker.model_id if session.reranker is not None else None,
+        reranker_model_digest=(
+            session.reranker.model_digest if session.reranker is not None else None
+        ),
         answer_validation_version=ANSWER_VALIDATION_VERSION,
         prompt_digest="sha256:" + hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest(),
     )
@@ -98,6 +104,8 @@ def run_qa_batch(
                 "prompt_version",
                 "prompt_digest",
                 "answer_validation_version",
+                "reranker_model_id",
+                "reranker_model_digest",
             )
         ):
             raise ValueError("resume inputs/configuration differ from the recorded run")

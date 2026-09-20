@@ -20,8 +20,16 @@ from docparser.retrieval.rerank import BgeRerankerV2M3Runtime, rerank_retrieval
 
 
 class FakeReranker:
-    def __init__(self, scores: dict[str, float] | None = None) -> None:
+    def __init__(
+        self,
+        scores: dict[str, float] | None = None,
+        *,
+        model_id: str = "test/reranker",
+        model_digest: str = "sha256:" + "a" * 64,
+    ) -> None:
         self.scores = scores or {}
+        self.model_id = model_id
+        self.model_digest = model_digest
         self.calls: list[tuple[str, tuple[str, ...]]] = []
 
     def score(self, query: str, passages: Sequence[str]) -> tuple[float, ...]:
@@ -181,6 +189,11 @@ def test_bge_reranker_is_local_only_lazy_batched_and_reused(
 
     runtime = BgeRerankerV2M3Runtime(root, device="cuda", batch_size=2)
     assert FakeCrossEncoder.init_arguments is None
+    first_digest = runtime.model_digest
+    (root / "added-after-digest.txt").write_text("does not change the cached identity")
+    assert runtime.model_id == "BAAI/bge-reranker-v2-m3"
+    assert runtime.model_digest == first_digest
+    assert first_digest.startswith("sha256:")
     first = runtime.score("q", ("a", "bb"))
     second = runtime.score("q", ("ccc",))
 

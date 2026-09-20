@@ -6,11 +6,21 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
-from docparser.retrieval.dense import QueryRetrieval, RetrievalRuntimeError
+from docparser.retrieval.dense import (
+    QueryRetrieval,
+    RetrievalRuntimeError,
+    _local_directory_digest,
+)
 
 
 class RerankerRuntime(Protocol):
     """Score query/passage pairs without changing candidate identity or content."""
+
+    @property
+    def model_id(self) -> str: ...
+
+    @property
+    def model_digest(self) -> str: ...
 
     def score(self, query: str, passages: Sequence[str]) -> tuple[float, ...]: ...
 
@@ -27,6 +37,17 @@ class BgeRerankerV2M3Runtime:
         self._device = device
         self._batch_size = batch_size
         self._model: Any | None = None
+        self._model_digest: str | None = None
+
+    @property
+    def model_id(self) -> str:
+        return "BAAI/bge-reranker-v2-m3"
+
+    @property
+    def model_digest(self) -> str:
+        if self._model_digest is None:
+            self._model_digest = str(_local_directory_digest(self._model_path))
+        return self._model_digest
 
     def _load_model(self) -> Any:
         if self._model is None:

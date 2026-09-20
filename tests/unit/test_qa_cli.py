@@ -13,6 +13,8 @@ from docparser.ir.serialization import dump_canonical_json
 
 class _CliReranker:
     def __init__(self) -> None:
+        self.model_id = "test/cli-reranker"
+        self.model_digest = "sha256:" + "b" * 64
         self.calls: list[tuple[str, tuple[str, ...]]] = []
 
     def score(self, query: str, passages: Sequence[str]) -> tuple[float, ...]:
