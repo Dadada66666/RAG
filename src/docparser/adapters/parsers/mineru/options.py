@@ -6,7 +6,7 @@ from docparser.domain.parser_contract import RuntimeDevice
 from docparser.ir.base import StrictIRModel
 
 MINERU_VERSION = "3.4.5"
-ADAPTER_VERSION = "0.1.2"
+ADAPTER_VERSION = "0.1.3"
 PROFILE_NAME = "mineru-3.4.5-hybrid-high-auto"
 
 

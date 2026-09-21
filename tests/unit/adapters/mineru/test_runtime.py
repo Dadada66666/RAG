@@ -72,7 +72,7 @@ def test_subprocess_contract_is_exact_and_preserves_native_output(tmp_path: Path
     )
     assert environment["MINERU_MODEL_SOURCE"] == "local"
     assert result.descriptor.profile == "mineru-3.4.5-hybrid-high-auto"
-    assert result.descriptor.adapter_version == "0.1.2"
+    assert result.descriptor.adapter_version == "0.1.3"
     middle_path = (
         tmp_path / "raw" / "mineru-native" / "document" / "hybrid_auto" / "document_middle.json"
     )

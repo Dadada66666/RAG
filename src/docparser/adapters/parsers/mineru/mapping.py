@@ -38,12 +38,13 @@ _SIMPLE_TYPES: dict[str, ExtractedElementType] = {
     "interline_equation": ExtractedElementType.EQUATION,
 }
 _LIST_CHILD_TYPES: dict[str, ExtractedElementType] = {
-    # MinerU 3.4.5 emits both semantic ``list_item`` children and physical
-    # ``text`` children inside an explicit list composite.  The enclosing
-    # hierarchy is the list-membership evidence; retain the raw child type in
-    # parser metadata while exposing both forms as parser-neutral list items.
+    # MinerU 3.4.5 emits semantic items, physical text items, and reference
+    # entries inside an explicit list composite.  The enclosing hierarchy is
+    # the list-membership evidence; retain the raw child type in parser
+    # metadata while exposing all verified forms as parser-neutral list items.
     "list_item": ExtractedElementType.LIST_ITEM,
     "text": ExtractedElementType.LIST_ITEM,
+    "ref_text": ExtractedElementType.LIST_ITEM,
 }
 _DECORATIVE_TYPES: dict[str, ExtractedElementType] = {
     "header": ExtractedElementType.HEADER,

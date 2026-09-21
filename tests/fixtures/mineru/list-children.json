@@ -73,6 +73,24 @@
                   ]
                 }
               ]
+            },
+            {
+              "type": "ref_text",
+              "index": 4,
+              "bbox": [55, 215, 540, 250],
+              "lines": [
+                {
+                  "bbox": [55, 215, 540, 250],
+                  "spans": [
+                    {
+                      "type": "text",
+                      "content": "[7] A. Example. Synthetic reference.",
+                      "bbox": [55, 215, 330, 250],
+                      "score": 0.95
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
