@@ -5,7 +5,7 @@
 | Status | Retrieval evidence contract closed over ordered and isolated evidence |
 | Chunk schema version | `1.0.0` |
 | Fixed chunker version | `ir-fixed-token@1.1.0` |
-| Structure chunker version | `ir-structure-aware@2.2.0` |
+| Structure chunker version | `ir-structure-aware@2.3.0` |
 
 ## 1. Purpose
 
@@ -160,6 +160,9 @@ Greedy ordered packing is deterministic:
 4. Split a single ordinary text unit only when that unit exceeds hard max.
 5. Never emit an embedding-eligible chunk above hard max; fail if a protected unit has no legal
    split.
+6. Establish all primary pack boundaries without overlap, then prepend a trailing complete unit
+   only when it fits in the next pack's existing token slack. Semantic overlap never creates an
+   additional retrieval candidate or changes the primary pack boundaries.
 
 The MVP stops at this deterministic greedy policy. It does not require a cost-function optimizer.
 Any later optimizer must specify its objective and demonstrate an improvement on the retrieval
@@ -217,6 +220,8 @@ Overlap is semantic, not a raw character window. Default overlap is the final co
 - it is not a table/figure atomic unit;
 - it does not cross a protected boundary;
 - duplication stays within token budget;
+- the next primary pack already has enough unused budget, so overlap does not increase candidate
+  count or displace a primary semantic unit;
 - metadata lists `overlap_source_block_ids`.
 
 Heading prefixes may repeat without being counted as content overlap. Retrieval/evaluation can de-duplicate hits using source blocks and parent IDs.

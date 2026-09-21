@@ -33,7 +33,7 @@ from docparser.ir.tables import Table, TableCell, TableSegment
 from docparser.ir.types import Sha256Digest
 
 FIXED_CHUNKER_VERSION = "ir-fixed-token@1.1.0"
-STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.2.0"
+STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.3.0"
 STRUCTURE_EMBEDDING_TOKEN_LIMIT = 8000
 
 
@@ -97,6 +97,12 @@ class _SemanticRetrievalUnit:
     table_segment_ids: tuple[str, ...] = ()
     source_token_start: int | None = None
     source_token_end: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _PackedNormalUnits:
+    units: tuple[_SemanticRetrievalUnit, ...]
+    overlap_unit_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -827,6 +833,68 @@ def _overlap_tail(
     return tuple(reversed(selected))
 
 
+def _pack_normal_units(
+    units: Sequence[_SemanticRetrievalUnit],
+    prefix: str,
+    tokenizer: Tokenizer,
+    config: StructureChunkConfig,
+) -> tuple[_PackedNormalUnits, ...]:
+    """Pack first, then use only existing slack for complete-unit overlap.
+
+    Overlap must never create another retrieval candidate or change the primary
+    semantic-unit boundaries. This keeps semantic continuity where it is cheap
+    without turning one-unit overlap into a large sliding window.
+    """
+
+    expanded: list[_SemanticRetrievalUnit] = []
+    for unit in units:
+        single = _render_normal_units(prefix, (unit,))
+        if len(tokenizer.encode(single)) > config.hard_max_tokens:
+            expanded.extend(_split_normal_unit(unit, prefix, tokenizer, config))
+        else:
+            expanded.append(unit)
+
+    base_packs: list[tuple[_SemanticRetrievalUnit, ...]] = []
+    pending: list[_SemanticRetrievalUnit] = []
+    for unit in expanded:
+        candidate = _render_normal_units(prefix, (*pending, unit))
+        if pending and len(tokenizer.encode(candidate)) > config.target_tokens:
+            base_packs.append(tuple(pending))
+            pending.clear()
+
+        single = _render_normal_units(prefix, (unit,))
+        if not pending and len(tokenizer.encode(single)) > config.target_tokens:
+            base_packs.append((unit,))
+            continue
+        pending.append(unit)
+    if pending:
+        base_packs.append(tuple(pending))
+
+    packed: list[_PackedNormalUnits] = []
+    for index, base_pack in enumerate(base_packs):
+        if index == 0:
+            packed.append(_PackedNormalUnits(units=base_pack))
+            continue
+        overlap = _overlap_tail(
+            base_packs[index - 1], config.semantic_overlap_units
+        )
+        candidate_units = (*overlap, *base_pack)
+        if overlap and len(
+            tokenizer.encode(_render_normal_units(prefix, candidate_units))
+        ) <= (
+            config.target_tokens
+        ):
+            packed.append(
+                _PackedNormalUnits(
+                    units=candidate_units,
+                    overlap_unit_count=len(overlap),
+                )
+            )
+        else:
+            packed.append(_PackedNormalUnits(units=base_pack))
+    return tuple(packed)
+
+
 def _build_table_chunk(
     document: DocumentIR,
     unit: _SemanticRetrievalUnit,
@@ -1036,25 +1104,21 @@ def structure_aware_chunks(
                 )
             )
             ordinal += 1
-        pending: list[_SemanticRetrievalUnit] = []
-        pending_overlap_count = 0
-
         def emit_normal(
-            pending_units: list[_SemanticRetrievalUnit] = pending,
+            packed: _PackedNormalUnits,
             section_prefix: str = prefix,
             section_heading: Block | None = heading,
             parent_id: ChunkId = parent.chunk_id,
             section_id: SectionId = section.section_id,
             section_heading_path: tuple[str, ...] = heading_path,
-        ) -> tuple[_SemanticRetrievalUnit, ...]:
-            nonlocal ordinal, pending_overlap_count
-            if not pending_units:
-                return ()
+        ) -> None:
+            nonlocal ordinal
+            pending_units = packed.units
             text = _render_normal_units(section_prefix, pending_units)
             token_count = len(tokenizer.encode(text))
             if token_count > config.hard_max_tokens:
                 raise ChunkingError("a structure child exceeds structure hard_max_tokens")
-            overlap_units = tuple(pending_units[:pending_overlap_count])
+            overlap_units = tuple(pending_units[: packed.overlap_unit_count])
             source_token_ranges: list[JsonValue] = []
             for unit in pending_units:
                 if (
@@ -1093,6 +1157,7 @@ def structure_aware_chunks(
                             unit.oversized_split for unit in pending_units
                         ),
                         "rendered_heading_prefix": bool(section_prefix),
+                        "overlap_admission_policy": "EXISTING_PACK_SLACK_ONLY",
                         "context_source_block_ids": [
                             str(block.block_id) for block in context_blocks
                         ],
@@ -1112,10 +1177,6 @@ def structure_aware_chunks(
                 )
             )
             ordinal += 1
-            tail = _overlap_tail(pending_units, config.semantic_overlap_units)
-            pending_units.clear()
-            pending_overlap_count = 0
-            return tail
 
         def emit_protected(
             unit: _SemanticRetrievalUnit,
@@ -1193,37 +1254,34 @@ def structure_aware_chunks(
             )
             ordinal += 1
 
+        normal_run: list[_SemanticRetrievalUnit] = []
+
+        def flush_normal_run(
+            normal_units: list[_SemanticRetrievalUnit] = normal_run,
+            section_prefix: str = prefix,
+        ) -> None:
+            if not normal_units:
+                return
+            for packed in _pack_normal_units(
+                normal_units,
+                section_prefix,
+                tokenizer,
+                config,
+            ):
+                emit_normal(packed)
+            normal_units.clear()
+
         for unit in units:
             if unit.chunk_type is ChunkType.TABLE:
-                emit_normal()
+                flush_normal_run()
                 emit_table(unit)
                 continue
             if unit.protected_boundary:
-                emit_normal()
+                flush_normal_run()
                 emit_protected(unit)
                 continue
-
-            candidate = _render_normal_units(prefix, (*pending, unit))
-            if pending and len(tokenizer.encode(candidate)) > config.target_tokens:
-                overlap = emit_normal()
-                overlap_candidate = _render_normal_units(prefix, (*overlap, unit))
-                if overlap and len(tokenizer.encode(overlap_candidate)) <= config.target_tokens:
-                    pending.extend(overlap)
-                    pending_overlap_count = len(overlap)
-            single = _render_normal_units(prefix, (unit,))
-            if not pending:
-                single_tokens = len(tokenizer.encode(single))
-                if single_tokens > config.hard_max_tokens:
-                    for split in _split_normal_unit(unit, prefix, tokenizer, config):
-                        pending.append(split)
-                        emit_normal()
-                    continue
-                if single_tokens > config.target_tokens:
-                    pending.append(unit)
-                    emit_normal()
-                    continue
-            pending.append(unit)
-        emit_normal()
+            normal_run.append(unit)
+        flush_normal_run()
 
     for block in evidence.isolated_unresolved_blocks:
         if block.block_id in bound_table_caption_ids:

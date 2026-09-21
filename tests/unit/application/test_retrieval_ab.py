@@ -122,7 +122,7 @@ def test_synthetic_end_to_end_ab_writes_reproducible_artifacts(tmp_path: Path) -
     assert manifest["structure_table_source_block_coverage_count"] == 1
     assert manifest["experiment_version"] == "rag-retrieval-ab@1.1.0"
     assert manifest["fixed_chunker_version"] == "ir-fixed-token@1.1.0"
-    assert manifest["structure_chunker_version"] == "ir-structure-aware@2.2.0"
+    assert manifest["structure_chunker_version"] == "ir-structure-aware@2.3.0"
     assert np.load(output / "fixed" / "embeddings.npy", allow_pickle=False).dtype == np.float32
     report = (output / "report.md").read_text(encoding="utf-8")
     assert "PageHitRate@1" in report

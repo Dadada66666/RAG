@@ -125,7 +125,7 @@ def test_index_command_supports_explicit_structure_representation(
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["version"] == "structure-evidence-index@1.0.0"
     assert manifest["chunking_policy"] == "STRUCTURE"
-    assert manifest["chunker_version"] == "ir-structure-aware@2.2.0"
+    assert manifest["chunker_version"] == "ir-structure-aware@2.3.0"
     chunks = [
         json.loads(line)
         for line in (output / "chunks.jsonl").read_text(encoding="utf-8").splitlines()

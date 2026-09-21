@@ -94,6 +94,57 @@ def _with_three_normal_units(document: DocumentIR) -> DocumentIR:
     )
 
 
+def _with_four_balanced_normal_units(document: DocumentIR) -> DocumentIR:
+    document = _with_three_normal_units(document)
+    page = document.pages[0]
+    first, second, third = (
+        block.model_copy(update={"text": character * 28})
+        for block, character in zip(page.blocks[2:5], ("a", "b", "c"), strict=True)
+    )
+    fourth = third.model_copy(
+        update={
+            "block_id": generate_uuid5_id(
+                BlockId,
+                TEST_NAMESPACE,
+                "retrieval-fourth-balanced-unit",
+            ),
+            "reading_order": 4,
+            "text": "d" * 28,
+        }
+    )
+    pages = (
+        page.model_copy(
+            update={
+                "blocks": (
+                    *page.blocks[:2],
+                    first,
+                    second,
+                    third,
+                    fourth,
+                    *page.blocks[5:],
+                )
+            }
+        ),
+        *document.pages[1:],
+    )
+    first_section = document.sections[0].model_copy(
+        update={
+            "content_block_ids": (
+                *document.sections[0].content_block_ids,
+                fourth.block_id,
+            )
+        }
+    )
+    return _validated(
+        document.model_copy(
+            update={
+                "pages": pages,
+                "sections": (first_section, *document.sections[1:]),
+            }
+        )
+    )
+
+
 def _with_row_span(document: DocumentIR) -> DocumentIR:
     table = document.tables[0]
     cells = tuple(
@@ -483,6 +534,63 @@ def test_normal_units_pack_densely_and_overlap_one_complete_unit() -> None:
         chunk.metadata["overlap_source_block_ids"] == []
         for chunk in chunks
         if chunk.chunk_type is ChunkType.TABLE
+    )
+
+
+def test_semantic_overlap_uses_existing_slack_without_inflating_candidates() -> None:
+    document = _with_four_balanced_normal_units(make_retrieval_document())
+    section_id = document.sections[0].section_id
+    tokenizer = CharacterTokenizer()
+    without_overlap = structure_aware_chunks(
+        document,
+        tokenizer,
+        StructureChunkConfig(
+            target_tokens=80,
+            hard_max_tokens=120,
+            semantic_overlap_units=0,
+        ),
+    )
+    with_overlap = structure_aware_chunks(
+        document,
+        tokenizer,
+        StructureChunkConfig(
+            target_tokens=80,
+            hard_max_tokens=120,
+            semantic_overlap_units=1,
+        ),
+    )
+
+    def children(chunks: tuple[Chunk, ...]) -> tuple[Chunk, ...]:
+        return tuple(
+            chunk
+            for chunk in chunks
+            if chunk.chunk_type is ChunkType.CHILD
+            and chunk.parent_section_id == section_id
+        )
+
+    baseline_children = children(without_overlap)
+    optimized_children = children(with_overlap)
+    assert len(baseline_children) == len(optimized_children) == 2
+    assert all(chunk.token_count <= 80 for chunk in optimized_children)
+    assert all(
+        chunk.metadata["overlap_admission_policy"]
+        == "EXISTING_PACK_SLACK_ONLY"
+        for chunk in optimized_children
+    )
+    assert optimized_children[1].metadata["overlap_source_block_ids"] == []
+    assert {
+        block_id
+        for chunk in optimized_children
+        for block_id in chunk.source_block_ids
+    } == set(document.sections[0].content_block_ids)
+    assert with_overlap == structure_aware_chunks(
+        document,
+        tokenizer,
+        StructureChunkConfig(
+            target_tokens=80,
+            hard_max_tokens=120,
+            semantic_overlap_units=1,
+        ),
     )
 
 
