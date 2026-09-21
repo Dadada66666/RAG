@@ -157,7 +157,8 @@ class MinerUParserAdapter:
             return map_mineru_middle(payload, descriptor=self.descriptor(), run=run)
         except (KeyError, TypeError, ValueError) as exc:
             raise MinerURuntimeError(
-                "MinerU middle.json violates the pinned 3.4.5 Hybrid High contract",
+                "MinerU middle.json violates the pinned 3.4.5 Hybrid High contract: "
+                f"{exc}",
                 code="INVALID_OUTPUT",
             ) from exc
 

@@ -72,7 +72,7 @@ def test_subprocess_contract_is_exact_and_preserves_native_output(tmp_path: Path
     )
     assert environment["MINERU_MODEL_SOURCE"] == "local"
     assert result.descriptor.profile == "mineru-3.4.5-hybrid-high-auto"
-    assert result.descriptor.adapter_version == "0.1.1"
+    assert result.descriptor.adapter_version == "0.1.2"
     middle_path = (
         tmp_path / "raw" / "mineru-native" / "document" / "hybrid_auto" / "document_middle.json"
     )
@@ -117,3 +117,4 @@ def test_invalid_middle_contract_is_invalid_output(tmp_path: Path) -> None:
         adapter.parse(ParseRequest(source_path=source))
 
     assert caught.value.error.code == "INVALID_OUTPUT"
+    assert "effort must be high" in str(caught.value)

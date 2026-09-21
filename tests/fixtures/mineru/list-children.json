@@ -1,0 +1,84 @@
+{
+  "_backend": "hybrid",
+  "_effort": "high",
+  "_ocr_enable": true,
+  "_version_name": "3.4.5",
+  "pdf_info": [
+    {
+      "page_idx": 0,
+      "page_size": [612, 792],
+      "preproc_blocks": [
+        {
+          "type": "title",
+          "level": 1,
+          "index": 0,
+          "bbox": [40, 40, 500, 80],
+          "lines": [
+            {
+              "bbox": [40, 40, 500, 80],
+              "spans": [
+                {
+                  "type": "text",
+                  "content": "Synthetic list contract",
+                  "bbox": [40, 40, 260, 80],
+                  "score": 0.99
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "index": 1,
+          "bbox": [40, 100, 560, 210],
+          "blocks": [
+            {
+              "type": "list_item",
+              "index": 2,
+              "bbox": [55, 110, 540, 145],
+              "lines": [
+                {
+                  "bbox": [55, 110, 540, 145],
+                  "spans": [
+                    {
+                      "type": "text",
+                      "content": "Alpha item",
+                      "bbox": [55, 110, 180, 145],
+                      "score": 0.98
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "index": 3,
+              "bbox": [55, 155, 540, 200],
+              "lines": [
+                {
+                  "bbox": [55, 155, 540, 200],
+                  "spans": [
+                    {
+                      "type": "text",
+                      "content": "Beta item with ",
+                      "bbox": [55, 155, 210, 200],
+                      "score": 0.97
+                    },
+                    {
+                      "type": "inline_equation",
+                      "content": "x+y",
+                      "bbox": [215, 155, 260, 200],
+                      "score": 0.96
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "discarded_blocks": [],
+      "para_blocks": []
+    }
+  ]
+}

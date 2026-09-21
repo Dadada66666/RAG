@@ -102,6 +102,75 @@ def test_text_title_inline_equation_and_span_geometry_survive_normalization() ->
     assert parser_metadata["org.mineru.heading_level"] == 1
 
 
+def test_list_composite_accepts_semantic_and_physical_text_children() -> None:
+    result = _result("list-children")
+    _, list_block, semantic_item, physical_text_item = result.pages[0].elements
+
+    assert list_block.element_type is ExtractedElementType.LIST
+    assert semantic_item.element_type is ExtractedElementType.LIST_ITEM
+    assert physical_text_item.element_type is ExtractedElementType.LIST_ITEM
+    assert semantic_item.parent_source_object_id == list_block.source_object_id
+    assert physical_text_item.parent_source_object_id == list_block.source_object_id
+    assert physical_text_item.text == "Beta item with x+y"
+    assert [(span.start, span.end) for span in physical_text_item.text_spans] == [
+        (0, 15),
+        (15, 18),
+    ]
+    source_bbox = physical_text_item.text_spans[1].bbox
+    assert source_bbox is not None
+    assert (source_bbox.x0, source_bbox.y0, source_bbox.x1, source_bbox.y1) == (
+        215.0,
+        155.0,
+        260.0,
+        200.0,
+    )
+    assert semantic_item.metadata["org.mineru.block_type"] == "list_item"
+    assert physical_text_item.metadata["org.mineru.block_type"] == "text"
+    assert [element.reading_order for element in result.pages[0].elements] == [0, 1, 2, 3]
+
+    document = normalize_neutral_result(
+        result,
+        normalization_context(profile_for_result(result), "mineru-list-children"),
+    )
+    _, canonical_list, canonical_semantic_item, canonical_physical_item = document.pages[0].blocks
+    assert canonical_list.block_type is BlockType.LIST
+    assert canonical_semantic_item.block_type is BlockType.LIST_ITEM
+    assert canonical_physical_item.block_type is BlockType.LIST_ITEM
+    assert canonical_semantic_item.parent_block_id == canonical_list.block_id
+    assert canonical_physical_item.parent_block_id == canonical_list.block_id
+    assert canonical_physical_item.text == "Beta item with x+y"
+    assert canonical_physical_item.text_spans[1].bbox is not None
+    assert canonical_physical_item.text_spans[1].bbox.root == (215.0, 155.0, 260.0, 200.0)
+    assert canonical_physical_item.provenance_ids
+    assert canonical_physical_item.text_spans[1].provenance_ids
+    parser_metadata = canonical_physical_item.extensions["org.docparser.parser_metadata"]
+    assert isinstance(parser_metadata, dict)
+    assert parser_metadata["org.mineru.block_type"] == "text"
+    assert all(
+        block.reading_order_status is ReadingOrderStatus.IN_FLOW
+        for block in document.pages[0].blocks
+    )
+
+    chunks = fixed_token_chunks(document, CharacterTokenizer(), FixedChunkConfig())
+    retrieval_text = "\n".join(chunk.text for chunk in chunks)
+    assert "Alpha item" in retrieval_text
+    assert "Beta item with x+y" in retrieval_text
+
+
+def test_list_composite_rejects_unverified_child_type() -> None:
+    payload = _payload("list-children")
+    pages = cast(list[dict[str, Any]], payload["pdf_info"])
+    list_block = cast(dict[str, Any], pages[0]["preproc_blocks"][1])
+    children = cast(list[dict[str, Any]], list_block["blocks"])
+    children[1]["type"] = "future_list_child"
+
+    with pytest.raises(
+        ValueError,
+        match="unsupported MinerU list child type: 'future_list_child'",
+    ):
+        map_mineru_middle(payload, descriptor=_descriptor(), run=_run())
+
+
 def test_generated_visual_analysis_is_auxiliary_not_figure_or_fixed_text() -> None:
     result = _result("text-figure")
     document = normalize_neutral_result(

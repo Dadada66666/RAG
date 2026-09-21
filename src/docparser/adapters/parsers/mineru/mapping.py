@@ -37,6 +37,14 @@ _SIMPLE_TYPES: dict[str, ExtractedElementType] = {
     "page_footnote": ExtractedElementType.FOOTNOTE,
     "interline_equation": ExtractedElementType.EQUATION,
 }
+_LIST_CHILD_TYPES: dict[str, ExtractedElementType] = {
+    # MinerU 3.4.5 emits both semantic ``list_item`` children and physical
+    # ``text`` children inside an explicit list composite.  The enclosing
+    # hierarchy is the list-membership evidence; retain the raw child type in
+    # parser metadata while exposing both forms as parser-neutral list items.
+    "list_item": ExtractedElementType.LIST_ITEM,
+    "text": ExtractedElementType.LIST_ITEM,
+}
 _DECORATIVE_TYPES: dict[str, ExtractedElementType] = {
     "header": ExtractedElementType.HEADER,
     "footer": ExtractedElementType.FOOTER,
@@ -565,15 +573,16 @@ def map_mineru_middle(
                 )
                 for child_index, raw_child in enumerate(_array(block.get("blocks"), "list.blocks")):
                     child = _object(raw_child, "list item")
-                    if child.get("type") != "list_item":
+                    child_type = child.get("type")
+                    if child_type not in _LIST_CHILD_TYPES:
                         raise ValueError(
-                            f"unsupported MinerU list child type: {child.get('type')!r}"
+                            f"unsupported MinerU list child type: {child_type!r}"
                         )
                     child_id = f"{source_id}/item/{child_index}"
                     text, spans = _text_and_spans(child, source_prefix=child_id)
                     append(
                         child_id,
-                        ExtractedElementType.LIST_ITEM,
+                        _LIST_CHILD_TYPES[cast(str, child_type)],
                         child,
                         text=text,
                         spans=spans,
