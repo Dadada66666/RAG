@@ -7,14 +7,21 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from docparser.ir.base import StrictIRModel
 from docparser.ir.chunks import Chunk
 from docparser.ir.models import DocumentIR
-from docparser.retrieval.chunking import FIXED_CHUNKER_VERSION, FixedChunkConfig, fixed_token_chunks
+from docparser.retrieval.chunking import (
+    FIXED_CHUNKER_VERSION,
+    STRUCTURE_CHUNKER_VERSION,
+    FixedChunkConfig,
+    StructureChunkConfig,
+    fixed_token_chunks,
+    structure_aware_chunks,
+)
 from docparser.retrieval.context import (
     ContextBuilder,
     ContextConfig,
@@ -31,6 +38,8 @@ from docparser.retrieval.dense import (
 )
 from docparser.retrieval.rerank import RerankerRuntime, rerank_retrieval
 
+RetrievalChunkingPolicy = Literal["FIXED", "STRUCTURE"]
+
 
 class IndexedChunk(StrictIRModel):
     chunk: Chunk
@@ -39,10 +48,14 @@ class IndexedChunk(StrictIRModel):
 
 class IndexManifest(StrictIRModel):
     version: Literal[
-        "fixed-evidence-index@1.0.0", "fixed-evidence-index@1.1.0", "fixed-evidence-index@1.2.0"
+        "fixed-evidence-index@1.0.0",
+        "fixed-evidence-index@1.1.0",
+        "fixed-evidence-index@1.2.0",
+        "structure-evidence-index@1.0.0",
     ] = "fixed-evidence-index@1.2.0"
     chunker_version: str = FIXED_CHUNKER_VERSION
-    chunk_config: FixedChunkConfig
+    chunking_policy: RetrievalChunkingPolicy = "FIXED"
+    chunk_config: FixedChunkConfig | StructureChunkConfig
     model_id: str
     model_digest: str
     tokenizer_id: str
@@ -53,6 +66,17 @@ class IndexManifest(StrictIRModel):
     warnings: tuple[str, ...]
     document_warnings: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     table_alignment_counts: dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_chunking_contract(self) -> Self:
+        is_structure = self.chunking_policy == "STRUCTURE"
+        if is_structure != isinstance(self.chunk_config, StructureChunkConfig):
+            raise ValueError("chunking_policy and chunk_config type must agree")
+        if is_structure != (self.version == "structure-evidence-index@1.0.0"):
+            raise ValueError("index version and chunking_policy must agree")
+        if is_structure and self.chunker_version != STRUCTURE_CHUNKER_VERSION:
+            raise ValueError("structure index chunker_version is not supported")
+        return self
 
 
 def _file_digest(path: Path) -> str:
@@ -162,7 +186,10 @@ class QASearchSession:
         document_ids: tuple[str, ...] = (),
     ) -> EvidenceContext:
         manifest = self.index.manifest
-        if config and config.caption_context and manifest.version != "fixed-evidence-index@1.2.0":
+        if config and config.caption_context and manifest.version not in {
+            "fixed-evidence-index@1.2.0",
+            "structure-evidence-index@1.0.0",
+        }:
             raise ValueError(
                 "caption context requires rebuilding the index with caption associations"
             )
@@ -184,11 +211,28 @@ def build_evidence_index(
     documents: tuple[DocumentIR, ...],
     runtime: EmbeddingRuntime,
     output: Path,
-    config: FixedChunkConfig | None = None,
+    config: FixedChunkConfig | StructureChunkConfig | None = None,
+    *,
+    chunking_policy: RetrievalChunkingPolicy = "FIXED",
 ) -> DenseEvidenceIndex:
     if (output / "manifest.json").exists():
         raise FileExistsError("index already exists; build into a new directory")
-    config = config or FixedChunkConfig()
+    if chunking_policy not in {"FIXED", "STRUCTURE"}:
+        raise ValueError("chunking_policy must be FIXED or STRUCTURE")
+    if chunking_policy == "FIXED":
+        resolved_config: FixedChunkConfig | StructureChunkConfig = config or FixedChunkConfig()
+        if not isinstance(resolved_config, FixedChunkConfig):
+            raise ValueError("FIXED chunking requires FixedChunkConfig")
+        chunker_version = FIXED_CHUNKER_VERSION
+        index_version: Literal[
+            "fixed-evidence-index@1.2.0", "structure-evidence-index@1.0.0"
+        ] = "fixed-evidence-index@1.2.0"
+    else:
+        resolved_config = config or StructureChunkConfig()
+        if not isinstance(resolved_config, StructureChunkConfig):
+            raise ValueError("STRUCTURE chunking requires StructureChunkConfig")
+        chunker_version = STRUCTURE_CHUNKER_VERSION
+        index_version = "structure-evidence-index@1.0.0"
     ordered = sorted(documents, key=lambda document: str(document.document_id))
     if len({document.document_id for document in ordered}) != len(ordered):
         raise ValueError("index requires one revision per document")
@@ -197,11 +241,12 @@ def build_evidence_index(
     warnings: list[str] = []
     document_warnings: dict[str, tuple[str, ...]] = {}
     for document in ordered:
-        chunks = tuple(
-            chunk
-            for chunk in fixed_token_chunks(document, runtime.tokenizer, config)
-            if chunk.embedding_eligible
+        generated = (
+            fixed_token_chunks(document, runtime.tokenizer, resolved_config)
+            if isinstance(resolved_config, FixedChunkConfig)
+            else structure_aware_chunks(document, runtime.tokenizer, resolved_config)
         )
+        chunks = tuple(chunk for chunk in generated if chunk.embedding_eligible)
         document_sources, spans = prepare_sources(document, runtime.tokenizer, chunks)
         sources.update(document_sources)
         entries.extend(
@@ -235,7 +280,10 @@ def build_evidence_index(
             handle.write(source.model_dump_json() + "\n")
     np.save(output / "vectors.npy", vectors, allow_pickle=False)
     manifest = IndexManifest(
-        chunk_config=config,
+        version=index_version,
+        chunker_version=chunker_version,
+        chunking_policy=chunking_policy,
+        chunk_config=resolved_config,
         model_id=runtime.model_id,
         model_digest=str(runtime.model_digest),
         tokenizer_id=runtime.tokenizer.tokenizer_id,

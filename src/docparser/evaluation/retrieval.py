@@ -14,7 +14,7 @@ from docparser.evaluation.ohr import RetrievalEvidenceType, RetrievalGroundTruth
 from docparser.ir.base import StrictIRModel
 from docparser.ir.ids import ChunkId
 from docparser.ir.types import NonEmptyNfcString, Sha256Digest
-from docparser.retrieval.chunking import FixedChunkConfig
+from docparser.retrieval.chunking import FixedChunkConfig, StructureChunkConfig
 from docparser.retrieval.dense import QueryRetrieval
 from docparser.retrieval.index import IndexManifest
 
@@ -24,7 +24,8 @@ class RetrievalGoldIndexIdentity(StrictIRModel):
 
     index_manifest_digest: Sha256Digest
     chunker_version: NonEmptyNfcString
-    chunk_config: FixedChunkConfig
+    chunking_policy: Literal["FIXED", "STRUCTURE"] = "FIXED"
+    chunk_config: FixedChunkConfig | StructureChunkConfig
     document_revisions: Annotated[tuple[tuple[str, str], ...], Field(min_length=1)]
 
 
@@ -97,8 +98,12 @@ class EvidenceRetrievalReport(StrictIRModel):
 def retrieval_gold_index_identity(manifest: IndexManifest) -> RetrievalGoldIndexIdentity:
     """Derive the path-independent identity used to freeze retrieval gold."""
 
+    manifest_payload = manifest.model_dump(mode="json")
+    if manifest.version.startswith("fixed-evidence-index@"):
+        # Preserve the digest of already-frozen Fixed index manifests.
+        manifest_payload.pop("chunking_policy", None)
     payload = json.dumps(
-        manifest.model_dump(mode="json"),
+        manifest_payload,
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -107,6 +112,7 @@ def retrieval_gold_index_identity(manifest: IndexManifest) -> RetrievalGoldIndex
     return RetrievalGoldIndexIdentity(
         index_manifest_digest=digest,
         chunker_version=manifest.chunker_version,
+        chunking_policy=manifest.chunking_policy,
         chunk_config=manifest.chunk_config,
         document_revisions=tuple(
             (document_id, revision_id)

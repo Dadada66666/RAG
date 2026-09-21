@@ -14,13 +14,20 @@ from tests.unit.test_evidence_context import retrieved
 from tests.unit.test_evidence_qa import CitingModel
 from tests.unit.test_retrieval_chunking import _with_multisegment_table
 
-from docparser.ir.enums import BlockType, ReadingOrderStatus, RelationshipType, TableCellHeaderRole
+from docparser.ir.enums import (
+    BlockType,
+    ChunkType,
+    ReadingOrderStatus,
+    RelationshipType,
+    TableCellHeaderRole,
+)
 from docparser.ir.ids import RelationshipId, TableCellId, generate_uuid5_id
 from docparser.ir.models import DocumentIR
 from docparser.ir.relationships import Relationship
 from docparser.retrieval.answering import answer_from_context
 from docparser.retrieval.chunking import (
     FixedChunkConfig,
+    StructureChunkConfig,
     Tokenizer,
     _render_table_row,
     fixed_token_chunks,
@@ -626,6 +633,61 @@ def test_index_roundtrip_context_determinism_and_fixed_embedding_parity(tmp_path
     assert first == session.builder.build(retrieval, session.spans, config)
     assert first.token_count <= config.max_tokens
     assert any(item.row_indices for item in first.evidence)
+
+
+def test_structure_index_embeds_semantic_tables_but_context_uses_source_rows(
+    tmp_path: Path,
+) -> None:
+    document = long_table()
+    runtime = FakeEmbeddingRuntime()
+    runtime._tokenizer = OffsetCharacters()
+    index = build_evidence_index(
+        (document,),
+        runtime,
+        tmp_path / "structure",
+        StructureChunkConfig(target_tokens=180, hard_max_tokens=500),
+        chunking_policy="STRUCTURE",
+    )
+
+    assert index.manifest.version == "structure-evidence-index@1.0.0"
+    assert index.manifest.chunking_policy == "STRUCTURE"
+    assert index.manifest.chunker_version == "ir-structure-aware@2.2.0"
+    table_entries = [
+        entry for entry in index.entries if entry.chunk.chunk_type is ChunkType.TABLE
+    ]
+    assert len(table_entries) > 1
+    assert all("Columns:" in entry.chunk.text for entry in table_entries)
+    for entry in table_entries:
+        raw_rows = entry.chunk.metadata["data_row_indices"]
+        assert isinstance(raw_rows, list)
+        expected_rows = {
+            row for row in raw_rows if isinstance(row, int) and not isinstance(row, bool)
+        }
+        assert entry.source_spans
+        for span in entry.source_spans:
+            source = index.sources[span.source_id]
+            assert source.table_map is not None
+            mapped_rows = {
+                row.row_index
+                for row in source.table_map.rows
+                if row.token_start == span.token_start and row.token_end == span.token_end
+            }
+            assert mapped_rows and mapped_rows <= expected_rows
+
+    selected = table_entries[-1]
+    context = index.session(runtime).context(
+        retrieved((selected.chunk,)),
+        ContextConfig(
+            max_tokens=2000,
+            max_excerpt_tokens=512,
+            expand_source_tokens=0,
+            include_related=False,
+        ),
+    )
+    assert context.evidence
+    assert "Columns:" not in context.text
+    assert any("|" in item.text for item in context.evidence)
+    assert all(item.source_id in index.sources for item in context.evidence)
 
 
 def test_merged_column_header_remains_an_anchor_with_original_span() -> None:

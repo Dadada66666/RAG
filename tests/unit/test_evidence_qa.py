@@ -127,6 +127,72 @@ def test_invalid_model_citations_are_not_published(
     assert json.loads(result.answer.diagnostic.raw_completion)["claims"]
 
 
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "Revenue increased strongly in 2025.",
+        "Revenue\tincreased\r\nstrongly in 2025.",
+        "Revenue\u00a0increased  strongly in 2025.",
+    ],
+)
+def test_citation_whitespace_layout_is_canonicalized_to_original_source(
+    tmp_path: Path, quote: str
+) -> None:
+    runtime = FakeEmbeddingRuntime()
+    session = build_evidence_index((make_retrieval_document(),), runtime, tmp_path).session(runtime)
+    result = ask_document("Revenue?", session, model=CitingModel("E2", quote))
+
+    assert result.answer is not None and result.answer.status == "ANSWERED"
+    citation = result.answer.claims[0].citations[0]
+    evidence = next(
+        item for item in result.context.evidence if item.evidence_id == citation.evidence_id
+    )
+    assert evidence.text[citation.quote_start : citation.quote_end] == citation.quote
+    if quote == "Revenue increased strongly in 2025.":
+        assert result.answer.source_validation == "EXACT_QUOTES_CHECKED"
+        assert "CITATION_CANONICAL_WHITESPACE_MATCH" not in result.answer.warnings
+    else:
+        assert result.answer.source_validation == "CANONICAL_WHITESPACE_QUOTES_CHECKED"
+        assert "CITATION_CANONICAL_WHITESPACE_MATCH" in result.answer.warnings
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "Revenue increased strongly in 2024.",
+        "Revenue decreased strongly in 2025.",
+        "revenue increased strongly in 2025.",
+        "Revenue increased strongly ... in 2025.",
+    ],
+)
+def test_citation_whitespace_matching_does_not_relax_semantic_characters(
+    tmp_path: Path, quote: str
+) -> None:
+    runtime = FakeEmbeddingRuntime()
+    session = build_evidence_index((make_retrieval_document(),), runtime, tmp_path).session(runtime)
+    result = ask_document("Revenue?", session, model=CitingModel(quote=quote))
+
+    assert result.answer is not None
+    assert result.answer.status == "INVALID_RESPONSE"
+    assert result.answer.reason == "QUOTE_NOT_IN_SUBMITTED_EVIDENCE"
+
+
+def test_canonical_whitespace_quote_uses_deterministic_first_original_interval(
+    tmp_path: Path
+) -> None:
+    runtime = FakeEmbeddingRuntime()
+    session = build_evidence_index((make_retrieval_document(),), runtime, tmp_path).session(runtime)
+    result = ask_document(
+        "Revenue?",
+        session,
+        model=CitingModel("E2", "Revenue\tincreased strongly in 2025."),
+    )
+
+    assert result.answer is not None and result.answer.status == "ANSWERED"
+    citation = result.answer.claims[0].citations[0]
+    assert citation.quote == "Revenue increased strongly in 2025."
+
+
 @pytest.mark.parametrize("raw", ["not JSON", '{"status":"ANSWERED","claims":[],"reason":null}'])
 def test_invalid_response_preserves_raw_and_validation_details(tmp_path: Path, raw: str) -> None:
     runtime = FakeEmbeddingRuntime()

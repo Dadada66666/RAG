@@ -33,7 +33,7 @@ from docparser.ir.tables import Table, TableCell, TableSegment
 from docparser.ir.types import Sha256Digest
 
 FIXED_CHUNKER_VERSION = "ir-fixed-token@1.1.0"
-STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.1.0"
+STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.2.0"
 STRUCTURE_EMBEDDING_TOKEN_LIMIT = 8000
 
 
@@ -95,6 +95,8 @@ class _SemanticRetrievalUnit:
     table_header_aware: bool = False
     segment_bboxes: tuple[ChunkBBox, ...] = ()
     table_segment_ids: tuple[str, ...] = ()
+    source_token_start: int | None = None
+    source_token_end: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -788,6 +790,8 @@ def _split_normal_unit(
                 semantic_type=unit.semantic_type,
                 overlap_eligible=False,
                 oversized_split=True,
+                source_token_start=start,
+                source_token_end=min(start + capacity, len(body_tokens)),
             )
         )
     return tuple(result)
@@ -1051,6 +1055,19 @@ def structure_aware_chunks(
             if token_count > config.hard_max_tokens:
                 raise ChunkingError("a structure child exceeds structure hard_max_tokens")
             overlap_units = tuple(pending_units[:pending_overlap_count])
+            source_token_ranges: list[JsonValue] = []
+            for unit in pending_units:
+                if (
+                    unit.source_token_start is not None
+                    and unit.source_token_end is not None
+                ):
+                    source_token_ranges.append(
+                        {
+                            "source_block_id": str(unit.blocks[0].block_id),
+                            "token_start": unit.source_token_start,
+                            "token_end": unit.source_token_end,
+                        }
+                    )
             context_blocks = (
                 (section_heading,) if section_heading is not None else ()
             )
@@ -1084,6 +1101,7 @@ def structure_aware_chunks(
                             for unit in overlap_units
                             for block in unit.blocks
                         ],
+                        "source_token_ranges": source_token_ranges,
                     },
                     token_count=token_count,
                     extra_provenance_ids=(
@@ -1139,6 +1157,7 @@ def structure_aware_chunks(
                             str(block.block_id) for block in context_blocks
                         ],
                         "overlap_source_block_ids": [],
+                        "source_token_ranges": [],
                     },
                     token_count=token_count,
                     extra_provenance_ids=(
@@ -1269,6 +1288,18 @@ def structure_aware_chunks(
                         "source_reading_order_status": "UNRESOLVED",
                         "context_source_block_ids": [],
                         "overlap_source_block_ids": [],
+                        "source_token_ranges": (
+                            [
+                                {
+                                    "source_block_id": str(isolated.blocks[0].block_id),
+                                    "token_start": isolated.source_token_start,
+                                    "token_end": isolated.source_token_end,
+                                }
+                            ]
+                            if isolated.source_token_start is not None
+                            and isolated.source_token_end is not None
+                            else []
+                        ),
                     },
                     token_count=token_count,
                 )

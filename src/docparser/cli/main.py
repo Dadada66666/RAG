@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import typer
 import yaml
@@ -67,7 +67,11 @@ from docparser.retrieval import FixedChunkConfig, StructureChunkConfig
 from docparser.retrieval.answering import SiliconFlowChatModel, SiliconFlowConfig
 from docparser.retrieval.context import ContextConfig
 from docparser.retrieval.dense import BgeM3Runtime
-from docparser.retrieval.index import build_evidence_index, load_evidence_index
+from docparser.retrieval.index import (
+    RetrievalChunkingPolicy,
+    build_evidence_index,
+    load_evidence_index,
+)
 from docparser.retrieval.rerank import BgeRerankerV2M3Runtime
 from docparser.version import __version__
 
@@ -217,14 +221,29 @@ def rag_index(
     model_path: Annotated[Path, typer.Option("--model-path", exists=True, file_okay=False)],
     output: Annotated[Path, typer.Option("--output", file_okay=False)],
     device: Annotated[str, typer.Option("--device")] = "cpu",
+    chunking_policy: Annotated[
+        str,
+        typer.Option(
+            "--chunking-policy",
+            help="Retrieval representation: fixed (default) or structure.",
+        ),
+    ] = "fixed",
 ) -> None:
-    """Embed Fixed 512/64 once and save a reusable exact dense index."""
+    """Embed one explicit retrieval representation into a reusable exact dense index."""
     try:
+        normalized_policy = chunking_policy.strip().upper()
+        if normalized_policy not in {"FIXED", "STRUCTURE"}:
+            raise ValueError("chunking policy must be 'fixed' or 'structure'")
         documents = tuple(
             load_canonical_json(path.read_bytes())
             for path in sorted(ir_root.rglob("document.ir.json"))
         )
-        index = build_evidence_index(documents, BgeM3Runtime(model_path, device=device), output)
+        index = build_evidence_index(
+            documents,
+            BgeM3Runtime(model_path, device=device),
+            output,
+            chunking_policy=cast(RetrievalChunkingPolicy, normalized_policy),
+        )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"index failed: {error}", err=True)
         raise typer.Exit(code=2) from error

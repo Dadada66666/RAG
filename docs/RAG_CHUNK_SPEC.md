@@ -5,7 +5,7 @@
 | Status | Retrieval evidence contract closed over ordered and isolated evidence |
 | Chunk schema version | `1.0.0` |
 | Fixed chunker version | `ir-fixed-token@1.1.0` |
-| Structure chunker version | `ir-structure-aware@2.1.0` |
+| Structure chunker version | `ir-structure-aware@2.2.0` |
 
 ## 1. Purpose
 
@@ -16,11 +16,15 @@ relationship-bound semantic-packing treatment. Structure v2 uses explicit Sectio
 column-header, logical-row and TableSegment evidence; it does not claim a globally optimal
 hierarchy or chunk policy.
 
-The QA path currently uses **Fixed 512/64 with the pinned BGE-M3 tokenizer**. Structure v2.1
-remains an experimental treatment: structural boundaries do not imply better dense retrieval.
+The QA path uses **Fixed 512/64 with the pinned BGE-M3 tokenizer by default**. Structure v2.2 is
+an explicit opt-in retrieval treatment: structural boundaries do not imply better dense retrieval.
 Fixed windows may cut tables or separate supporting context; this is tested, not assumed to
 outweigh their retrieval strengths. Source intervals preserve citation reachability in either case.
 Character-count windows are not equivalent to model-token windows.
+
+`rag-index --chunking-policy structure` embeds Structure chunks while retaining Canonical source
+row/block intervals for Context and citation output. It never cites the key-value rendering as if it
+were source text. Fixed remains the default and preserves its existing windows and ordering.
 
 QA uses structure after retrieval for bounded source, header and explicitly related caption
 expansion. This does not change chunk embeddings or ranking. See the

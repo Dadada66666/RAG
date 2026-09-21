@@ -93,6 +93,47 @@ def test_batch_command_preserves_failed_question_and_manifest_evaluation(
     assert metrics["question_count"] == 3 and metrics["execution_error_count"] == 1
 
 
+def test_index_command_supports_explicit_structure_representation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = CliRunner()
+    runtime = FakeEmbeddingRuntime()
+    monkeypatch.setattr("docparser.cli.main.BgeM3Runtime", lambda *args, **kwargs: runtime)
+    root = tmp_path / "ir"
+    root.mkdir()
+    (root / "document.ir.json").write_bytes(
+        dump_canonical_json(make_retrieval_document())
+    )
+    output = tmp_path / "structure-index"
+
+    result = runner.invoke(
+        app,
+        [
+            "rag-index",
+            "--ir-root",
+            str(root),
+            "--model-path",
+            str(root),
+            "--output",
+            str(output),
+            "--chunking-policy",
+            "structure",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["version"] == "structure-evidence-index@1.0.0"
+    assert manifest["chunking_policy"] == "STRUCTURE"
+    assert manifest["chunker_version"] == "ir-structure-aware@2.2.0"
+    chunks = [
+        json.loads(line)
+        for line in (output / "chunks.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(entry["chunk"]["chunk_type"] == "TABLE" for entry in chunks)
+    assert all(entry["chunk"]["embedding_eligible"] for entry in chunks)
+
+
 def test_index_ask_context_and_evaluation_commands(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

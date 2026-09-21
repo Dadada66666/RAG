@@ -71,6 +71,20 @@ docparser rag-index \
 加载时核对文件摘要、模型摘要和 tokenizer 身份。模型/tokenizer 变更需要重建，不能混用向量。
 已有索引目录不会被静默覆盖。源 PDF、模型、IR、索引、运行结果均放在 Git 外部。
 
+Fixed 仍是默认控制组。需要单独构建 Structure 检索实验时，使用新的输出目录并显式指定：
+
+```bash
+docparser rag-index \
+  --ir-root /data/rag/qa-ir \
+  --model-path "$BGE_M3_MODEL_PATH" --device "$BGE_M3_DEVICE" \
+  --chunking-policy structure \
+  --output /data/rag/qa-index-structure-v1
+```
+
+Structure 索引使用关系绑定的标题、caption、明确表头和完整逻辑行作为 embedding 文本；
+Context 与引用仍回到 Canonical 原始 block/table-row source spans。两种索引的 chunk ID 不同，
+正式证据级评估必须分别冻结并绑定各自 index identity 的 gold manifest。
+
 ## 4. 先检查上下文，再调用模型
 
 ```bash

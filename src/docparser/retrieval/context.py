@@ -11,7 +11,13 @@ from pydantic import Field
 
 from docparser.ir.base import StrictIRModel
 from docparser.ir.chunks import Chunk
-from docparser.ir.enums import BlockType, ReadingOrderStatus, RelationshipType, TableCellHeaderRole
+from docparser.ir.enums import (
+    BlockType,
+    ChunkType,
+    ReadingOrderStatus,
+    RelationshipType,
+    TableCellHeaderRole,
+)
 from docparser.ir.geometry import BBox
 from docparser.ir.models import DocumentIR
 from docparser.retrieval.caption_links import CaptionLink, associate_table_captions
@@ -99,7 +105,7 @@ class EvidenceContext(StrictIRModel):
 def prepare_sources(
     document: DocumentIR, tokenizer: Tokenizer, chunks: tuple[Chunk, ...]
 ) -> tuple[dict[str, EvidenceSource], dict[str, tuple[SourceSpan, ...]]]:
-    """Resolve source intervals once during indexing, using the frozen Fixed stream encoding."""
+    """Resolve immutable Canonical source intervals for Fixed or Structure chunks."""
     from docparser.retrieval.chunking import retrieval_evidence_view
 
     view = retrieval_evidence_view(document)
@@ -269,25 +275,97 @@ def prepare_sources(
     for chunk in chunks:
         if not chunk.embedding_eligible:
             continue
-        if chunk.metadata.get("policy") != "FIXED_TOKEN":
-            raise ValueError("source context currently requires Fixed-token retrieval chunks")
-        start, end = chunk.metadata["token_start"], chunk.metadata["token_end"]
-        assert isinstance(start, int) and isinstance(end, int)
-        covered: list[SourceSpan] = []
-        for identifier in chunk.source_block_ids:
-            source_id = str(identifier)
-            source_start, source_end = ranges[source_id]
-            left, right = max(start, source_start), min(end, source_end)
-            if left < right:
-                covered.append(
-                    SourceSpan(
-                        source_id=source_id,
-                        token_start=left - source_start,
-                        token_end=right - source_start,
+        policy = chunk.metadata.get("policy")
+        if policy == "FIXED_TOKEN":
+            start, end = chunk.metadata["token_start"], chunk.metadata["token_end"]
+            assert isinstance(start, int) and isinstance(end, int)
+            covered = []
+            for identifier in chunk.source_block_ids:
+                source_id = str(identifier)
+                source_start, source_end = ranges[source_id]
+                left, right = max(start, source_start), min(end, source_end)
+                if left < right:
+                    covered.append(
+                        SourceSpan(
+                            source_id=source_id,
+                            token_start=left - source_start,
+                            token_end=right - source_start,
+                        )
                     )
-                )
+        elif policy == "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2":
+            covered = _structure_source_spans(chunk, sources, tokenizer)
+        else:
+            raise ValueError(f"unsupported retrieval chunk source policy: {policy!r}")
+        if not covered:
+            raise ValueError(f"retrieval chunk has no resolvable source span: {chunk.chunk_id}")
         spans[str(chunk.chunk_id)] = tuple(covered)
     return sources, spans
+
+
+def _structure_source_spans(
+    chunk: Chunk,
+    sources: dict[str, EvidenceSource],
+    tokenizer: Tokenizer,
+) -> list[SourceSpan]:
+    """Map semantic rendering back to original source text without matching rendered prose."""
+
+    explicit_ranges: dict[str, tuple[int, int]] = {}
+    raw_ranges = chunk.metadata.get("source_token_ranges", [])
+    if not isinstance(raw_ranges, list):
+        raise ValueError("structure source_token_ranges must be a list")
+    for value in raw_ranges:
+        if not isinstance(value, dict):
+            raise ValueError("structure source_token_ranges entries must be objects")
+        source_id = value.get("source_block_id")
+        start = value.get("token_start")
+        end = value.get("token_end")
+        if (
+            not isinstance(source_id, str)
+            or not isinstance(start, int)
+            or isinstance(start, bool)
+            or not isinstance(end, int)
+            or isinstance(end, bool)
+            or start < 0
+            or end <= start
+        ):
+            raise ValueError("invalid structure source token range")
+        explicit_ranges[source_id] = (start, end)
+
+    data_rows_value = chunk.metadata.get("data_row_indices", [])
+    if not isinstance(data_rows_value, list) or any(
+        not isinstance(row, int) or isinstance(row, bool) or row < 0
+        for row in data_rows_value
+    ):
+        raise ValueError("structure data_row_indices must contain non-negative integers")
+    data_rows = frozenset(data_rows_value)
+    covered: list[SourceSpan] = []
+    seen: set[tuple[str, int, int]] = set()
+    for identifier in chunk.source_block_ids:
+        source_id = str(identifier)
+        source = sources[source_id]
+        intervals: list[tuple[int, int]] = []
+        if chunk.chunk_type is ChunkType.TABLE and source.table_map is not None:
+            mapping = source.table_map
+            if mapping.alignment == "ALIGNED":
+                intervals.extend(
+                    (row.token_start, row.token_end)
+                    for row in mapping.rows
+                    if row.row_index in data_rows
+                )
+        elif source_id in explicit_ranges:
+            intervals.append(explicit_ranges[source_id])
+        if not intervals:
+            token_count = len(tokenizer.encode(source.text))
+            if token_count:
+                intervals.append((0, token_count))
+        for start, end in intervals:
+            key = (source_id, start, end)
+            if key not in seen:
+                seen.add(key)
+                covered.append(
+                    SourceSpan(source_id=source_id, token_start=start, token_end=end)
+                )
+    return covered
 
 
 @dataclass(frozen=True, slots=True)
