@@ -5,7 +5,7 @@
 | Status | Retrieval evidence contract closed over ordered and isolated evidence |
 | Chunk schema version | `1.0.0` |
 | Fixed chunker version | `ir-fixed-token@1.1.0` |
-| Structure chunker version | `ir-structure-aware@2.3.0` |
+| Structure chunker version | `ir-structure-aware@2.4.0` |
 
 ## 1. Purpose
 
@@ -16,7 +16,7 @@ relationship-bound semantic-packing treatment. Structure v2 uses explicit Sectio
 column-header, logical-row and TableSegment evidence; it does not claim a globally optimal
 hierarchy or chunk policy.
 
-The QA path uses **Fixed 512/64 with the pinned BGE-M3 tokenizer by default**. Structure v2.2 is
+The QA path uses **Fixed 512/64 with the pinned BGE-M3 tokenizer by default**. Structure v2.4 is
 an explicit opt-in retrieval treatment: structural boundaries do not imply better dense retrieval.
 Fixed windows may cut tables or separate supporting context; this is tested, not assumed to
 outweigh their retrieval strengths. Source intervals preserve citation reachability in either case.
@@ -172,7 +172,10 @@ evaluation set; stable source-block order remains the tie-break.
 
 ### 5.1 Headings and sections
 
-- A heading is included with at least the first child content when possible; heading-only child chunks are avoided.
+- A heading is included with at least the first child content when possible. Consecutive trusted
+  headings whose flat Sections contain no content are carried forward as an ordered heading
+  context chain for the next non-empty Section; this does not infer a parent/child hierarchy.
+  A trailing heading with no following evidence remains independently retrievable.
 - Parent chunks align to sections. Very small sibling subsections may share a parent but child chunks do not cross top-level boundaries.
 - Heading levels are metadata, not inferred again from font sizes.
 
@@ -187,8 +190,12 @@ Logical table atomicity means the structure is never flattened and arbitrarily c
   logical rows/cells, records `row_start/row_end`, and points to the same table entity. `ROW_HEADER`
   cells remain row stubs and `UNKNOWN` header roles are not promoted to column headers.
 - A merged cell crossing row-group boundary is carried as contextual header/stub metadata or forces the boundary to move; it is never split into contradictory values.
-- Explicit column headers render deterministic key-value data rows; without complete explicit
-  column-header evidence, the serializer falls back to compact logical rows and does not guess.
+- Explicit column headers render deterministic key-value data rows. Without complete explicit
+  column-header evidence, the serializer uses role-neutral `Row N` / `Column N` coordinates;
+  it never promotes the first row or an `UNKNOWN`/`NONE` cell into a column header.
+- Explicit `FOOTNOTE_OF` table relations are rendered as declared table-note context and the
+  bound footnote is not emitted as a duplicate competing candidate. Unlinked footnotes remain
+  independent retrieval evidence.
 - Cross-page segments do not force chunk breaks. Each row group binds only intersecting
   `TableSegment` blocks for page/bbox hit provenance; heading/caption sources remain declared
   context metadata.

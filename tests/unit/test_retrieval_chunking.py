@@ -11,9 +11,23 @@ from tests.retrieval_factory import (
 
 from docparser.ir.chunks import Chunk
 from docparser.ir.content import Equation
-from docparser.ir.enums import BlockType, ChunkType, EquationFormat, TableCellHeaderRole
-from docparser.ir.ids import BlockId, EquationId, TableSegmentId, generate_uuid5_id
+from docparser.ir.enums import (
+    BlockType,
+    ChunkType,
+    EquationFormat,
+    RelationshipType,
+    TableCellHeaderRole,
+)
+from docparser.ir.ids import (
+    BlockId,
+    EquationId,
+    RelationshipId,
+    SectionId,
+    TableSegmentId,
+    generate_uuid5_id,
+)
 from docparser.ir.models import DocumentIR
+from docparser.ir.relationships import Relationship
 from docparser.ir.tables import TableSegment
 from docparser.retrieval import (
     FIXED_CHUNKER_VERSION,
@@ -159,6 +173,85 @@ def _with_row_span(document: DocumentIR) -> DocumentIR:
     )
 
 
+def _with_table_footnote(document: DocumentIR, *, linked: bool) -> DocumentIR:
+    page = document.pages[1]
+    footnote = page.blocks[1].model_copy(
+        update={
+            "block_type": BlockType.FOOTNOTE,
+            "text": "Amounts exclude the synthetic adjustment.",
+        }
+    )
+    relationships = document.relationships
+    if linked:
+        relationship_id = generate_uuid5_id(
+            RelationshipId,
+            TEST_NAMESPACE,
+            "retrieval-table-footnote",
+        )
+        footnote = footnote.model_copy(
+            update={"relationship_ids": (relationship_id,)}
+        )
+        relationships += (
+            Relationship(
+                relationship_id=relationship_id,
+                type=RelationshipType.FOOTNOTE_OF,
+                source_id=footnote.block_id,
+                target_id=document.tables[0].table_id,
+                confidence=None,
+                provenance_ids=footnote.provenance_ids,
+                metadata={"source": "SYNTHETIC_EXPLICIT_RELATION"},
+                extensions={},
+            ),
+        )
+    pages = (
+        document.pages[0],
+        page.model_copy(update={"blocks": (page.blocks[0], footnote, *page.blocks[2:])}),
+    )
+    return _validated(
+        document.model_copy(update={"pages": pages, "relationships": relationships})
+    )
+
+
+def _with_empty_heading_before_content(document: DocumentIR) -> DocumentIR:
+    page = document.pages[0]
+    original_heading = page.blocks[1]
+    empty_heading = original_heading.model_copy(
+        update={
+            "block_id": generate_uuid5_id(
+                BlockId, TEST_NAMESPACE, "retrieval-empty-heading"
+            ),
+            "text": "Part Alpha",
+            "reading_order": 0,
+        }
+    )
+    shifted = tuple(
+        block.model_copy(update={"reading_order": block.reading_order + 1})
+        if block.reading_order is not None
+        else block
+        for block in page.blocks[1:]
+    )
+    pages = (
+        page.model_copy(update={"blocks": (page.blocks[0], empty_heading, *shifted)}),
+        document.pages[1],
+    )
+    first_section = document.sections[0]
+    empty_section = first_section.model_copy(
+        update={
+            "section_id": generate_uuid5_id(
+                SectionId, TEST_NAMESPACE, "retrieval-empty-heading-section"
+            ),
+            "heading_block_id": empty_heading.block_id,
+            "content_block_ids": (),
+        }
+    )
+    return _validated(
+        document.model_copy(
+            update={
+                "pages": pages,
+                "sections": (empty_section, *document.sections),
+            }
+        )
+    )
 def _with_multisegment_table(document: DocumentIR) -> DocumentIR:
     table = document.tables[0]
     first = table.segments[0]
@@ -375,13 +468,21 @@ def test_unknown_table_header_roles_are_not_repeated_as_column_headers() -> None
     )
     table_chunks = [chunk for chunk in chunks if chunk.chunk_type is ChunkType.TABLE]
 
-    assert sum("| Metric | Value |" in chunk.text for chunk in table_chunks) == 1
+    assert sum(
+        "Row 1:\nColumn 1: Metric\nColumn 2: Value" in chunk.text
+        for chunk in table_chunks
+    ) == 1
     assert all(chunk.metadata["repeated_header_rows"] == [] for chunk in table_chunks)
     assert all(
         chunk.metadata["table_rendering"] == "COMPACT_LOGICAL_ROWS"
         for chunk in table_chunks
     )
     assert all("Columns:" not in chunk.text for chunk in table_chunks)
+    assert all(
+        chunk.metadata["table_cell_labeling"] == "POSITIONAL_COLUMNS"
+        for chunk in table_chunks
+    )
+    assert all("Metric:" not in chunk.text for chunk in table_chunks)
 
 
 def test_explicit_table_caption_is_bound_and_not_an_independent_candidate() -> None:
@@ -431,6 +532,99 @@ def test_unlinked_caption_remains_independent_without_heuristic_binding() -> Non
         for chunk in chunks
         if chunk.embedding_eligible and chunk.chunk_type is ChunkType.CHILD
     )
+
+
+def test_explicit_table_footnote_is_bound_without_duplicate_candidate() -> None:
+    document = _with_table_footnote(make_retrieval_document(), linked=True)
+    footnote = document.pages[1].blocks[1]
+    chunks = structure_aware_chunks(
+        document,
+        CharacterTokenizer(),
+        StructureChunkConfig(target_tokens=220, hard_max_tokens=400),
+    )
+    table_chunks = [chunk for chunk in chunks if chunk.chunk_type is ChunkType.TABLE]
+
+    assert table_chunks
+    assert all(
+        "Table note: Amounts exclude the synthetic adjustment." in chunk.text
+        for chunk in table_chunks
+    )
+    assert all(
+        chunk.metadata["footnote_block_ids"] == [str(footnote.block_id)]
+        for chunk in table_chunks
+    )
+    assert all(
+        str(footnote.block_id)
+        in _metadata_str_list(chunk, "context_source_block_ids")
+        for chunk in table_chunks
+    )
+    assert all(
+        footnote.block_id not in chunk.source_block_ids
+        for chunk in chunks
+        if chunk.embedding_eligible and chunk.chunk_type is ChunkType.CHILD
+    )
+    assert covered_source_block_ids(chunks) == retrieval_evidence_view(
+        document
+    ).expected_source_block_ids
+
+
+def test_unlinked_table_footnote_remains_independent() -> None:
+    document = _with_table_footnote(make_retrieval_document(), linked=False)
+    footnote = document.pages[1].blocks[1]
+    chunks = structure_aware_chunks(
+        document,
+        CharacterTokenizer(),
+        StructureChunkConfig(target_tokens=500, hard_max_tokens=500),
+    )
+    table_chunk = next(chunk for chunk in chunks if chunk.chunk_type is ChunkType.TABLE)
+
+    assert "Table note:" not in table_chunk.text
+    assert any(
+        footnote.block_id in chunk.source_block_ids
+        for chunk in chunks
+        if chunk.embedding_eligible and chunk.chunk_type is ChunkType.CHILD
+    )
+
+
+def test_consecutive_empty_heading_becomes_context_not_tiny_candidate() -> None:
+    document = _with_empty_heading_before_content(make_retrieval_document())
+    empty_section = document.sections[0]
+    target_section = document.sections[1]
+    empty_heading_id = empty_section.heading_block_id
+    assert empty_heading_id is not None
+
+    chunks = structure_aware_chunks(
+        document,
+        CharacterTokenizer(),
+        StructureChunkConfig(target_tokens=180, hard_max_tokens=300),
+    )
+    target_chunks = [
+        chunk
+        for chunk in chunks
+        if chunk.embedding_eligible
+        and chunk.parent_section_id == target_section.section_id
+    ]
+
+    assert target_chunks
+    assert all(chunk.heading_path == ("Part Alpha", "Revenue") for chunk in target_chunks)
+    assert all(
+        str(empty_heading_id)
+        in _metadata_str_list(chunk, "context_source_block_ids")
+        for chunk in target_chunks
+    )
+    assert all(
+        chunk.metadata["heading_context_policy"]
+        == "CONSECUTIVE_EMPTY_SECTION_CHAIN"
+        for chunk in target_chunks
+    )
+    assert not any(
+        chunk.embedding_eligible
+        and chunk.parent_section_id == empty_section.section_id
+        for chunk in chunks
+    )
+    assert covered_source_block_ids(chunks) == retrieval_evidence_view(
+        document
+    ).expected_source_block_ids
 
 
 def test_explicit_table_caption_is_bound_across_section_boundaries() -> None:

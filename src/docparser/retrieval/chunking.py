@@ -18,6 +18,7 @@ from docparser.ir.enums import (
     BlockType,
     ChunkType,
     ReadingOrderStatus,
+    RelationshipType,
     TableCellHeaderRole,
 )
 from docparser.ir.ids import (
@@ -33,7 +34,7 @@ from docparser.ir.tables import Table, TableCell, TableSegment
 from docparser.ir.types import Sha256Digest
 
 FIXED_CHUNKER_VERSION = "ir-fixed-token@1.1.0"
-STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.3.0"
+STRUCTURE_CHUNKER_VERSION = "ir-structure-aware@2.4.0"
 STRUCTURE_EMBEDDING_TOKEN_LIMIT = 8000
 
 
@@ -220,6 +221,33 @@ def _block_by_id(document: DocumentIR) -> dict[BlockId, Block]:
     return {block.block_id: block for page in document.pages for block in page.blocks}
 
 
+def _explicit_footnote_blocks(
+    document: DocumentIR,
+    target_id: ContentEntityId,
+    blocks_by_id: dict[BlockId, Block],
+) -> tuple[Block, ...]:
+    """Resolve only typed, explicit FOOTNOTE_OF observations for an entity."""
+
+    result: list[Block] = []
+    for relationship in sorted(
+        document.relationships, key=lambda item: str(item.relationship_id)
+    ):
+        if (
+            relationship.type is RelationshipType.FOOTNOTE_OF
+            and relationship.target_id == target_id
+        ):
+            source_id = BlockId(str(relationship.source_id))
+            block = blocks_by_id[source_id]
+            if (
+                block.block_type is BlockType.FOOTNOTE
+                and block.reading_order_status
+                in {ReadingOrderStatus.IN_FLOW, ReadingOrderStatus.UNRESOLVED}
+                and (block.text or "").strip()
+            ):
+                result.append(block)
+    return _unique_blocks(result)
+
+
 def _render_cell(cell: TableCell) -> str:
     text = cell.text.strip()
     if cell.row_span == 1 and cell.column_span == 1:
@@ -234,6 +262,26 @@ def _render_table_row(table: Table, row_index: int) -> str:
         for column in range(table.logical_column_count)
     ]
     return "| " + " | ".join(values) + " |"
+
+
+def _render_positional_table_row(table: Table, row_index: int) -> str:
+    """Render coordinates without inventing header meaning for unknown columns."""
+
+    cells = sorted(
+        (cell for cell in table.cells if cell.row_index == row_index),
+        key=lambda cell: (cell.column_index, str(cell.cell_id)),
+    )
+    values: list[str] = []
+    for cell in cells:
+        column_start = cell.column_index + 1
+        column_end = column_start + cell.column_span - 1
+        column_label = (
+            f"Column {column_start}"
+            if column_start == column_end
+            else f"Columns {column_start}-{column_end}"
+        )
+        values.append(f"{column_label}: {_render_cell(cell)}")
+    return f"Row {row_index + 1}:\n" + "\n".join(values)
 
 
 def _render_table(table: Table, rows: Iterable[int] | None = None) -> str:
@@ -483,11 +531,25 @@ def fixed_token_chunks(
     return tuple(chunks)
 
 
-def _heading_prefix(heading: Block | None) -> tuple[str, tuple[str, ...]]:
-    if heading is None or not (heading.text or "").strip():
+def _heading_context(
+    headings: Sequence[Block],
+) -> tuple[str, tuple[str, ...]]:
+    values = tuple(
+        text
+        for heading in headings
+        if (text := (heading.text or "").strip())
+    )
+    if not values:
         return "", ()
-    value = (heading.text or "").strip()
-    return f"Section: {value}\n\n", (value,)
+    return "".join(f"Section: {value}\n" for value in values) + "\n", values
+
+
+def _heading_context_policy(headings: Sequence[Block]) -> str:
+    if not headings:
+        return "NONE"
+    if len(headings) > 1:
+        return "CONSECUTIVE_EMPTY_SECTION_CHAIN"
+    return "SECTION_HEADING"
 
 
 def _caption_blocks(
@@ -545,12 +607,13 @@ def _render_table_rows(
         return "\n\n".join(
             _render_key_value_row(table, row, column_labels) for row in rows
         )
-    return "\n".join(_render_table_row(table, row) for row in rows)
+    return "\n\n".join(_render_positional_table_row(table, row) for row in rows)
 
 
 def _table_context_prefix(
     section_prefix: str,
     caption_blocks: Sequence[Block],
+    footnote_blocks: Sequence[Block],
     table: Table,
     column_labels: tuple[str, ...] | None,
     repeated_header_rows: Sequence[int],
@@ -559,6 +622,11 @@ def _table_context_prefix(
     parts.extend(
         f"Table: {text}"
         for block in caption_blocks
+        if (text := (block.text or "").strip())
+    )
+    parts.extend(
+        f"Table note: {text}"
+        for block in footnote_blocks
         if (text := (block.text or "").strip())
     )
     if column_labels is not None:
@@ -668,12 +736,12 @@ def _table_units(
     document: DocumentIR,
     block: Block,
     table: Table,
-    heading: Block | None,
+    heading_blocks: Sequence[Block],
     tokenizer: Tokenizer,
     config: StructureChunkConfig,
 ) -> tuple[_SemanticRetrievalUnit, ...]:
     blocks_by_id = _block_by_id(document)
-    section_prefix, _ = _heading_prefix(heading)
+    section_prefix, _ = _heading_context(heading_blocks)
     captions = tuple(
         caption
         for caption in _caption_blocks(table, blocks_by_id)
@@ -681,6 +749,9 @@ def _table_units(
         and caption.reading_order_status
         in {ReadingOrderStatus.IN_FLOW, ReadingOrderStatus.UNRESOLVED}
         and (caption.text or "").strip()
+    )
+    footnotes = _explicit_footnote_blocks(
+        document, table.table_id, blocks_by_id
     )
     header_rows = table.header_row_indices
     data_rows = tuple(
@@ -694,6 +765,7 @@ def _table_units(
     context_prefix = _table_context_prefix(
         section_prefix,
         captions,
+        footnotes,
         table,
         column_labels,
         header_rows,
@@ -701,7 +773,7 @@ def _table_units(
     header_segments = _table_segments_for_rows(table, header_rows)
     header_blocks = tuple(blocks_by_id[segment.block_id] for segment in header_segments)
     context_blocks = _unique_blocks(
-        ((heading,) if heading is not None else ()) + captions + header_blocks
+        (*heading_blocks, *captions, *footnotes, *header_blocks)
     )
     bands = _row_bands(table, data_rows)
     units: list[_SemanticRetrievalUnit] = []
@@ -907,6 +979,7 @@ def _build_table_chunk(
     section_id: SectionId | None,
     heading_path: tuple[str, ...],
     rendered_heading_prefix: bool,
+    context_section_ids: tuple[SectionId, ...] = (),
     reading_order_policy: str | None = None,
 ) -> Chunk:
     assert unit.table is not None
@@ -926,15 +999,33 @@ def _build_table_chunk(
             for block in unit.context_blocks
             if block.block_id in unit.table.caption_block_ids
         ],
+        "footnote_block_ids": [
+            str(block.block_id)
+            for block in unit.context_blocks
+            if block.block_type is BlockType.FOOTNOTE
+        ],
         "table_segment_ids": list(unit.table_segment_ids),
         "context_source_block_ids": [
             str(block.block_id) for block in unit.context_blocks
         ],
         "overlap_source_block_ids": [],
+        "context_section_ids": [
+            str(section_id) for section_id in context_section_ids
+        ],
+        "heading_context_policy": (
+            "CONSECUTIVE_EMPTY_SECTION_CHAIN"
+            if len(context_section_ids) > 1
+            else "SECTION_HEADING" if context_section_ids else "NONE"
+        ),
         "table_rendering": (
             "HEADER_AWARE_KEY_VALUE"
             if unit.table_header_aware
             else "COMPACT_LOGICAL_ROWS"
+        ),
+        "table_cell_labeling": (
+            "EXPLICIT_COLUMN_HEADERS"
+            if unit.table_header_aware
+            else "POSITIONAL_COLUMNS"
         ),
     }
     if reading_order_policy is not None:
@@ -980,18 +1071,83 @@ def structure_aware_chunks(
     config_hash = _config_hash(config)
     chunks: list[Chunk] = []
     seen_tables: set[ContentEntityId] = set()
-    bound_table_caption_ids = {
-        caption_id for table in document.tables for caption_id in table.caption_block_ids
+    retrievable_table_ids = {
+        block.content_ref
+        for block in (*evidence.ordered_blocks, *evidence.isolated_unresolved_blocks)
+        if block.block_type is BlockType.TABLE
+        and block.content_ref is not None
+        and block.content_ref in tables_by_id
     }
-    ordinal = 0
+    bound_table_caption_ids = {
+        caption_id
+        for table in document.tables
+        if table.table_id in retrievable_table_ids
+        for caption_id in table.caption_block_ids
+    }
+    bound_table_footnote_ids = {
+        block.block_id
+        for table in document.tables
+        if table.table_id in retrievable_table_ids
+        for block in _explicit_footnote_blocks(document, table.table_id, blocks_by_id)
+    }
+    bound_table_context_ids = bound_table_caption_ids | bound_table_footnote_ids
 
+    heading_contexts: dict[SectionId, tuple[Block, ...]] = {}
+    heading_context_section_ids: dict[SectionId, tuple[SectionId, ...]] = {}
+    suppressed_empty_section_ids: set[SectionId] = set()
+    pending_empty_headings: list[tuple[SectionId, Block]] = []
     for section in document.sections:
         heading = (
             blocks_by_id.get(section.heading_block_id)
             if section.heading_block_id is not None
             else None
         )
-        prefix, heading_path = _heading_prefix(heading)
+        if heading is not None and not section.content_block_ids:
+            pending_empty_headings.append((section.section_id, heading))
+            continue
+        context = tuple(block for _, block in pending_empty_headings)
+        context_section_ids = tuple(
+            section_id for section_id, _ in pending_empty_headings
+        )
+        if heading is not None:
+            context += (heading,)
+            context_section_ids += (section.section_id,)
+        context_prefix, _ = _heading_context(context)
+        if (
+            pending_empty_headings
+            and len(tokenizer.encode(context_prefix)) >= config.target_tokens
+        ):
+            context = (heading,) if heading is not None else ()
+            context_section_ids = (
+                (section.section_id,) if heading is not None else ()
+            )
+            pending_empty_headings.clear()
+        if context:
+            heading_contexts[section.section_id] = context
+            heading_context_section_ids[section.section_id] = context_section_ids
+        suppressed_empty_section_ids.update(
+            section_id for section_id, _ in pending_empty_headings
+        )
+        pending_empty_headings.clear()
+    ordinal = 0
+
+    for section in document.sections:
+        if section.section_id in suppressed_empty_section_ids:
+            continue
+        heading = (
+            blocks_by_id.get(section.heading_block_id)
+            if section.heading_block_id is not None
+            else None
+        )
+        heading_blocks = heading_contexts.get(
+            section.section_id,
+            (heading,) if heading is not None else (),
+        )
+        context_section_ids = heading_context_section_ids.get(
+            section.section_id,
+            (section.section_id,) if heading is not None else (),
+        )
+        prefix, heading_path = _heading_context(heading_blocks)
         units: list[_SemanticRetrievalUnit] = []
         parent_parts: list[str] = []
         parent_count_parts: list[str] = []
@@ -1002,7 +1158,7 @@ def structure_aware_chunks(
                 or block.block_type not in RETRIEVAL_FLOW_BLOCK_TYPES
             ):
                 continue
-            if block.block_id in bound_table_caption_ids:
+            if block.block_id in bound_table_context_ids:
                 continue
             if block.block_type is BlockType.TABLE and block.content_ref is not None:
                 if block.content_ref in seen_tables:
@@ -1011,10 +1167,13 @@ def structure_aware_chunks(
                 if table is not None:
                     seen_tables.add(block.content_ref)
                     table_units = _table_units(
-                        document, block, table, heading, tokenizer, config
+                        document, block, table, heading_blocks, tokenizer, config
                     )
                     units.extend(table_units)
                     captions = _caption_blocks(table, blocks_by_id)
+                    footnotes = _explicit_footnote_blocks(
+                        document, table.table_id, blocks_by_id
+                    )
                     labels = _explicit_column_labels(table)
                     header_rows = table.header_row_indices
                     data_rows = tuple(
@@ -1027,7 +1186,7 @@ def structure_aware_chunks(
                         header_rows = ()
                         labels = None
                     table_prefix = _table_context_prefix(
-                        "", captions, table, labels, header_rows
+                        "", captions, footnotes, table, labels, header_rows
                     )
                     parent_parts.append(
                         _render_table_unit(table_prefix, table, data_rows, labels)
@@ -1048,7 +1207,7 @@ def structure_aware_chunks(
                 parent_parts.append(unit.text)
                 parent_count_parts.append(unit.text)
 
-        parent_blocks = (heading,) if heading is not None else ()
+        parent_blocks = heading_blocks
         parent_blocks += tuple(
             block for unit in units for block in (*unit.blocks, *unit.context_blocks)
         )
@@ -1071,6 +1230,10 @@ def structure_aware_chunks(
                 "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
                 "context_scope": "SECTION",
                 "token_count_mode": "COMPONENT_SUM_NON_EMBEDDING",
+                "heading_context_policy": _heading_context_policy(heading_blocks),
+                "context_section_ids": [
+                    str(section_id) for section_id in context_section_ids
+                ],
             },
             embedding_eligible=False,
             token_count=_component_token_count(
@@ -1079,13 +1242,15 @@ def structure_aware_chunks(
         )
         chunks.append(parent)
         ordinal += 1
-        if not units and heading is not None:
-            heading_text = (heading.text or "").strip()
+        if not units and heading_blocks:
+            heading_text = "\n\n".join(
+                (block.text or "").strip() for block in heading_blocks
+            )
             chunks.append(
                 _chunk(
                     document,
                     text=heading_text,
-                    blocks=(heading,),
+                    blocks=heading_blocks,
                     tokenizer=tokenizer,
                     chunker_version=STRUCTURE_CHUNKER_VERSION,
                     config_hash=config_hash,
@@ -1098,6 +1263,12 @@ def structure_aware_chunks(
                         "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
                         "semantic_unit_count": 1,
                         "heading_only_section": True,
+                        "heading_context_policy": _heading_context_policy(
+                            heading_blocks
+                        ),
+                        "context_section_ids": [
+                            str(section_id) for section_id in context_section_ids
+                        ],
                         "context_source_block_ids": [],
                         "overlap_source_block_ids": [],
                     },
@@ -1107,10 +1278,11 @@ def structure_aware_chunks(
         def emit_normal(
             packed: _PackedNormalUnits,
             section_prefix: str = prefix,
-            section_heading: Block | None = heading,
+            section_headings: tuple[Block, ...] = heading_blocks,
             parent_id: ChunkId = parent.chunk_id,
             section_id: SectionId = section.section_id,
             section_heading_path: tuple[str, ...] = heading_path,
+            section_context_ids: tuple[SectionId, ...] = context_section_ids,
         ) -> None:
             nonlocal ordinal
             pending_units = packed.units
@@ -1132,9 +1304,7 @@ def structure_aware_chunks(
                             "token_end": unit.source_token_end,
                         }
                     )
-            context_blocks = (
-                (section_heading,) if section_heading is not None else ()
-            )
+            context_blocks = section_headings
             chunks.append(
                 _chunk(
                     document,
@@ -1158,6 +1328,12 @@ def structure_aware_chunks(
                         ),
                         "rendered_heading_prefix": bool(section_prefix),
                         "overlap_admission_policy": "EXISTING_PACK_SLACK_ONLY",
+                        "heading_context_policy": _heading_context_policy(
+                            section_headings
+                        ),
+                        "context_section_ids": [
+                            str(value) for value in section_context_ids
+                        ],
                         "context_source_block_ids": [
                             str(block.block_id) for block in context_blocks
                         ],
@@ -1181,10 +1357,11 @@ def structure_aware_chunks(
         def emit_protected(
             unit: _SemanticRetrievalUnit,
             section_prefix: str = prefix,
-            section_heading: Block | None = heading,
+            section_headings: tuple[Block, ...] = heading_blocks,
             parent_id: ChunkId = parent.chunk_id,
             section_id: SectionId = section.section_id,
             section_heading_path: tuple[str, ...] = heading_path,
+            section_context_ids: tuple[SectionId, ...] = context_section_ids,
         ) -> None:
             nonlocal ordinal
             text = _render_normal_units(section_prefix, (unit,))
@@ -1194,9 +1371,7 @@ def structure_aware_chunks(
                     f"a protected {unit.semantic_type.value} unit exceeds "
                     "structure hard_max_tokens"
                 )
-            context_blocks = (
-                (section_heading,) if section_heading is not None else ()
-            )
+            context_blocks = _unique_blocks((*section_headings, *unit.context_blocks))
             chunks.append(
                 _chunk(
                     document,
@@ -1214,6 +1389,12 @@ def structure_aware_chunks(
                         "policy": "RELATIONSHIP_BOUND_SEMANTIC_PACKING_V2",
                         "protected_unit": unit.semantic_type.value,
                         "rendered_heading_prefix": bool(section_prefix),
+                        "heading_context_policy": _heading_context_policy(
+                            section_headings
+                        ),
+                        "context_section_ids": [
+                            str(value) for value in section_context_ids
+                        ],
                         "context_source_block_ids": [
                             str(block.block_id) for block in context_blocks
                         ],
@@ -1236,6 +1417,7 @@ def structure_aware_chunks(
             parent_id: ChunkId = parent.chunk_id,
             section_id: SectionId = section.section_id,
             section_heading_path: tuple[str, ...] = heading_path,
+            section_context_ids: tuple[SectionId, ...] = context_section_ids,
         ) -> None:
             nonlocal ordinal
             chunks.append(
@@ -1250,6 +1432,7 @@ def structure_aware_chunks(
                     section_id=section_id,
                     heading_path=section_heading_path,
                     rendered_heading_prefix=bool(section_prefix),
+                    context_section_ids=section_context_ids,
                 )
             )
             ordinal += 1
@@ -1284,7 +1467,7 @@ def structure_aware_chunks(
         flush_normal_run()
 
     for block in evidence.isolated_unresolved_blocks:
-        if block.block_id in bound_table_caption_ids:
+        if block.block_id in bound_table_context_ids:
             continue
         if block.block_type is BlockType.TABLE and block.content_ref is not None:
             if block.content_ref in seen_tables:
@@ -1293,7 +1476,7 @@ def structure_aware_chunks(
             if table is not None:
                 seen_tables.add(block.content_ref)
                 for unit in _table_units(
-                    document, block, table, None, tokenizer, config
+                    document, block, table, (), tokenizer, config
                 ):
                     chunks.append(
                         _build_table_chunk(

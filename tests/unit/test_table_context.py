@@ -651,7 +651,7 @@ def test_structure_index_embeds_semantic_tables_but_context_uses_source_rows(
 
     assert index.manifest.version == "structure-evidence-index@1.0.0"
     assert index.manifest.chunking_policy == "STRUCTURE"
-    assert index.manifest.chunker_version == "ir-structure-aware@2.3.0"
+    assert index.manifest.chunker_version == "ir-structure-aware@2.4.0"
     table_entries = [
         entry for entry in index.entries if entry.chunk.chunk_type is ChunkType.TABLE
     ]
