@@ -21,6 +21,7 @@ from docparser.application.qa_batch import (
     run_qa_batch,
 )
 from docparser.application.retrieval_ab import run_retrieval_ab
+from docparser.application.retrieval_gold_ab import RetrievalScope, run_retrieval_gold_ab
 from docparser.application.robust import robust_parse_document, write_robust_outputs
 from docparser.config import load_config
 from docparser.domain.parser_contract import RuntimeDevice
@@ -727,6 +728,56 @@ def rag_retrieval_ab(
     typer.echo(
         f"retrieval A/B completed for {len(outcome.eligible_queries)} queries; output={output}"
     )
+
+
+@app.command("rag-evidence-ab")
+def rag_evidence_ab(
+    fixed_index: Annotated[
+        Path, typer.Option("--fixed-index", exists=True, file_okay=False)
+    ],
+    structure_index: Annotated[
+        Path, typer.Option("--structure-index", exists=True, file_okay=False)
+    ],
+    queries: Annotated[Path, typer.Option("--queries", exists=True, dir_okay=False)],
+    fixed_gold: Annotated[Path, typer.Option("--fixed-gold", exists=True, dir_okay=False)],
+    structure_gold: Annotated[
+        Path, typer.Option("--structure-gold", exists=True, dir_okay=False)
+    ],
+    model_path: Annotated[Path, typer.Option("--model-path", exists=True, file_okay=False)],
+    reranker_model_path: Annotated[
+        Path, typer.Option("--reranker-model-path", exists=True, file_okay=False)
+    ],
+    output: Annotated[Path, typer.Option("--output", file_okay=False)],
+    scope: Annotated[str, typer.Option("--scope", help="corpus or document")] = "corpus",
+    document_map: Annotated[
+        Path | None,
+        typer.Option("--document-map", exists=True, dir_okay=False),
+    ] = None,
+    source_commit: Annotated[str | None, typer.Option("--source-commit")] = None,
+    device: Annotated[str, typer.Option("--device")] = "cpu",
+    reranker_device: Annotated[str | None, typer.Option("--reranker-device")] = None,
+) -> None:
+    """Compare frozen Fixed and Structure indexes at exact chunk-evidence level."""
+    try:
+        outcome = run_retrieval_gold_ab(
+            fixed_index_path=fixed_index,
+            structure_index_path=structure_index,
+            queries_path=queries,
+            fixed_gold_path=fixed_gold,
+            structure_gold_path=structure_gold,
+            output_dir=output,
+            runtime=BgeM3Runtime(model_path, device=device),
+            reranker=BgeRerankerV2M3Runtime(
+                reranker_model_path, device=reranker_device or device
+            ),
+            scope=cast(RetrievalScope, scope),
+            document_map_path=document_map,
+            source_commit=source_commit,
+        )
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError, ValidationError) as exc:
+        typer.echo(f"evidence A/B failed: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"evidence A/B completed for {outcome.query_count} queries; output={output}")
 
 
 @app.command("benchmark-parsebench-official")

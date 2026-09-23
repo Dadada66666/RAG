@@ -4,9 +4,17 @@ Current development follows [COMPLEX_DOCUMENT_QA_SPEC.md](COMPLEX_DOCUMENT_QA_SP
 The phases below are historical design context; the active spec's milestone status and acceptance
 criteria govern the evidence-QA work authorized by the user.
 
-> **CURRENT EXECUTION POINTER: Retrieval evidence contract closure implemented**
+> **CURRENT EXECUTION POINTER: Independently review the chunk-level gold for each index**
 >
-> **NEXT: Rerun the same 3-document / 21-query comparison without changing controls**
+> **NEXT: Run the offline Dense Top20 → reranked Top5 evidence A/B on real saved indexes; only
+> then choose one structure-chunking hypothesis to test.**
+> See [CHUNKING_RETRIEVAL_IMPROVEMENT_PLAN.md](CHUNKING_RETRIEVAL_IMPROVEMENT_PLAN.md)
+> for the current source-audited development order, controls, acceptance gates and rollback rule.
+> Fixed 512/64 remains the QA default until an unseen-document comparison demonstrates both
+> evidence-recall and correct-supported-answer improvement. The five documents and 49 questions
+> already used for debugging are development data, not a protected holdout.
+> The offline `rag-evidence-ab` execution path is implemented; this is not a claim of measured
+> retrieval or QA improvement. Each index still requires independently reviewed frozen chunk gold.
 >
 > The prioritized quality execution track supersedes historical Phase 3+ ordering. Do not
 > implement historical storage/API/distributed phases until the quality track releases them.
